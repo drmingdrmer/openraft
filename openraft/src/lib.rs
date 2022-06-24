@@ -13,7 +13,7 @@ mod defensive;
 mod entry;
 mod membership;
 mod node;
-mod quorum;
+pub mod quorum;
 mod raft_types;
 mod replication;
 mod storage_error;
