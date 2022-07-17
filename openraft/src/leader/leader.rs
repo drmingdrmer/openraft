@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use crate::leader::voting::Voting;
+use crate::leader::voting::VotingResult;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
@@ -23,7 +25,7 @@ use crate::NodeId;
 #[derive(PartialEq, Eq)]
 pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     /// Which nodes have granted the the vote of this node.
-    pub(crate) vote_granted_by: BTreeSet<NID>,
+    pub(crate) voting: Voting<NID>,
 
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<NID, Option<LogId<NID>>, QS>,
@@ -35,20 +37,26 @@ where
     QS: QuorumSet<NID> + 'static,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = NID>) -> Self {
+        let voting = Voting::new(quorum_set.ids());
+
         Self {
-            vote_granted_by: BTreeSet::new(),
+            voting,
             progress: VecProgress::new(quorum_set, learner_ids),
         }
     }
 
-    /// Update that a node has granted the vote.
-    pub(crate) fn grant_vote_by(&mut self, target: NID) {
-        self.vote_granted_by.insert(target);
-    }
+    // /// Return if a quorum of `membership` has granted it.
+    // pub(crate) fn is_vote_granted(&self) -> bool {
+    //     let qs = self.progress.quorum_set();
+    //     qs.is_quorum(self.voting.granted_by.iter())
+    // }
 
-    /// Return if a quorum of `membership` has granted it.
-    pub(crate) fn is_vote_granted(&self) -> bool {
+    // TODO: test
+    pub(crate) fn get_voting_result(&self) -> VotingResult {
         let qs = self.progress.quorum_set();
-        qs.is_quorum(self.vote_granted_by.iter())
+        let res = self.voting.get_voting_result(qs);
+        tracing::debug!(voting_result = debug(&res), "get_voting_result");
+
+        res
     }
 }

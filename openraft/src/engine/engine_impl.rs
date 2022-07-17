@@ -10,6 +10,8 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
+use crate::leader::Rejection;
+use crate::leader::VotingResult;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::progress::Progress;
@@ -139,18 +141,37 @@ impl<NID: NodeId> Engine<NID> {
 
         // Safe unwrap()
         let leader = self.state.internal_server_state.leading_mut().unwrap();
-        leader.grant_vote_by(self.id);
-        let quorum_granted = leader.is_vote_granted();
+        leader.voting.grant_by(self.id);
+        let voting_res = leader.get_voting_result();
 
-        // Fast-path: if there is only one node in the cluster.
+        match voting_res {
+            VotingResult::Granted => {
+                // Fast-path: if there is only one node in the cluster.
 
-        if quorum_granted {
-            self.state.vote.commit();
-            self.push_command(Command::SaveVote { vote: self.state.vote });
+                self.state.vote.commit();
+                self.push_command(Command::SaveVote { vote: self.state.vote });
 
-            // TODO: For compatibility. remove it. The runtime does not need to know about server state.
-            self.set_server_state(ServerState::Leader);
-            return;
+                // TODO: For compatibility. remove it. The runtime does not need to know about server state.
+                self.set_server_state(ServerState::Leader);
+                return;
+            }
+            VotingResult::Continue => {
+                // Slow-path: send vote request, let a quorum grant it.
+
+                self.push_command(Command::SaveVote { vote: self.state.vote });
+                self.push_command(Command::SendVote {
+                    vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id()),
+                });
+
+                // TODO: For compatibility. remove it. The runtime does not need to know about server state.
+                self.set_server_state(ServerState::Candidate);
+            }
+            VotingResult::VoteTooSmall => {
+                unreachable!("No rejection")
+            }
+            VotingResult::LogTooSmall => {
+                unreachable!("No rejection")
+            }
         }
 
         // Slow-path: send vote request, let a quorum grant it.
@@ -220,13 +241,26 @@ impl<NID: NodeId> Engine<NID> {
 
         if resp.vote < self.state.vote {
             debug_assert!(!resp.vote_granted);
+            return;
         }
 
         if resp.vote_granted {
-            leader.grant_vote_by(target);
+            leader.voting.grant_by(target);
+        } else {
+            // The remote peer always returns the updated vote.
+            if resp.vote != self.state.vote {
+                leader.voting.reject_by(target, Rejection::Vote);
+            }
 
-            let quorum_granted = leader.is_vote_granted();
-            if quorum_granted {
+            if resp.last_log_id > self.state.last_log_id() {
+                leader.voting.reject_by(target, Rejection::LastLogId);
+            }
+        }
+
+        let voting_res = leader.get_voting_result();
+
+        match voting_res {
+            VotingResult::Granted => {
                 tracing::debug!("quorum granted vote");
 
                 self.state.vote.commit();
@@ -238,7 +272,24 @@ impl<NID: NodeId> Engine<NID> {
 
                 self.set_server_state(ServerState::Leader);
             }
-            return;
+            VotingResult::Continue => {}
+            VotingResult::VoteTooSmall(_) => {}
+            VotingResult::LogTooSmall(greatest_vote) => {
+                let node_role = self.state.membership_state.effective.get_node_role(&self.id);
+                if node_role == Some(NodeRole::Voter) {
+                    self.set_server_state(ServerState::Follower);
+                } else {
+                    self.set_server_state(ServerState::Learner);
+                }
+
+                self.leave_leader();
+                if let Some(greatest) = greatest_vote {
+                    if greatest > self.state.vote {
+                        self.state.vote = greatest;
+                        self.push_command(Command::SaveVote { vote: self.state.vote });
+                    }
+                }
+            }
         }
 
         // vote is rejected:
@@ -275,6 +326,10 @@ impl<NID: NodeId> Engine<NID> {
 
             self.set_server_state(ServerState::Follower);
         }
+        // If peer's vote is greater than current vote, revert to follower state.
+        if resp.vote > self.state.vote {}
+
+        // Seen a higher log. Keep waiting.
     }
 
     /// Append new log entries by a leader.
@@ -1046,6 +1101,30 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         Ok(())
+    }
+
+    /// Enter follower or learner state, depending on if it is a `voter`.
+    ///
+    /// A follower will setup a longer sleep interval before next election if it believes it can become a leader, i.e.,
+    /// there is a quorum in which all nodes have smaller last-log-id.
+    ///
+    /// A follower will setup a shorter sleep interval if there is a quorum in which all nodes have greater last-log-id.
+    fn enter_follower_learner(&mut self, can_become_leader: bool) {
+        let node_type = self.state.membership_state.effective.get_node_role(&self.id);
+
+        if self.state.leader.is_some() {
+            self.leave_leader();
+
+            if node_type == Some(NodeRole::Voter) {
+                self.set_server_state(ServerState::Follower);
+            } else {
+                self.set_server_state(ServerState::Learner);
+            }
+        }
+
+        if note_type == Some(NodeRole::Voter) {
+            // install timer
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

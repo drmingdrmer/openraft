@@ -35,7 +35,7 @@ mod vote;
 mod engine;
 pub mod error;
 mod internal_server_state;
-mod leader;
+pub(crate) mod leader;
 pub mod metrics;
 pub mod network;
 pub mod raft;
