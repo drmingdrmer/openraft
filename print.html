@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">4.3.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.4.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.4.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.5.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -199,6 +199,23 @@ Allow leadership to be taken in one term by a node with greater node-id.</p>
 <p>Consider introducing read-quorum and write-quorum,
 improve efficiency with a cluster with an even number of nodes.</p>
 </li>
+<li><input disabled="" type="checkbox"/>
+<p>Goal performance is 1,000,000 put/sec.</p>
+<p>Bench history:</p>
+<ul>
+<li>2022 Jul 01: 41,000 put/sec; 23,255 ns/op;</li>
+<li>2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use <code>Progress</code> to track replication.</li>
+<li>2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log</li>
+</ul>
+<p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
+<p>Benchmark setting:</p>
+<ul>
+<li>No network.</li>
+<li>In memory store.</li>
+<li>A cluster of 3 nodes on one server.</li>
+<li>Single client.</li>
+</ul>
+</li>
 </ul>
 <!--
    - - [ ] Consider to separate log storage and log order storage.
@@ -252,8 +269,10 @@ This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#
 <p>Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <p>In this chapter we are going to build a key-value store cluster with <a href="https://github.com/datafuselabs/openraft">openraft</a>.</p>
-<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a>
 is the complete example application including the server, the client and a demo cluster.</p>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb">examples/raft-kv-rocksdb</a>
+is the complete example application including the server, the client and a demo cluster using rocksdb for persistant storage.</p>
 <hr />
 <p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
@@ -346,7 +365,7 @@ fn install_snapshot(meta, snapshot)
 </li>
 </ul>
 <p>The APIs have been made quite obvious, and there is a good example
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/store/mod.rs"><code>ExampleStore</code></a>,
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs"><code>ExampleStore</code></a>,
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.</p>
 <h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly?</a></h3>
@@ -362,6 +381,7 @@ pub fn test_mem_store() -&gt; anyhow::Result&lt;()&gt; {
 }
 <span class="boring">}
 </span></code></pre></pre>
+<p>There is a second example in <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs">Test suite for RaftStorage</a> that showcases building a rocksdb backed store.</p>
 <h3 id="race-condition-about-raftstorage"><a class="header" href="#race-condition-about-raftstorage">Race condition about RaftStorage</a></h3>
 <p>In our design, there is at most one thread at a time writing data to it.
 But there may be several threads reading from it concurrently,
@@ -387,11 +407,11 @@ where D: AppData
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft_network_impl.rs">ExampleNetwork</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs">ExampleNetwork</a>
 shows how to forward messages to other raft nodes.</p>
 <p>And there should be a server endpoint for each of these RPCs.
 When the server receives a raft RPC, it just passes it to its <code>raft</code> instance and replies with what returned:
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs">raft-server-endpoint</a>.</p>
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs">raft-server-endpoint</a>.</p>
 <p>As a real-world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
 <a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be an excellent real-world example.</p>
 <h3 id="find-the-address-of-the-target-node"><a class="header" href="#find-the-address-of-the-target-node">Find the address of the target node.</a></h3>
@@ -437,7 +457,7 @@ to store node-id, and its address in <code>Membership</code> too:</p>
 </ol>
 <h2 id="4-put-everything-together"><a class="header" href="#4-put-everything-together">4. Put everything together</a></h2>
 <p>Finally, we put these parts together and boot up a raft node
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/bin/main.rs">main.rs</a>
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/bin/main.rs">main.rs</a>
 :</p>
 <pre><pre class="playground"><code class="language-rust">#[tokio::main]
 async fn main() {
@@ -508,16 +528,16 @@ async fn main() {
 <li>Add more raft nodes into it;</li>
 <li>Update the membership config.</li>
 </ul>
-<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a> describes these steps in detail.</p>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a> describes these steps in detail.</p>
 <p>And two test scripts for setting up a cluster are provided:</p>
 <ul>
 <li>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/test-cluster.sh">test-cluster.sh</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh">test-cluster.sh</a>
 is a minimized bash script using curl to communicate with the raft cluster,
 to show what messages are sent and received in plain HTTP.</p>
 </li>
 <li>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/tests/cluster/test_cluster.rs">test_cluster.rs</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs">test_cluster.rs</a>
 Use ExampleClient to set up a cluster, write data, and then read it.</p>
 </li>
 </ul>
@@ -621,12 +641,9 @@ and immediately begin syncing logs from the leader.</p>
 </ul>
 <h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
 <p>This method will initiate a membership change and returns when the effective
-membership becomes <code>node_list</code>.</p>
-<p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will add it
-as Learner first.
-Thus it is recommended that the application always call <code>Raft::add_learner</code> first.
-Otherwise, <code>Raft::change_membership</code> may block for long before committing the
-given membership and return.</p>
+membership becomes <code>node_list</code> and committed.</p>
+<p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will fail.
+Thus the application should always call <code>Raft::add_learner</code> first.</p>
 <p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
 revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
 <p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
@@ -637,10 +654,6 @@ with <code>node_list</code> {3,4,5}, then:
 - If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
 - Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
 in which the members not exists in the new membership just be removed from the cluster.</p>
-<h2 id="raftremove_membersmembers-turn_to_learner"><a class="header" href="#raftremove_membersmembers-turn_to_learner"><code>Raft::remove_members(members, turn_to_learner)</code></a></h2>
-<p>Remove members directly, <code>turn_to_learner</code> has the same meaning in <code>change_membership</code>.</p>
-<h2 id="raftadd_membersmembers"><a class="header" href="#raftadd_membersmembers"><code>Raft::add_members(members)</code></a></h2>
-<p>Add members directly.</p>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
@@ -768,6 +781,63 @@ because log replication or voting will always see a higher <code>term_2</code> o
 <p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
 <p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
 <p>QED.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="node-life-cycle"><a class="header" href="#node-life-cycle">Node life cycle</a></h1>
+<ul>
+<li>
+<p>When a node is added with <code>Raft::add_learner()</code>, it starts to receive log
+replication from the leader at once, i.e., becomes a <code>Learner</code>.</p>
+</li>
+<li>
+<p>A learner becomes a <code>Voter</code>, when <code>Raft::change_membership()</code> adds it a
+<code>Voter</code>. A <code>Voter</code> will then become <code>Candidate</code> or <code>Leader</code>.</p>
+</li>
+<li>
+<p>When a node, no matter a <code>Learner</code> or <code>Voter</code>, is removed from membership, the
+leader stops replicating to it at once, i.e., when the new membership that
+does not contain the node is seen(no need to commit).</p>
+<p>The removed node won't receive any log replication or heartbeat from the
+leader. It will enter <code>Candidate</code> because it does not know it is removed.</p>
+</li>
+</ul>
+<h2 id="remove-a-node-from-membership-config"><a class="header" href="#remove-a-node-from-membership-config">Remove a node from membership config</a></h2>
+<p>When membership changes, e.g., from a joint config <code>[(1,2,3), (3,4,5)]</code> to uniform config <code>[3,4,5]</code>(assuming the leader is <code>3</code>), the leader
+stops replication to <code>1,2</code> when <code>[3,4,5]</code> is seen(not committed).</p>
+<p>It is correct because:</p>
+<ul>
+<li>
+<p>If the leader(<code>3</code>) finally committed <code>[3,4,5]</code>, it will eventually stop replication to <code>1,2</code>.</p>
+</li>
+<li>
+<p>If the leader(<code>3</code>) crashes before committing <code>[3,4,5]</code>:</p>
+<ul>
+<li>And a new leader sees the membership config log <code>[3,4,5]</code>, it will continue to commit it and finally stop replication to <code>1,2</code>.</li>
+<li>Or a new leader does not see membership config log <code>[3,4,5]</code>, it will re-establish replication to <code>1,2</code>.</li>
+</ul>
+</li>
+</ul>
+<p>In any case, stopping replication at once is OK.</p>
+<p>One of the considerations is:
+The nodes, e.g., <code>1,2</code> do not know they have been removed from the cluster:</p>
+<ul>
+<li>
+<p>Removed node will enter the candidate state and keeps increasing its term and electing itself.
+This won't affect the working cluster: </p>
+<ul>
+<li>
+<p>The nodes in the working cluster have greater logs; thus, the election will never succeed.</p>
+</li>
+<li>
+<p>The leader won't try to communicate with the removed nodes thus it won't see their higher <code>term</code>.</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Removed nodes should be shut down finally. No matter whether the leader
+replicates the membership without these removed nodes to them, there should
+always be an external process that shuts them down. Because there is no
+guarantee that a removed node can receive the membership log in a finite time.</p>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="metrics"><a class="header" href="#metrics">Metrics</a></h1>
 <p><code>Raft</code> exports metrics on its internal state via <code>Raft::metrics() -&gt; watch::Receiver&lt;RaftMetrics&gt;</code>.</p>
 <p><code>RaftMetrics</code> contains useful information such as:</p>
@@ -950,6 +1020,48 @@ asynchronously. When finished, the spawned task sends to RaftCore a message
 including the snapshot info.</p>
 </li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="vote"><a class="header" href="#vote">Vote</a></h1>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct Vote&lt;NID: NodeId&gt; {
+    term: u64,
+    node_id: NID,
+    committed: bool
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p><code>vote</code> in openraft defines the pseudo <strong>time</strong>(in other word, defines every <code>leader</code>) in a distributed consensus.
+Each <code>vote</code> can be thought as unique time point(in paxos the pseudo time is round-number or <code>rnd</code>, or <code>ballot-number</code>).</p>
+<p>In a standard raft, the corresponding concept is <code>term</code>.
+Although in standard raft a single <code>term</code> is not enough to define a <strong>time
+point</strong>.</p>
+<p>Every server state(leader, candidate, follower or learner) has a unique
+corresponding <code>vote</code>, thus <code>vote</code> can be used to identify different server
+states, i.e, if the <code>vote</code> changes, the server state must have changed.</p>
+<p>Note: follower and learner in openraft is almost the same. The only difference
+is a learner does not try to elect itself.</p>
+<p>Note: a follower will switch to a learner and vice versa without changing the <code>vote</code>, when a
+new membership log is replicated to a follower or learner.</p>
+<p>E.g.:</p>
+<ul>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=false)</code> is in a candidate state for
+node-2.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=true)</code> is in a leader state for
+node-2.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=false|true)</code> is in a follower/learner
+state for node-3.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=1, committed=false|true)</code> is in another different
+follower/learner state for node-3.</p>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="replication"><a class="header" href="#replication">Replication</a></h1>
 <p>Appending entry is the only RPC to replicate logs from leader to followers or learners.
 Installing a snapshot can be seen as a special form of <strong>appending logs</strong>.</p>
@@ -1088,6 +1200,92 @@ committed one and the effective one.</p>
 <p>When deleting conflicting logs that contain a membership config log on a
 Follower/Learner, it needs to revert at most one membership config to previous
 one, i.e., discard the effective one and make the last committed one effective.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="upgrade-tips"><a class="header" href="#upgrade-tips">Upgrade tips</a></h1>
+<p>First, have a look at the change log for the version to upgrade to.
+A commit message starting with these keywords needs attention:</p>
+<ul>
+<li>
+<p>Change: introduces breaking changes. Your application needs adjustment to pass compilation.
+If storage related data structure changed too, a data migration tool is required for the upgrade. See below.</p>
+</li>
+<li>
+<p>Feature: introduces non-breaking new features. Your application should compile without modification.</p>
+</li>
+<li>
+<p>Fix: bug fix. No modification is required.</p>
+</li>
+</ul>
+<h2 id="upgrade-from-v066-to-v070"><a class="header" href="#upgrade-from-v066-to-v070">Upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.6">v0.6.6</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.7.0">v0.7.0</a>:</a></h2>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v070">Change log v0.7.0</a></p>
+<p>To upgrade:</p>
+<ol>
+<li>
+<p>Update the application to adopt <code>v0.7.*</code> openraft.
+<a href="https://github.com/datafuselabs/openraft/blob/release-0.7/memstore/src/lib.rs"><code>memstore</code></a> is a good example about how to implement the openraft API.
+Also, the new implementation of <code>v0.7.*</code> has to pass <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/memstore/src/test.rs#L26-L29"><code>RaftStorage</code> test suite</a>.</p>
+</li>
+<li>
+<p>Then shutdown all <code>v0.6.*</code> nodes and then bring up <code>v0.7.*</code> nodes.</p>
+</li>
+</ol>
+<p><code>v0.6.*</code> and <code>v0.7.*</code> should <strong>NEVER</strong> run in a same cluster, due to the data structure changes. 
+Exchanging data between <code>v0.6.*</code> and <code>v0.7.*</code> nodes may lead to data damage.</p>
+<h3 id="api-changes"><a class="header" href="#api-changes">API changes:</a></h3>
+<ul>
+<li>
+<p>Removed methods:</p>
+<ul>
+<li><code>RaftStorage::get_membership_config()</code> is removed. It is provided with a default implementation in <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/storage_helper.rs#L70"><code>StorageHelper::get_membership()</code></a></li>
+<li><code>RaftStorage::get_initial_state()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
+<li><code>RaftStorage::get_log_entries()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
+<li><code>RaftStorage::try_get_log_entry()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
+<li><code>RaftStorage::first_id_in_log()</code> and <code>RaftStorage::last_id_in_log()</code> are removed. They are replaced with a single method: <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L47-L52"><code>get_log_state()</code></a>, which returns both the first and the last log id in a <code>LogState</code> struct.</li>
+<li><code>RaftStorage::first_known_log_id()</code> is removed.</li>
+</ul>
+</li>
+<li>
+<p>Refactored methods:</p>
+<ul>
+<li><code>RaftStorage::last_applied_state()</code> return value changes from <code>(LogId, ...)</code> to <code>(Option&lt;LogId&gt;,...)</code>: i.e., <code>None</code> should be returned if the state machine has not yet applied any log.</li>
+<li><code>RaftStorage::delete_logs_from()</code> is split into two methods: <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L71"><code>delete_conflict_logs_since(log_id)</code></a> to delete logs that conflict with the leader on a <strong>follower</strong>, and <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L74"><code>purge_logs_upto(log_id)</code></a> to delete already applied logs. </li>
+</ul>
+</li>
+<li>
+<p>Renamed methods: </p>
+<ul>
+<li><code>RaftStorage::do_log_compaction()</code> is renamed to <code>build_snapstho()</code>, without any change.</li>
+<li><code>RaftStorage::finalize_snapshot_installation()</code> is renamed to <code>install_snapshot()</code>, without any change.</li>
+</ul>
+</li>
+</ul>
+<h3 id="data-changes"><a class="header" href="#data-changes">Data changes:</a></h3>
+<p>Some log id fields are changed from <code>LogId</code> to <code>Option&lt;LogId&gt;</code>,
+in order to correctly describe the initial states.
+Now the <code>RaftStorage</code> implementation can just return <code>None</code> if the data to access is absent.
+No need to build a valid default value any more.</p>
+<ul>
+<li><code>InitialState.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>InitialState.last_applied: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>InitialState.last_membership: EffectiveMembership</code> changes to <code>Option&lt;EffectiveMembership&gt;</code>.</li>
+<li><code>VoetRequest.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>VoetResponse.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>AppendEntriesRequest.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>AppendEntriesRequest.leader_commit: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
+<li><code>AddLearnerResponse.matched: LogId</code> changes to <code>Option&lt;LogId&gt;</code></li>
+</ul>
+<p>Other changes:</p>
+<ul>
+<li><code>AppendEntriesResponse</code> now only needs to return <code>success: bool</code> and <code>conflict: bool</code>, no need to return the last log that matches, previously <code>AppendEntriesResponse.matched</code> or the log id that conflicts with the leader, previously <code>AppendEntriesResponse.conflig</code>.</li>
+<li><code>ClientWriteRequest.entry</code> is renamed to <code>payload</code>.</li>
+<li>Add a new struct <code>LogState</code> as a return value of <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L47-L52"><code>get_log_state()</code></a>.</li>
+</ul>
+<h2 id="upgrade-from-v065-to-v066"><a class="header" href="#upgrade-from-v065-to-v066">Upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.5">v0.6.5</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.6.6">v0.6.6</a>:</a></h2>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md#v066">Change log v0.6.6</a></p>
+<p>just modify application code to pass compile.</p>
+<ul>
+<li>API changes: struct fields changed in <code>StorageIOError</code> and <code>Violation</code>.</li>
+<li>Data changes: none.</li>
+</ul>
 
                     </main>
 
