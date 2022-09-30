@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Cluster Controls - openraft</title>
+        <title>Heartbeat - openraft</title>
         <!-- Custom HTML head -->
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="The openraft user guide.">
@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html" class="active"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html" class="active"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -135,46 +135,77 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="cluster-controls"><a class="header" href="#cluster-controls">Cluster Controls</a></h1>
-<p>A raft cluster may be controlled in various ways using the API methods of the <code>Raft</code> type.
-This allows the application to influence the raft behavior.</p>
-<p>There are several concepts related to cluster control:</p>
+                        <h1 id="heartbeat-in-openraft"><a class="header" href="#heartbeat-in-openraft">Heartbeat in openraft</a></h1>
+<h2 id="heartbeat-in-standard-raft"><a class="header" href="#heartbeat-in-standard-raft">Heartbeat in standard raft</a></h2>
+<p>Heartbeat in standard raft is the way for a leader to assert it is still alive:</p>
+<ul>
+<li>A leader send heartbeat at a regular interval.</li>
+<li>A follower that receives a heartbeat believes there is an active leader thus it rejects election request(<code>send_vote</code>) from another node unreachable to the leader, for a short period.</li>
+</ul>
+<h2 id="openraft-heartbeat-is-a-blank-log"><a class="header" href="#openraft-heartbeat-is-a-blank-log">Openraft heartbeat is a blank log</a></h2>
+<p>Such a heartbeat mechanism depends on clock time.
+But raft as a distributed consensus already has its own <strong>pseudo time</strong> defined very well.
+Raft, or other consensus protocol has its own <strong>pseudo time</strong> defined internally:</p>
+<ul>
+<li>In <a href="https://en.wikipedia.org/wiki/Paxos_(computer_science)">paxos</a> it is <code>round_number</code>(AKA ballot number in some paper).</li>
+<li>In the standard raft it is <code>(term, voted_for, last_log_index)</code>(because in standard raft there is only one leader in every term, <code>voted_for</code> can be removed: <code>(term, last_log_index)</code>).</li>
+</ul>
+<p>The <strong>pseudo time</strong> in openraft is a tuple <code>(vote, last_log_id)</code>, compared in dictionary order(<code>vote</code> is equivalent concept as round number in Paxos).</p>
+<h3 id="why-it-works"><a class="header" href="#why-it-works">Why it works</a></h3>
+<p>To refuse the election by a node that does not receive recent messages from the current leader,
+just let the active leader send a <strong>blank log</strong> to increase the <strong>pseudo time</strong> on a quorum.</p>
+<p>Because the leader must have the greatest <strong>pseudo time</strong>,
+thus by comparing the <strong>pseudo time</strong>, a follower automatically refuse election request from a node unreachable to the leader.</p>
+<p>And comparing the <strong>pseudo time</strong> is already done by <code>handle_vote_request()</code>,
+there is no need to add another timer for the active leader. </p>
+<p>Thus making heartbeat request a blank log is the simplest way.</p>
+<h2 id="why-blank-log-heartbeat"><a class="header" href="#why-blank-log-heartbeat">Why blank log heartbeat?</a></h2>
 <ul>
 <li>
-<p>Voter: a raft node that is responsible to vote, elect itself for leadership(Candidate),
-become Leader or Follower</p>
+<p>Simple, get rid of a timer.</p>
+<p>Without heartbeat log(the way standard raft does), when handling a vote
+request, except <code>vote</code> itself, it has to examine two values to determine if
+the vote request is valid:</p>
+<ul>
+<li>Whether the last heartbeat has expired by clock time.</li>
+<li>Whether the <code>(last_term, last_log_index)</code> in the request is greater or equal to the local value. This is the pseudo time Raft defines.</li>
+</ul>
+<p>With heartbeat log(the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: <code>(last_term, last_log_index)</code>. This makes the logic simpler and the test easier to write.</p>
 </li>
 <li>
-<p>Candidate: a node tries to elect itself as the Leader.</p>
-</li>
-<li>
-<p>Leader: the only node in a cluster that deals with application request.</p>
-</li>
-<li>
-<p>Follower: a node that believes there is a legal leader and just receives
-replicated logs.</p>
-</li>
-<li>
-<p>Learner: a node that is not allow to vote but only receives logs.</p>
+<p>Easy to prove, and reduce code complexity.</p>
 </li>
 </ul>
-<p>Voter state transition:</p>
-<pre><code>                         vote granted by a quorum
-          .--&gt; Candidate ----------------------&gt; Leader
-heartbeat |     |                                  |
-timeout   |     | seen a higher Leader             | seen a higher Leader
-          |     v                                  |
-          '----Follower &lt;--------------------------'
-</code></pre>
+<h2 id="concerns"><a class="header" href="#concerns">Concerns</a></h2>
+<ul>
+<li>
+<p><strong>More raft logs are generated</strong>.
+This requires to <em>persist</em> the blank entry in the log (or at least the incremented index).
+E.g., doing that every 50ms for 100 consensus domains on one machine will require 2000 IOPS alone for that.</p>
+<p><strong>Why it is not a problem</strong>:</p>
+<ol>
+<li>
+<p>Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple <code>append-entry</code> calls into one call to the storage layer.
+Thus if a domain swallows <code>10</code> business log entries per <code>50 ms</code>, it's likely to merge these 10 entries into one or a few IO calls.
+The IO amplification should be smaller as IOPS gets more.</p>
+<p>Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
+On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.</p>
+</li>
+<li>
+<p>If a consensus domain swallows <code>1</code> business log entry per <code>50 ms</code>. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.</p>
+</li>
+</ol>
+</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="faq.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="threading.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="cluster-formation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="vote.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -183,10 +214,10 @@ timeout   |     | seen a higher Leader             | seen a higher Leader
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="faq.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="threading.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="cluster-formation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="vote.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
