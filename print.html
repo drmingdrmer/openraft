@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -181,37 +181,43 @@ Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log
 </li>
 <li>
 <p><strong>Branch main</strong> has been under active development.</p>
-<p>The main branch is for the 0.8 release. There won't be big API changes when 0.8 is released.
-Currently, the work is mainly on refactoring the internal structure.</p>
+<p>The main branch is for the 0.8 release.</p>
 <ul>
 <li>The features are almost complete for building an application.</li>
-<li>The performance isn't yet fully optimized. Currently, it's about 44,000 writes per second with a single writer.</li>
-<li>Unit test coverage is 88%.</li>
+<li>The performance isn't yet fully optimized. Currently, it's about 48,000 writes per second with a single writer.</li>
+<li>Unit test coverage is 91%.</li>
 <li>The chaos test is not yet done.</li>
 </ul>
 </li>
 <li>
+<p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.8">release-0.8</a></strong>:
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.0</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v07-v08">0.7 to 0.8 upgrade guide</a> |</p>
+</li>
+<li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.7">release-0.7</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.7.1">v0.7.1</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071">Change log v0.7</a>.</p>
-<p><a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">Upgrade guide from 0.6 to 0.7</a></p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.4</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v074">Change log v0.7.4</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">0.6 to 0.7 upgrade guide</a> |
+<code>release-0.7</code> <strong>Won't</strong> accept new features but only bug fixes.</p>
 </li>
 <li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.6">release-0.6</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a>.</p>
-<p><code>release-0.6</code> won't accept new features but only bug fixes.</p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a> |
+<code>release-0.6</code> <strong>won't</strong> accept new features but only bug fixes.</p>
 </li>
 </ul>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <ul>
 <li><input disabled="" type="checkbox" checked=""/>
-<p><a href="https://datafuselabs.github.io/openraft/dynamic-membership#extended-membership-change-algo">Extended joint membership</a></p>
+<p><strong>2022-10-31</strong> <a href="https://datafuselabs.github.io/openraft/extended-membership">Extended joint membership</a></p>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+<p><strong>2023-02-14</strong> Minimize confliction rate when electing;
+See: <a href="https://datafuselabs.github.io/openraft/vote">Openraft Vote design</a>;
+Or use standard raft mode with <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flag <code>single-term-leader</code></a>.</p>
 </li>
 <li><input disabled="" type="checkbox"/>
 <p>Reduce the complexity of vote and pre-vote: <a href="https://github.com/datafuselabs/openraft/discussions/15">get rid of pre-vote RPC</a>;</p>
-</li>
-<li><input disabled="" type="checkbox"/>
-<p>Reduce confliction rate when electing;
-Allow leadership to be taken in one term by a node with greater node-id.</p>
 </li>
 <li><input disabled="" type="checkbox"/>
 <p>Support flexible quorum, e.g.:<a href="https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html">Hierarchical Quorums</a></p>
@@ -227,6 +233,7 @@ improve efficiency with a cluster with an even number of nodes.</p>
 <li>2022 Jul 01: 41,000 put/sec; 23,255 ns/op;</li>
 <li>2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use <code>Progress</code> to track replication.</li>
 <li>2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log</li>
+<li>2023 Feb 28: 48,000 put/sec; 20,558 ns/op;</li>
 </ul>
 <p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
 <p>Benchmark setting:</p>
@@ -666,154 +673,62 @@ By not allowing to append a smaller log than <code>vote</code>, it will always b
 <p>Unlike the original raft, openraft treats all membership as a <strong>joint</strong> membership.
 A uniform config is just a special case of joint: the joint of only one config.</p>
 <p>Openraft offers these mechanisms for controlling member node lifecycle:</p>
-<h2 id="raftadd_learner"><a class="header" href="#raftadd_learner"><code>Raft::add_learner()</code></a></h2>
+<h2 id="membership-api"><a class="header" href="#membership-api">Membership API</a></h2>
+<h3 id="raftadd_learnernode_id-node-blocking"><a class="header" href="#raftadd_learnernode_id-node-blocking"><code>Raft::add_learner(node_id, node, blocking)</code></a></h3>
 <p>This method will add a learner to the cluster,
 and immediately begin syncing logs from the leader.</p>
 <ul>
 <li>A <strong>Learner</strong> won't vote for leadership.</li>
 </ul>
-<h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
-<p>This method will initiate a membership change and returns when the effective
-membership becomes <code>node_list</code> and committed.</p>
+<h3 id="raftchange_membershipmembers-allow_lagging-turn_to_learner"><a class="header" href="#raftchange_membershipmembers-allow_lagging-turn_to_learner"><code>Raft::change_membership(members, allow_lagging, turn_to_learner)</code></a></h3>
+<p>This method initiates a membership change and returns when the effective
+membership becomes <code>members</code> and is committed.</p>
 <p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will fail.
-Thus the application should always call <code>Raft::add_learner</code> first.</p>
-<p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
-revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
-<p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
-will be turned into learners, otherwise will be removed.</p>
-<p>Example of <code>turn_to_learner</code> usage:
-If the original membership is {&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}, and call <code>change_membership</code> 
-with <code>node_list</code> {3,4,5}, then:
-- If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
-- Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
-in which the members not exists in the new membership just be removed from the cluster.</p>
-<h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
-<p>Openraft tries to commit one or more membership logs to finally change the
-membership to <code>node_list</code>.
-In every step, the log it tries to commit is:</p>
+Thus the application should always call <code>Raft::add_learner()</code> first.</p>
+<p>Once the new membership is committed, a <code>Voter</code> not in the new config is removed if <code>turn_to_learner=false</code>,
+and it is reverted to a <code>Learner</code> if <code>turn_to_learner=true</code>.</p>
+<h4 id="example-of-turn_to_learner"><a class="header" href="#example-of-turn_to_learner">Example of <code>turn_to_learner</code></a></h4>
+<p>Given the original membership to be <code>{&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}</code>,
+call <code>change_membership</code> with <code>members={3,4,5}</code>, then:</p>
 <ul>
-<li>
-<p>the <code>node_list</code> itself, if it is safe to change from previous membership to
-<code>node_list</code> directly.</p>
-</li>
-<li>
-<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
-previous membership.</p>
-</li>
+<li>If <code>turn_to_learner=true</code>,  the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}</code>.</li>
+<li>If <code>turn_to_learner=false</code>, the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}</code>.</li>
 </ul>
-<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
-<blockquote>
-<p>It is a more generalized form of membership change.
-The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
-</blockquote>
-<p>This algo provides more flexible membership change than the original joint algo:</p>
+<h2 id="add-a-new-node-as-a-voter"><a class="header" href="#add-a-new-node-as-a-voter">Add a new node as a voter</a></h2>
+<p>To add a new node as a voter:</p>
 <ul>
-<li>
-<p>The original <strong>Joint</strong> algo:</p>
-<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
-alternate pattern of joint membership and uniform membership.
-E.g.,  the membership entry in a log history could be:</p>
-<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
-<p>Where:</p>
-<ul>
-<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
-<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
+<li>First, add it as a <code>learner</code>(non-voter) with <code>Raft::add_learner()</code>.
+In this step, the leader sets up replication to the new node, but it can not vote yet.</li>
+<li>Then turn it into a <code>voter</code> with <code>Raft::change_membership()</code>.</li>
 </ul>
-</li>
-<li>
-<p><strong>Extended</strong> algo:</p>
-<p>Extended membership change algo allows changing membership in the
-following way:</p>
-<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
-<p>Or revert to a previous membership:</p>
-<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
-</li>
-</ul>
-<h4 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h4>
-<p>Another example shows that it is always safe to change membership from one
-to another along the edges in the following diagram:</p>
-<pre><code class="language-text">          c3
-         /  \
-        /    \
-       /      \
-   c1c3 ------ c2c3
-    / \        / \
-   /   \      /   \
-  /     \    /     \
-c1 ----- c1c2 ----- c2
-</code></pre>
-<h4 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h4>
-<p>A counter-intuitive conclusion is that:</p>
-<p><strong>Even when two leaders propose two memberships without intersection, consensus will
-still, be achieved</strong>.</p>
-<p>E.g., given the current membership to be <code>c1c2</code>, if
-<code>L1</code> proposed <code>c1c3</code>,
-<code>L2</code> proposed <code>c2c4</code>.</p>
-<p>There won't be a brain split problem.</p>
-<h4 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h4>
-<p>This algo requires four constraints to work correctly:</p>
-<ul>
-<li>
-<p>(0) <strong>use-at-once</strong>:
-The new membership that is appended to log will take effect at once, i.e., openraft
-uses the last seen membership config in the log, no matter it is committed or not.</p>
-</li>
-<li>
-<p>(1) <strong>propose-after-commit</strong>:
-A leader is allowed to propose new membership only when the previous one is
-committed.</p>
-</li>
-<li>
-<p>(2) <strong>old-new-intersect</strong>(safe transition):
-(This is the only constraint that is loosened from the original raft) Any
-quorum in new membership(<code>m'</code>) intersect with any quorum in the old
-committed membership(<code>m</code>):</p>
-<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
-</li>
-<li>
-<p>(3) <strong>initial-log</strong>:
-A leader has to replicate an initial blank log to a quorum in last seen
-membership to commit all previous logs.</p>
-</li>
-</ul>
-<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
-The new membership has to contain a config entry that is the same as one in the last
-committed membership.</p>
-<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
-a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
-<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
-may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
-<h3 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h3>
-<p>Assumes there was a brain split problem occurred,
-then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
-<p><code>L1</code>: <code>m1</code>,
-<code>L2</code>: <code>m2</code></p>
-<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
-Let <code>m0</code> be the last common membership in the log histories:</p>
-<pre><code class="language-text">L1       L2
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let client = ExampleClient::new(1, get_addr(1)?);
 
-m1       m2
- \      /
-  \    o   term-2
-   \   |
-    `--o   term-1
-       |
-       m0
-</code></pre>
-<p>From (1) <strong>propose-after-commit</strong>,</p>
+client.add_learner((2, get_addr(2)?)).await?;
+client.add_learner((3, get_addr(3)?)).await?;
+client.change_membership(&amp;btreeset! {1,2,3}).await?;
+<span class="boring">}
+</span></code></pre></pre>
+<p>A complete snippet of adding voters can be found in <a href="https://github.com/datafuselabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103">the example app</a>.</p>
+<h2 id="remove-a-voter-node"><a class="header" href="#remove-a-voter-node">Remove a voter node</a></h2>
 <ul>
-<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
-<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
+<li>
+<p>Call <code>Raft::change_membership()</code> on the leader to initiate a two-phase
+membership config change, e.g., the leader will propose two config logs:
+joint config log: <code>[{1, 2, 3}, {3, 4, 5}]</code> and then the uniform config log:
+<code>{3, 4, 5}</code>.</p>
+</li>
+<li>
+<p>As soon as the leader commits the second config log, the node to remove can
+be terminated safely.</p>
+</li>
 </ul>
-<p>Assumes <code>term_1 &lt; term_2</code>.</p>
-<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
-quorum in <code>m0</code>.</p>
-<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
-<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
-because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
-<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
-<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
-<p>QED.</p>
+<p><strong>Note that</strong> An application does not have to wait for the config log to be
+replicated to the node to remove. Because a distributed consensus protocol
+tolerates a minority member crash.</p>
+<p>To read more about openraft's <a href="./extended-membership.html">extended membership algorithm</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="node-life-cycle"><a class="header" href="#node-life-cycle">Node life cycle</a></h1>
 <ul>
 <li>
@@ -834,7 +749,7 @@ leader. It will enter <code>Candidate</code> because it does not know it is remo
 </ul>
 <h2 id="remove-a-node-from-membership-config"><a class="header" href="#remove-a-node-from-membership-config">Remove a node from membership config</a></h2>
 <p>When membership changes, e.g., from a joint config <code>[(1,2,3), (3,4,5)]</code> to uniform config <code>[3,4,5]</code>(assuming the leader is <code>3</code>), the leader
-stops replication to <code>1,2</code> when <code>[3,4,5]</code> is seen(not committed).</p>
+stops replication to <code>1,2</code> when the uniform config <code>[3,4,5]</code> is seen(no need to be committed).</p>
 <p>It is correct because:</p>
 <ul>
 <li>
@@ -886,6 +801,29 @@ source, etc.</p>
 <p>Metrics is not a stream thus it only guarantees to provide the latest state but
 not every change of the state.
 Because internally, <code>watch::channel()</code> only stores one state.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="feature-flags"><a class="header" href="#feature-flags">Feature flags</a></h1>
+<p>By default openraft enables no features.</p>
+<ul>
+<li>
+<p><code>bt</code>: attaches backtrace to generated errors.</p>
+</li>
+<li>
+<p><code>serde</code>: derives <code>serde::Serialize, serde::Deserialize</code> for type that are used
+in storage and network, such as <code>Vote</code> or <code>AppendEntriesRequest</code>.</p>
+</li>
+<li>
+<p><code>single-term-leader</code>: allows only one leader to be elected in each <code>term</code>.
+This is the standard raft policy, which increases election confliction rate
+but reduce <code>LogId</code>(<code>(term, node_id, index)</code> to <code>(term, index)</code>) size.
+Read more about how it is implemented in <a href="./vote.html"><code>vote</code></a></p>
+</li>
+<li>
+<p><code>compat-07</code>: provides additional data types to build v0.7 compatible RaftStorage.</p>
+<pre><code>compat-07 = [&quot;compat&quot;, &quot;single-term-leader&quot;, &quot;serde&quot;, &quot;dep:or07&quot;, &quot;compat-07-testing&quot;]
+compat-07-testing = [&quot;dep:tempdir&quot;, &quot;anyhow&quot;, &quot;dep:serde_json&quot;]
+</code></pre>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="internal"><a class="header" href="#internal">Internal</a></h1>
 <p>In this chapter we explains how openraft internally works.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
@@ -1053,6 +991,45 @@ asynchronously. When finished, the spawned task sends to RaftCore a message
 including the snapshot info.</p>
 </li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="log-data-layout"><a class="header" href="#log-data-layout">Log Data Layout</a></h1>
+<p>There are 5 significant log ids reflecting raft log state:</p>
+<pre><code>old                           new
+øøøøøøLLLLLLLLLLLLLLLLLLLL
++----+----+----+----+----+---&gt;
+     |    |    |    |    |
+     |    |    |    |    '--- last_log_id
+     |    |    |    '-------- committed
+     |    |    '------------- applied
+     |    '------------------ snapshot_last_log_id
+     '----------------------- last_purged_log_id
+</code></pre>
+<p>These log ids follow a strict order:
+<code>last_purged_log_id</code> ≤ <code>snapshot_last_log_id</code> ≤ <code>applied</code> ≤ <code>committed</code> ≤ <code>last_log_id</code></p>
+<ul>
+<li>
+<p><code>last_log_id</code>: is the last known log entry.</p>
+</li>
+<li>
+<p><code>committed</code>: the last log entry that is committed, i.e., accepted and
+persisted by a quorum of voters, and will always be seen by all future
+leaders.</p>
+</li>
+<li>
+<p><code>applied</code>: the committed log entry that is applied to the state-machine.
+In raft only committed log entry can be applied.</p>
+</li>
+<li>
+<p><code>snapshot_last_log_id</code>: the greatest log id that is included in the snapshot.
+Openraft takes a snapshot of the state-machine periodically.
+Therefore, a snapshot is a compacted format of a continuous range of log entries.</p>
+</li>
+<li>
+<p><code>last_purged_log_id</code>: the id of the last purged log entries.
+Log entries that are included in a snapshot will be purged.
+openraft purges logs from the start up to a configured position, when a fresh snapshot is built,
+<code>last_purged_log_id</code> is the greatest id that openraft does not store.</p>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="heartbeat-in-openraft"><a class="header" href="#heartbeat-in-openraft">Heartbeat in openraft</a></h1>
 <h2 id="heartbeat-in-standard-raft"><a class="header" href="#heartbeat-in-standard-raft">Heartbeat in standard raft</a></h2>
 <p>Heartbeat in standard raft is the way for a leader to assert it is still alive:</p>
@@ -1120,9 +1097,24 @@ On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine or
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>struct Vote&lt;NID: NodeId&gt; {
-    term: u64,
-    node_id: NID,
+    leader_id: LeaderId&lt;NID&gt;
     committed: bool
+}
+
+// Advanced mode(default):
+#[cfg(not(feature = &quot;single-term-leader&quot;))]
+pub struct LeaderId&lt;NID: NodeId&gt;
+{
+    pub term: u64,
+    pub node_id: NID,
+}
+
+// Standard raft mode:
+#[cfg(feature = &quot;single-term-leader&quot;)]
+pub struct LeaderId&lt;NID: NodeId&gt;
+{
+    pub term: u64,
+    pub voted_for: Option&lt;NID&gt;,
 }
 <span class="boring">}
 </span></code></pre></pre>
@@ -1131,6 +1123,20 @@ Each <code>vote</code> can be thought as unique time point(in paxos the pseudo t
 <p>In a standard raft, the corresponding concept is <code>term</code>.
 Although in standard raft a single <code>term</code> is not enough to define a <strong>time
 point</strong>.</p>
+<p>In openraft, RPC validity checking(such as when handling vote request, or
+append-entries request) is very simple: <strong>A node grants a <code>Vote</code> which is greater than its last seen <code>Vote</code></strong>:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn handle_vote(vote: Vote) {
+    if !(vote &gt;= self.vote) {
+        return Err(())
+    }
+    save_vote(vote);
+    Ok(())
+}
+<span class="boring">}
+</span></code></pre></pre>
 <p>Every server state(leader, candidate, follower or learner) has a unique
 corresponding <code>vote</code>, thus <code>vote</code> can be used to identify different server
 states, i.e, if the <code>vote</code> changes, the server state must have changed.</p>
@@ -1155,6 +1161,72 @@ state for node-3.</p>
 <li>
 <p>A vote <code>(term=1, node_id=1, committed=false|true)</code> is in another different
 follower/learner state for node-3.</p>
+</li>
+</ul>
+<h2 id="partial-order"><a class="header" href="#partial-order">Partial order</a></h2>
+<p><code>Vote</code> in openraft is partially ordered value,
+i.e., it is legal that <code>!(vote_a =&gt; vote_b) &amp;&amp; !(vote_a &lt;= vote_b)</code>.
+Because <code>Vote.leader_id</code> may be a partial order value:</p>
+<h2 id="leaderid-advanced-mode-and-standard-mode"><a class="header" href="#leaderid-advanced-mode-and-standard-mode">LeaderId: advanced mode and standard mode</a></h2>
+<p>Openraft provides two <code>LeaderId</code> type, which can be switched with feature
+<code>single-term-leader</code>:</p>
+<ul>
+<li>
+<p><code>cargo build</code> without <code>single-term-leader</code>, is the advanced mode, the default mode:
+It builds openraft with <code>LeaderId:(term, node_id)</code>, which is totally ordered.
+Which means, in a single <code>term</code>, there could be more than one leaders
+elected(although only the last is valid and can commit logs).</p>
+<ul>
+<li>
+<p>Pros: election conflict is minimized,</p>
+</li>
+<li>
+<p>Cons: <code>LogId</code> becomes larger: every log has to store an additional <code>NodeId</code> in <code>LogId</code>:
+<code>LogId: {{term, NodeId}, index}</code>.
+If an application uses a big <code>NodeId</code> type, e.g., UUID, the penalty may not
+be negligible.</p>
+</li>
+</ul>
+</li>
+<li>
+<p><code>cargo build --features &quot;single-term-leader&quot;</code> builds openraft in standard raft mode with:
+<code>LeaderId:(term, voted_for:Option&lt;NodeId&gt;)</code>, which makes <code>LeaderId</code> and <code>Vote</code>
+<strong>partially-ordered</strong> values. In this mode, only one leader can be elected in
+each <code>term</code>.</p>
+<p>The partial order relation of <code>LeaderId</code>:</p>
+<pre><code>LeaderId(3, None)    &gt;  LeaderId(2, None):    true
+LeaderId(3, None)    &gt;  LeaderId(2, Some(y)): true
+LeaderId(3, None)    == LeaderId(3, None):    true
+LeaderId(3, Some(x)) &gt;  LeaderId(2, Some(y)): true
+LeaderId(3, Some(x)) &gt;  LeaderId(3, None):    true
+LeaderId(3, Some(x)) == LeaderId(3, Some(x)): true
+LeaderId(3, Some(x)) &gt;  LeaderId(3, Some(y)): false
+</code></pre>
+<p>The partial order between <code>Vote</code> is defined as:
+Given two <code>Vote</code> <code>a</code> and <code>b</code>:
+<code>a &gt; b</code> iff:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>a.leader_id &gt; b.leader_id || (
+  !(a.leader_id &lt; b.leader_id) &amp;&amp; a.committed &gt; b.committed
+)
+<span class="boring">}
+</span></code></pre></pre>
+<p>In other words, if <code>a.leader_id</code> and <code>b.leader_id</code> is not
+comparable(<code>!(a.leader_id&gt;=b.leader_id) &amp;&amp; !(a.leader_id&lt;=b.leader_id)</code>), use
+field <code>committed</code> to determine the order between <code>a</code> and <code>b</code>.</p>
+<p>Because a leader must be granted by a quorum before committing any log, two
+incomparable <code>leader_id</code> can not both be granted.
+So let a committed <code>Vote</code> override a incomparable non-committed is safe.</p>
+<ul>
+<li>
+<p>Pros: <code>LogId</code> just store a <code>term</code>.</p>
+</li>
+<li>
+<p>Cons: election conflicting rate may increase.</p>
+</li>
+</ul>
 </li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="replication"><a class="header" href="#replication">Replication</a></h1>
@@ -1280,6 +1352,133 @@ Thus, the next leader may choose another node <code>B</code> that has higher log
 <h3 id="3-snapshot-replication-does-not-have-to-delete-conflicting-logs"><a class="header" href="#3-snapshot-replication-does-not-have-to-delete-conflicting-logs">3. Snapshot replication does not have to delete conflicting logs</a></h3>
 <p>See: <a href="https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs">Deleting-conflicting-logs-when-installing-snapshot</a></p>
 <p>Deleting conflicting logs when installing snapshot is only for clarity.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h1>
+<p>Openraft tries to commit one or more membership logs to finally change the
+membership to <code>node_list</code>.
+In every step, the log it tries to commit is:</p>
+<ul>
+<li>
+<p>the <code>node_list</code> itself, if it is safe to change from the previous membership to
+<code>node_list</code> directly.</p>
+</li>
+<li>
+<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
+previous membership.</p>
+</li>
+</ul>
+<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
+<blockquote>
+<p>It is a more generalized form of membership change.
+The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
+</blockquote>
+<p>This algo provides more flexible membership change than the original joint algo:</p>
+<ul>
+<li>
+<p>The original <strong>Joint</strong> algo:</p>
+<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
+alternate pattern of joint membership and uniform membership.
+E.g.,  the membership entry in a log history could be:</p>
+<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
+<p>Where:</p>
+<ul>
+<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
+<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Extended</strong> algo:</p>
+<p>Extended membership change algo allows changing membership in the
+following way:</p>
+<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
+<p>Or revert to a previous membership:</p>
+<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
+</li>
+</ul>
+<h2 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h2>
+<p>Another example shows that it is always safe to change membership from one
+to another along the edges in the following diagram:</p>
+<pre><code class="language-text">          c3
+         /  \
+        /    \
+       /      \
+   c1c3 ------ c2c3
+    / \        / \
+   /   \      /   \
+  /     \    /     \
+c1 ----- c1c2 ----- c2
+</code></pre>
+<h2 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h2>
+<p>A counter-intuitive conclusion is that:</p>
+<p><strong>Even when two leaders propose two memberships without intersection, consensus will
+still, be achieved</strong>.</p>
+<p>E.g., given the current membership to be <code>c1c2</code>, if
+<code>L1</code> proposed <code>c1c3</code>,
+<code>L2</code> proposed <code>c2c4</code>.</p>
+<p>There won't be a brain split problem.</p>
+<h2 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h2>
+<p>This algo requires four constraints to work correctly:</p>
+<ul>
+<li>
+<p>(0) <strong>use-at-once</strong>:
+The new membership that is appended to log will take effect at once, i.e., openraft
+uses the last seen membership config in the log, no matter it is committed or not.</p>
+</li>
+<li>
+<p>(1) <strong>propose-after-commit</strong>:
+A leader is allowed to propose new membership only when the previous one is
+committed.</p>
+</li>
+<li>
+<p>(2) <strong>old-new-intersect</strong>(safe transition):
+(This is the only constraint that is loosened from the original raft) Any
+quorum in new membership(<code>m'</code>) intersect with any quorum in the old
+committed membership(<code>m</code>):</p>
+<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
+</li>
+<li>
+<p>(3) <strong>initial-log</strong>:
+A leader has to replicate an initial blank log to a quorum in last seen
+membership to commit all previous logs.</p>
+</li>
+</ul>
+<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
+The new membership has to contain a config entry that is the same as one in the last
+committed membership.</p>
+<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
+a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
+<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
+may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
+<h2 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h2>
+<p>Assumes there was a brain split problem occurred,
+then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
+<p><code>L1</code>: <code>m1</code>,
+<code>L2</code>: <code>m2</code></p>
+<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
+Let <code>m0</code> be the last common membership in the log histories:</p>
+<pre><code class="language-text">L1       L2
+
+m1       m2
+ \      /
+  \    o   term-2
+   \   |
+    `--o   term-1
+       |
+       m0
+</code></pre>
+<p>From (1) <strong>propose-after-commit</strong>,</p>
+<ul>
+<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
+<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
+</ul>
+<p>Assumes <code>term_1 &lt; term_2</code>.</p>
+<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
+quorum in <code>m0</code>.</p>
+<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
+<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
+because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
+<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
+<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
+<p>QED.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="effective-membership"><a class="header" href="#effective-membership">Effective membership</a></h1>
 <p>In openraft a membership config log takes effect as soon as it is seen.</p>
 <p>Thus, the <strong>effective</strong> membership is always the last present one found in log.</p>
@@ -1469,6 +1668,272 @@ if there is a log that conflicts with the leader's, it has to be the
 <li>
 <p><code>ClientWriteRequest</code>: removed it is barely a wrapper of EntryPayload
 client_write</p>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="guide-for-upgrading-from-v07-to-v08"><a class="header" href="#guide-for-upgrading-from-v07-to-v08">Guide for upgrading from <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.*</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.*</a>:</a></h1>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a></p>
+<p>In this chapter, for users who will upgrade openraft 0.7 to openraft 0.8,
+we are going to explain what changes has been made from openraft-0.7 to
+openraft-0.8 and why these changes are made.</p>
+<ul>
+<li><strong>Backup your data before deploying upgraded application</strong>.</li>
+</ul>
+<p>To upgrade:</p>
+<ol>
+<li>
+<p>Update the application to adopt <code>v0.8.*</code> openraft.
+The updated <code>RaftStorage</code> implementation must pass <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs"><code>RaftStorage</code> test suite</a>,
+and the compatibility test: <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">compatibility test</a></p>
+</li>
+<li>
+<p>Then shutdown all <code>v0.7.*</code> nodes and then bring up <code>v0.8.*</code> nodes.</p>
+</li>
+</ol>
+<p><code>v0.7.*</code> and <code>v0.8.*</code> should <strong>NEVER</strong> run in a same cluster, due to the data structure changes.
+Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may lead to data damage.</p>
+<h2 id="upgrade-steps"><a class="header" href="#upgrade-steps">Upgrade steps</a></h2>
+<p>In general, the upgrade includes the following steps:</p>
+<ul>
+<li>
+<p>Keep in mind that v0.8 is compatible with v0.7 only when the application using <code>serde</code> to serialize data.</p>
+</li>
+<li>
+<p>Enable feature flag <code>compat-07</code>.</p>
+</li>
+<li>
+<p>Optionally enable feature flag <code>single-term-leader</code> if the application wants to use standard raft. See <a href="upgrade-v07-v08.html#multisingle-leader-in-each-term">Multi/single leader in each term</a> chapter.</p>
+</li>
+<li>
+<p>Add type config to define what types to use for openraft, See <a href="https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/raft.rs#L81">RaftTypeConfig</a> :</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>openraft::declare_raft_types!(
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+);
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+<li>
+<p>Add generics parameter to types such as:
+<code>LogId -&gt; LogId&lt;NID&gt;</code>, <code>Membership -&gt; Membership&lt;NID, N&gt;</code>
+<code>Entry&lt;D&gt; -&gt; Entry&lt;MyTypeConfig&gt;</code></p>
+</li>
+<li>
+<p>Move <code>RaftStorage</code> methods implementation according to the
+<a href="upgrade-v07-v08.html#storage-api-changes">Storage API changes</a> chapter.</p>
+<ul>
+<li>Replace <code>HardState</code> with <code>Vote</code>, and <code>[read/save]_hard_state</code> with <code>[read/write]_vote</code>.</li>
+<li>Replace <code>EffectiveMembership</code> with <code>StoredMembership</code>.</li>
+</ul>
+</li>
+<li>
+<p>Move <code>RaftNetwork</code> methods implementation according to the
+<a href="upgrade-v07-v08.html#network-api-changes">Network-API-changes</a> chapter.</p>
+</li>
+<li>
+<p>Replace types with the ones provided by <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a>.</p>
+</li>
+<li>
+<p>Finally, make sure the <code>RaftStorage</code> implementation passes
+<a href="https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs"><code>RaftStorage</code> test suite</a> and
+<a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">compatibility test</a></p>
+</li>
+</ul>
+<h1 id="compatibility-with-v07-format-data"><a class="header" href="#compatibility-with-v07-format-data">Compatibility with v0.7 format data</a></h1>
+<p>Openraft v0.8 can be compatible with v0.7 if:</p>
+<ul>
+<li>The application uses <code>serde</code> to serialize data types</li>
+<li>Enabling <code>compat-07</code> feature flags.</li>
+</ul>
+<p>Openraft uses a <code>RaftStorage</code> implementation provided by the application to
+store presistent data. When upgrading from v0.7 to v0.8, it is important to
+ensure that the updated <code>RaftStorage</code> is backward compatible and can read the
+data written by v0.7 openraft, in addition to reading and writing v0.8 openraft data.
+This ensures that the application continues to function smoothly after upgrade.</p>
+<h2 id="openraft-v08-compatible-mode"><a class="header" href="#openraft-v08-compatible-mode">Openraft v0.8 compatible mode</a></h2>
+<p>Compared to v0.7, openraft v0.8 has a more generic design.
+However, it is still possible to build it in a v0.7 compatible mode by enabling
+the feature flag <code>compat-07</code>.
+More information can be found at: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature-flag-compat-07</a>.</p>
+<p>It is worth noting that an application does <strong>NOT</strong> need to enable this feature flag
+if it chooses to manually upgrade the v0.7 format data.</p>
+<p><strong>Generic design in v0.8</strong> includes:</p>
+<ul>
+<li>generic type <code>NodeId</code> and <code>Node</code> were introduced,</li>
+<li><code>serde</code> became an optional.</li>
+</ul>
+<p>Because of these generalization, feature <code>compat-07</code> enables the following feature flags:</p>
+<ul>
+<li><code>serde</code>: it adds <code>serde</code> implementation to types such as <code>LogId</code>.</li>
+</ul>
+<p>And v0.8 will be compatible with v0.7 only when it uses <code>u64</code> as <code>NodeId</code> and <code>openraft::EmptyNode</code> as <code>Node</code>.</p>
+<h2 id="implement-a-compatible-storage-layer"><a class="header" href="#implement-a-compatible-storage-layer">Implement a compatible storage layer</a></h2>
+<p>In addition to enabling <code>compat-07</code> feature flag, openraft provides a compatible layer in
+<a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a> to help application developer to upgrade.
+This mod provides several types that can deserialize from both v0.7 format data and the latest format data.</p>
+<p>An application uses these types to replace the corresponding ones in a
+<code>RaftStorage</code> implementation, so that v0.7 data and v0.8 data can both be read.</p>
+<p>For example, in a compatible storage implementation, reading a <code>LogId</code> should be
+done in the following way:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use openraft::compat::compat07;
+
+fn read_log_id(bs: &amp;[u8]) -&gt; openraft::LogId&lt;u64&gt; {
+    let log_id: compat07::LogId = serde_json::from_slice(&amp;bs).expect(&quot;incompatible&quot;);
+    let latest: openraft::LogId&lt;u64&gt; = log_id.upgrade();
+    latest
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h2 id="example-of-compatible-storage"><a class="header" href="#example-of-compatible-storage">Example of compatible storage</a></h2>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/rocksstore-compat07">rocksstore-compat07</a>
+is a good example using these compatible type to implement a compatible <code>RaftStorage</code>.</p>
+<p>This is an example <code>RaftStorage</code> implementation that can read persistent
+data written by either v0.7.4 or v0.8 the latest version openraft.</p>
+<p>rocksstore-compat07 is built with openraft 0.8, in the tests, it reads
+data written by rocksstore 0.7.4, which is built with openraft 0.7.4 .</p>
+<p>In this example, it loads data through the compatibility layer:
+<code>openraft::compat::compat07</code>, which defines several compatible types
+that can be deserialized from v0.7 or v0.8 data, such as
+<code>compat07::LogId</code> or <code>compat07::Membership</code>.</p>
+<h2 id="test-compatibility"><a class="header" href="#test-compatibility">Test compatibility</a></h2>
+<p>Openraft also provides a testing suite <a href="https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/compat/compat07.rs#L291"><code>testing::Suite07</code></a> to ensure old data will be correctly read.
+An application should ensure that its storage passes this test suite.
+Just like <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">rocksstore-compat07/compatibility_test.rs</a> does.</p>
+<p>To test compatibility of the application storage API:</p>
+<ul>
+<li>Define a builder that builds a v0.7 <code>RaftStorage</code> implementation.</li>
+<li>Define another builder that builds a v0.8 <code>RaftStorage</code> implementation.</li>
+<li>Run tests in <code>compat::testing::Suite07</code> with these two builder. In this test
+suite, it writes data with a v0.7 storage API and then reads them with an
+v0.8 storage API.</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use openraft::compat;
+
+struct Builder07;
+struct BuilderLatest;
+
+#[async_trait::async_trait]
+impl compat::testing::StoreBuilder07 for Builder07 {
+    type D = rocksstore07::RocksRequest;
+    type R = rocksstore07::RocksResponse;
+    type S = Arc&lt;rocksstore07::RocksStore&gt;;
+
+    async fn build(&amp;self, p: &amp;Path) -&gt; Arc&lt;rocksstore07::RocksStore&gt; {
+        rocksstore07::RocksStore::new(p).await
+    }
+
+    fn sample_app_data(&amp;self) -&gt; Self::D {
+        rocksstore07::RocksRequest::Set { key: s(&quot;foo&quot;), value: s(&quot;bar&quot;) }
+    }
+}
+
+#[async_trait::async_trait]
+impl compat::testing::StoreBuilder for BuilderLatest {
+    type C = crate::Config;
+    type S = Arc&lt;crate::RocksStore&gt;;
+
+    async fn build(&amp;self, p: &amp;Path) -&gt; Arc&lt;crate::RocksStore&gt; {
+        crate::RocksStore::new(p).await
+    }
+
+    fn sample_app_data(&amp;self) -&gt; &lt;&lt;Self as compat::testing::StoreBuilder&gt;::C as openraft::RaftTypeConfig&gt;::D {
+        crate::RocksRequest::Set { key: s(&quot;foo&quot;), value: s(&quot;bar&quot;) }
+    }
+}
+
+#[tokio::test]
+async fn test_compatibility_with_rocksstore_07() -&gt; anyhow::Result&lt;()&gt; {
+    compat::testing::Suite07 {
+        builder07: Builder07,
+        builder_latest: BuilderLatest,
+    }.test_all().await?;
+    Ok(())
+}
+
+fn s(v: impl ToString) -&gt; String {
+    v.to_string()
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h1 id="summary-of-changes-introduced-in-v08"><a class="header" href="#summary-of-changes-introduced-in-v08">Summary of changes introduced in v0.8</a></h1>
+<h2 id="generic-node"><a class="header" href="#generic-node">Generic Node</a></h2>
+<p>Openraft v0.8 introduces generic type <code>openraft::NodeId</code> and <code>openraft::Node</code>, an application now
+can used any type for a node-id or node object.</p>
+<p>A type that needs <code>NodeId</code> or <code>Node</code> now has generic type parameter in them, 
+e.g, <code>struct Membership {...}</code> became:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Membership&lt;NID, N&gt;
+where N: Node, NID: NodeId
+{...}
+<span class="boring">}
+</span></code></pre></pre>
+<h2 id="optional-serde"><a class="header" href="#optional-serde">Optional <code>serde</code></a></h2>
+<p><code>serde</code> in openraft v0.8 became optional. To enable <code>serde</code>, build openraft with
+<code>serde</code> feature flag. See: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flags</a>.</p>
+<h2 id="multisingle-leader-in-each-term"><a class="header" href="#multisingle-leader-in-each-term">Multi/single leader in each term</a></h2>
+<p>Openraft v0.8 by default allows multiple leaders to be elected in a single <code>term</code>, in order to minimize conflicting during election.
+To run in the standard raft mode, i.e, only one leader can be elected in every
+term, an application builds openraft with feature flag &quot;single-term-leader&quot;.
+See: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flags</a>.</p>
+<p>With this feature on: only one leader can be elected in each term, but
+it reduces LogId size from <code>LogId:{term, node_id, index}</code> to <code>LogId{term, index}</code>.
+It will be preferred if an application uses a big <code>NodeId</code> type.</p>
+<p>Openraft v0.7 runs in the standard raft mode, i.e., at most one leader per term.
+It is safe to upgrade v0.7 single-term-leader mode to v0.8 multi-term-leader
+mode.</p>
+<h2 id="storage-api-changes-1"><a class="header" href="#storage-api-changes-1">Storage API changes</a></h2>
+<h3 id="split-raftstorage"><a class="header" href="#split-raftstorage">Split <code>RaftStorage</code></a></h3>
+<p>Extract <code>RaftLogReader</code>, <code>RaftSnapshotBuilder</code> from <code>RaftStorage</code></p>
+<p><code>RaftStorage</code> is now refactored to:</p>
+<ul>
+<li><code>RaftLogReader</code> to read data from the log in parallel tasks independent of the main Raft loop</li>
+<li><code>RaftStorage</code> to modify the log and the state machine (implements also <code>RaftLogReader</code>) intended to be used in the main Raft loop</li>
+<li><code>RaftSnapshotBuilder</code> to build the snapshot in background independent of the main Raft loop</li>
+</ul>
+<p>The <code>RaftStorage</code> API offers to create new <code>RaftLogReader</code> or <code>RaftSnapshotBuilder</code> on it.</p>
+<h3 id="move-default-implemented-methods-from-raftstorage-to-storagehelper"><a class="header" href="#move-default-implemented-methods-from-raftstorage-to-storagehelper">Move default implemented methods from <code>RaftStorage</code> to <code>StorageHelper</code></a></h3>
+<p>Function <code>get_log_entries()</code> and <code>try_get_log_entry()</code> are provided with default implementations. However, they do not need to be part of this trait and an application does not have to implement them.</p>
+<h2 id="network-api-changes"><a class="header" href="#network-api-changes">Network API changes</a></h2>
+<h3 id="split-raftnetwork-and-raftnetworkfactory"><a class="header" href="#split-raftnetwork-and-raftnetworkfactory">Split <code>RaftNetwork</code> and <code>RaftNetworkFactory</code></a></h3>
+<p><code>RaftNetwork</code> is also refactored to:</p>
+<ul>
+<li><code>RaftNetwork</code> responsible for sending RPCs</li>
+<li><code>RaftNetworkFactory</code> responsible for creating instances of <code>RaftNetwork</code> for sending data to a particular node.</li>
+</ul>
+<h2 id="data-type-changes-1"><a class="header" href="#data-type-changes-1">Data type changes</a></h2>
+<ul>
+<li>
+<p>When building a <code>SnapshotMeta</code>, another field is required: <code>last_membership</code>, for storing the last applied membership.</p>
+</li>
+<li>
+<p><code>HardState</code> is replaced with <code>Vote</code>.</p>
+</li>
+<li>
+<p>Add <code>SnapshotSignature</code> to identify a snapshot for transport.</p>
+</li>
+<li>
+<p>Replace usages of <code>EffectiveMembership</code> in <code>RaftStorage</code> with <code>StoredMembership</code>.</p>
+</li>
+<li>
+<p>Introduce generalized types <code>NodeId</code> and <code>Node</code> to let user defines arbitrary
+node-id or node. Openraft v0.8 relies on a <code>RaftTypeConfig</code> for your application to define types that are used by openraft, with the following macro:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>openraft::declare_raft_types!(
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+);
+<span class="boring">}
+</span></code></pre></pre>
 </li>
 </ul>
 

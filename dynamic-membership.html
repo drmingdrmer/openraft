@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html" class="active"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html" class="active"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -139,154 +139,62 @@
 <p>Unlike the original raft, openraft treats all membership as a <strong>joint</strong> membership.
 A uniform config is just a special case of joint: the joint of only one config.</p>
 <p>Openraft offers these mechanisms for controlling member node lifecycle:</p>
-<h2 id="raftadd_learner"><a class="header" href="#raftadd_learner"><code>Raft::add_learner()</code></a></h2>
+<h2 id="membership-api"><a class="header" href="#membership-api">Membership API</a></h2>
+<h3 id="raftadd_learnernode_id-node-blocking"><a class="header" href="#raftadd_learnernode_id-node-blocking"><code>Raft::add_learner(node_id, node, blocking)</code></a></h3>
 <p>This method will add a learner to the cluster,
 and immediately begin syncing logs from the leader.</p>
 <ul>
 <li>A <strong>Learner</strong> won't vote for leadership.</li>
 </ul>
-<h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
-<p>This method will initiate a membership change and returns when the effective
-membership becomes <code>node_list</code> and committed.</p>
+<h3 id="raftchange_membershipmembers-allow_lagging-turn_to_learner"><a class="header" href="#raftchange_membershipmembers-allow_lagging-turn_to_learner"><code>Raft::change_membership(members, allow_lagging, turn_to_learner)</code></a></h3>
+<p>This method initiates a membership change and returns when the effective
+membership becomes <code>members</code> and is committed.</p>
 <p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will fail.
-Thus the application should always call <code>Raft::add_learner</code> first.</p>
-<p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
-revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
-<p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
-will be turned into learners, otherwise will be removed.</p>
-<p>Example of <code>turn_to_learner</code> usage:
-If the original membership is {&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}, and call <code>change_membership</code> 
-with <code>node_list</code> {3,4,5}, then:
-- If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
-- Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
-in which the members not exists in the new membership just be removed from the cluster.</p>
-<h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
-<p>Openraft tries to commit one or more membership logs to finally change the
-membership to <code>node_list</code>.
-In every step, the log it tries to commit is:</p>
+Thus the application should always call <code>Raft::add_learner()</code> first.</p>
+<p>Once the new membership is committed, a <code>Voter</code> not in the new config is removed if <code>turn_to_learner=false</code>,
+and it is reverted to a <code>Learner</code> if <code>turn_to_learner=true</code>.</p>
+<h4 id="example-of-turn_to_learner"><a class="header" href="#example-of-turn_to_learner">Example of <code>turn_to_learner</code></a></h4>
+<p>Given the original membership to be <code>{&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}</code>,
+call <code>change_membership</code> with <code>members={3,4,5}</code>, then:</p>
 <ul>
-<li>
-<p>the <code>node_list</code> itself, if it is safe to change from previous membership to
-<code>node_list</code> directly.</p>
-</li>
-<li>
-<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
-previous membership.</p>
-</li>
+<li>If <code>turn_to_learner=true</code>,  the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}</code>.</li>
+<li>If <code>turn_to_learner=false</code>, the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}</code>.</li>
 </ul>
-<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
-<blockquote>
-<p>It is a more generalized form of membership change.
-The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
-</blockquote>
-<p>This algo provides more flexible membership change than the original joint algo:</p>
+<h2 id="add-a-new-node-as-a-voter"><a class="header" href="#add-a-new-node-as-a-voter">Add a new node as a voter</a></h2>
+<p>To add a new node as a voter:</p>
 <ul>
-<li>
-<p>The original <strong>Joint</strong> algo:</p>
-<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
-alternate pattern of joint membership and uniform membership.
-E.g.,  the membership entry in a log history could be:</p>
-<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
-<p>Where:</p>
-<ul>
-<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
-<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
+<li>First, add it as a <code>learner</code>(non-voter) with <code>Raft::add_learner()</code>.
+In this step, the leader sets up replication to the new node, but it can not vote yet.</li>
+<li>Then turn it into a <code>voter</code> with <code>Raft::change_membership()</code>.</li>
 </ul>
-</li>
-<li>
-<p><strong>Extended</strong> algo:</p>
-<p>Extended membership change algo allows changing membership in the
-following way:</p>
-<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
-<p>Or revert to a previous membership:</p>
-<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
-</li>
-</ul>
-<h4 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h4>
-<p>Another example shows that it is always safe to change membership from one
-to another along the edges in the following diagram:</p>
-<pre><code class="language-text">          c3
-         /  \
-        /    \
-       /      \
-   c1c3 ------ c2c3
-    / \        / \
-   /   \      /   \
-  /     \    /     \
-c1 ----- c1c2 ----- c2
-</code></pre>
-<h4 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h4>
-<p>A counter-intuitive conclusion is that:</p>
-<p><strong>Even when two leaders propose two memberships without intersection, consensus will
-still, be achieved</strong>.</p>
-<p>E.g., given the current membership to be <code>c1c2</code>, if
-<code>L1</code> proposed <code>c1c3</code>,
-<code>L2</code> proposed <code>c2c4</code>.</p>
-<p>There won't be a brain split problem.</p>
-<h4 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h4>
-<p>This algo requires four constraints to work correctly:</p>
-<ul>
-<li>
-<p>(0) <strong>use-at-once</strong>:
-The new membership that is appended to log will take effect at once, i.e., openraft
-uses the last seen membership config in the log, no matter it is committed or not.</p>
-</li>
-<li>
-<p>(1) <strong>propose-after-commit</strong>:
-A leader is allowed to propose new membership only when the previous one is
-committed.</p>
-</li>
-<li>
-<p>(2) <strong>old-new-intersect</strong>(safe transition):
-(This is the only constraint that is loosened from the original raft) Any
-quorum in new membership(<code>m'</code>) intersect with any quorum in the old
-committed membership(<code>m</code>):</p>
-<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
-</li>
-<li>
-<p>(3) <strong>initial-log</strong>:
-A leader has to replicate an initial blank log to a quorum in last seen
-membership to commit all previous logs.</p>
-</li>
-</ul>
-<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
-The new membership has to contain a config entry that is the same as one in the last
-committed membership.</p>
-<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
-a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
-<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
-may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
-<h3 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h3>
-<p>Assumes there was a brain split problem occurred,
-then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
-<p><code>L1</code>: <code>m1</code>,
-<code>L2</code>: <code>m2</code></p>
-<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
-Let <code>m0</code> be the last common membership in the log histories:</p>
-<pre><code class="language-text">L1       L2
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let client = ExampleClient::new(1, get_addr(1)?);
 
-m1       m2
- \      /
-  \    o   term-2
-   \   |
-    `--o   term-1
-       |
-       m0
-</code></pre>
-<p>From (1) <strong>propose-after-commit</strong>,</p>
+client.add_learner((2, get_addr(2)?)).await?;
+client.add_learner((3, get_addr(3)?)).await?;
+client.change_membership(&amp;btreeset! {1,2,3}).await?;
+<span class="boring">}
+</span></code></pre></pre>
+<p>A complete snippet of adding voters can be found in <a href="https://github.com/datafuselabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103">the example app</a>.</p>
+<h2 id="remove-a-voter-node"><a class="header" href="#remove-a-voter-node">Remove a voter node</a></h2>
 <ul>
-<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
-<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
+<li>
+<p>Call <code>Raft::change_membership()</code> on the leader to initiate a two-phase
+membership config change, e.g., the leader will propose two config logs:
+joint config log: <code>[{1, 2, 3}, {3, 4, 5}]</code> and then the uniform config log:
+<code>{3, 4, 5}</code>.</p>
+</li>
+<li>
+<p>As soon as the leader commits the second config log, the node to remove can
+be terminated safely.</p>
+</li>
 </ul>
-<p>Assumes <code>term_1 &lt; term_2</code>.</p>
-<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
-quorum in <code>m0</code>.</p>
-<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
-<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
-because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
-<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
-<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
-<p>QED.</p>
+<p><strong>Note that</strong> An application does not have to wait for the config log to be
+replicated to the node to remove. Because a distributed consensus protocol
+tolerates a minority member crash.</p>
+<p>To read more about openraft's <a href="./extended-membership.html">extended membership algorithm</a>.</p>
 
                     </main>
 

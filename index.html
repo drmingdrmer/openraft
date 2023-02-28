@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -180,37 +180,43 @@ Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log
 </li>
 <li>
 <p><strong>Branch main</strong> has been under active development.</p>
-<p>The main branch is for the 0.8 release. There won't be big API changes when 0.8 is released.
-Currently, the work is mainly on refactoring the internal structure.</p>
+<p>The main branch is for the 0.8 release.</p>
 <ul>
 <li>The features are almost complete for building an application.</li>
-<li>The performance isn't yet fully optimized. Currently, it's about 44,000 writes per second with a single writer.</li>
-<li>Unit test coverage is 88%.</li>
+<li>The performance isn't yet fully optimized. Currently, it's about 48,000 writes per second with a single writer.</li>
+<li>Unit test coverage is 91%.</li>
 <li>The chaos test is not yet done.</li>
 </ul>
 </li>
 <li>
+<p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.8">release-0.8</a></strong>:
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.0</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v07-v08">0.7 to 0.8 upgrade guide</a> |</p>
+</li>
+<li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.7">release-0.7</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.7.1">v0.7.1</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071">Change log v0.7</a>.</p>
-<p><a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">Upgrade guide from 0.6 to 0.7</a></p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.4</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v074">Change log v0.7.4</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">0.6 to 0.7 upgrade guide</a> |
+<code>release-0.7</code> <strong>Won't</strong> accept new features but only bug fixes.</p>
 </li>
 <li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.6">release-0.6</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a>.</p>
-<p><code>release-0.6</code> won't accept new features but only bug fixes.</p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a> |
+<code>release-0.6</code> <strong>won't</strong> accept new features but only bug fixes.</p>
 </li>
 </ul>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <ul>
 <li><input disabled="" type="checkbox" checked=""/>
-<p><a href="https://datafuselabs.github.io/openraft/dynamic-membership#extended-membership-change-algo">Extended joint membership</a></p>
+<p><strong>2022-10-31</strong> <a href="https://datafuselabs.github.io/openraft/extended-membership">Extended joint membership</a></p>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+<p><strong>2023-02-14</strong> Minimize confliction rate when electing;
+See: <a href="https://datafuselabs.github.io/openraft/vote">Openraft Vote design</a>;
+Or use standard raft mode with <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flag <code>single-term-leader</code></a>.</p>
 </li>
 <li><input disabled="" type="checkbox"/>
 <p>Reduce the complexity of vote and pre-vote: <a href="https://github.com/datafuselabs/openraft/discussions/15">get rid of pre-vote RPC</a>;</p>
-</li>
-<li><input disabled="" type="checkbox"/>
-<p>Reduce confliction rate when electing;
-Allow leadership to be taken in one term by a node with greater node-id.</p>
 </li>
 <li><input disabled="" type="checkbox"/>
 <p>Support flexible quorum, e.g.:<a href="https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html">Hierarchical Quorums</a></p>
@@ -226,6 +232,7 @@ improve efficiency with a cluster with an even number of nodes.</p>
 <li>2022 Jul 01: 41,000 put/sec; 23,255 ns/op;</li>
 <li>2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use <code>Progress</code> to track replication.</li>
 <li>2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log</li>
+<li>2023 Feb 28: 48,000 put/sec; 20,558 ns/op;</li>
 </ul>
 <p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
 <p>Benchmark setting:</p>
