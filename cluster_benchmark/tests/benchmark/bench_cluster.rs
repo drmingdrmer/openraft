@@ -1,12 +1,15 @@
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fs::File;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
 use maplit::btreeset;
 use openraft::Config;
+use pprof::protos::Message;
 use tokio::runtime::Builder;
 
 use crate::network::Router;
@@ -67,6 +70,9 @@ fn bench_cluster_of_5() -> anyhow::Result<()> {
 }
 
 fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
+    let frequency = 99;
+    let guard = pprof::ProfilerGuard::new(frequency)?;
+
     let rt = Builder::new_multi_thread()
         .worker_threads(bench_config.worker_threads)
         .enable_all()
@@ -75,7 +81,27 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .build()?;
 
     // Run client_write benchmark
-    rt.block_on(do_bench(bench_config))
+    rt.block_on(do_bench(bench_config))?;
+
+    let report_builder = guard.report();
+    let report = report_builder.build()?;
+
+    let flame = true;
+
+    if flame {
+        let mut body: Vec<u8> = Vec::new();
+        report.flamegraph(&mut body)?;
+        let mut f = File::create("./flamegraph.svg")?;
+        f.write_all(&body)?;
+        f.sync_all()?;
+    } else {
+        // to protobuf
+        let mut body: Vec<u8> = Vec::new();
+        let profile = report.pprof()?;
+        profile.write_to_vec(&mut body)?;
+    }
+
+    Ok(())
 }
 
 /// Benchmark client_write.
@@ -143,4 +169,42 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(50_000))
+}
+
+pub struct Profiling {
+    duration: Duration,
+    frequency: i32,
+}
+
+impl Profiling {
+    pub fn new(duration: Duration, frequency: i32) -> Self {
+        Self { duration, frequency }
+    }
+
+    pub async fn report(&self) -> anyhow::Result<pprof::Report> {
+        let guard = pprof::ProfilerGuard::new(self.frequency)?;
+
+        tokio::time::sleep(self.duration).await;
+        let r = guard.report().build()?;
+        Ok(r)
+    }
+
+    pub async fn dump_flamegraph(&self) -> anyhow::Result<Vec<u8>> {
+        let mut body: Vec<u8> = Vec::new();
+
+        let report = self.report().await?;
+        report.flamegraph(&mut body)?;
+
+        Ok(body)
+    }
+
+    pub async fn dump_proto(&self) -> anyhow::Result<Vec<u8>> {
+        let mut body: Vec<u8> = Vec::new();
+
+        let report = self.report().await?;
+        let profile = report.pprof()?;
+        profile.write_to_vec(&mut body)?;
+
+        Ok(body)
+    }
 }
