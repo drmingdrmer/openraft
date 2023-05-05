@@ -1,12 +1,10 @@
 # Getting Started
 
-In this chapter we are going to build a key-value store cluster with [openraft](https://github.com/datafuselabs/openraft).
+In this chapter we will build a key-value store cluster with [openraft](https://github.com/datafuselabs/openraft).
 
-[examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore)
-is the complete example application including the server, the client and a demo cluster.
+[examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore) is the complete example application including the server, the client, and a demo cluster.
 
-[examples/raft-kv-rocksdb](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb)
-is the complete example application including the server, the client and a demo cluster using rocksdb for persistent storage.
+[examples/raft-kv-rocksdb](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb) is the complete example application including the server, the client, and a demo cluster using rocksdb for persistent storage.
 
 ---
 
@@ -22,8 +20,7 @@ Raft includes two major parts:
 - How to replicate logs consistently among nodes,
 - and how to consume the logs, which is defined mainly in state machine.
 
-To implement your own raft based application with openraft is quite easy, which
-includes:
+To implement your own raft-based application with openraft is quite easy, which includes:
 
 - Define client request and response;
 - Implement a storage to let raft store its state;
@@ -31,11 +28,9 @@ includes:
 
 ## 1. Define client request and response
 
-A request is some data that modifies the raft state machine.
-A response is some data that the raft state machine returns to the client.
+A request is some data that modifies the raft state machine. A response is some data that the raft state machine returns to the client.
 
-Request and response can be any types that impl `AppData` and `AppDataResponse`,
-e.g.:
+Request and response can be any types that impl `AppData` and `AppDataResponse`, e.g.:
 
 ```rust
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -47,15 +42,12 @@ pub struct ExampleResponse(Result<Option<String>, ClientError>);
 impl AppDataResponse for ExampleResponse {}
 ```
 
-These two types are totally application-specific and are mainly related to the
-state machine implementation in `RaftStorage`.
+These two types are totally application-specific and are mainly related to the state machine implementation in `RaftStorage`.
 
 
 ## 2. Implement `RaftStorage`
 
-The trait `RaftStorage` defines the way that data is stored and consumed.
-It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/)
-or a wrapper of a remote SQL DB.
+The trait `RaftStorage` defines the way that data is stored and consumed. It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/) or a wrapper of a remote SQL DB.
 
 `RaftStorage` defines four sets of APIs an application needs to implement:
 
@@ -91,16 +83,12 @@ or a wrapper of a remote SQL DB.
     fn install_snapshot(meta, snapshot)
     ```
 
-The APIs have been made quite obvious, and there is a good example
-[`ExampleStore`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
-which is a pure-in-memory implementation that shows what should be done when a
-method is called.
+The APIs have been made quite obvious, and there is a good example [`ExampleStore`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs), which is a pure-in-memory implementation that shows what should be done when a method is called.
 
 
 ### How do I impl RaftStorage correctly?
 
-There is a [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs),
-if an implementation passes the test, openraft will work happily with it.
+There is a [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs), if an implementation passes the test, openraft will work happily with it.
 
 To test your implementation with this suite, just do this:
 
@@ -115,25 +103,19 @@ There is a second example in [Test suite for RaftStorage](https://github.com/dat
 
 ### Race condition about RaftStorage
 
-In our design, there is at most one thread at a time writing data to it.
-But there may be several threads reading from it concurrently,
-e.g., more than one replication task reading log entries from the store.
+In our design, there is at most one thread at a time writing data to it. But there may be several threads reading from it concurrently, e.g., more than one replication task reading log entries from the store.
 
 
 ### An implementation has to guarantee data durability.
 
-The caller always assumes a completed write is persistent.
-The raft correctness highly depends on a reliable store.
+The caller always assumes a completed write is persistent. The raft correctness highly depends on a reliable store.
 
 
 ## 3. impl `RaftNetwork`
 
-Raft nodes need to communicate with each other to achieve consensus about the
-logs.
-The trait `RaftNetwork` defines the data transmission requirements.
+Raft nodes need to communicate with each other to achieve consensus about the logs. The trait `RaftNetwork` defines the data transmission requirements.
 
-An implementation of `RaftNetwork` can be considered as a wrapper that invokes the
-corresponding methods of a remote `Raft`.
+An implementation of `RaftNetwork` can be considered as a wrapper that invokes the corresponding methods of a remote `Raft`.
 
 ```rust
 pub trait RaftNetwork<D>: Send + Sync + 'static
@@ -145,15 +127,11 @@ where D: AppData
 }
 ```
 
-[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
-shows how to forward messages to other raft nodes.
+[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs) shows how to forward messages to other raft nodes.
 
-And there should be a server endpoint for each of these RPCs.
-When the server receives a raft RPC, it just passes it to its `raft` instance and replies with what returned:
-[raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
+And there should be a server endpoint for each of these RPCs. When the server receives a raft RPC, it just passes it to its `raft` instance and replies with what returned: [raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
 
-As a real-world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
-[databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be an excellent real-world example.
+As a real-world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic). [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be an excellent real-world example.
 
 
 ### Implement `RaftNetworkFactory` 
@@ -169,17 +147,15 @@ pub trait RaftNetworkFactory<C>: Send + Sync + 'static
 }
 ```
 
-`RaftNetworkFactory::Network` is the application implementation of trait `RaftNetwork`.
-The only method `new_client` create a new network instance sending RPCs to the target node.
+`RaftNetworkFactory::Network` is the application implementation of trait `RaftNetwork`. The only method `new_client` creates a new network instance sending RPCs to the target node.
 
-This function should **not** create a connection but rather a client that will connect when
-required..
+This function should **not** create a connection but rather a client that will connect when required..
 
 
 ### Find the address of the target node.
 
-An implementation of `RaftNetwork` need to connect to the remote raft peer,
-through TCP etc.
+# An implementation of `RaftNetwork` need to connect to the remote raft peer,
+# through TCP etc.
 
 You have two ways to find the address of a remote peer:
 
@@ -344,9 +320,12 @@ To set up a demo raft cluster includes:
 
 And two test scripts for setting up a cluster are provided:
 
+## Translation
+
+The following are two files from the openraft repository:
+
 - [test-cluster.sh](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh)
-  is a minimized bash script using curl to communicate with the raft cluster,
-  to show what messages are sent and received in plain HTTP.
+  is a bash script that uses curl to communicate with the raft cluster. It is a minimal script that shows the messages sent and received in plain HTTP.
 
 - [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
-  Use ExampleClient to set up a cluster, write data, and then read it.
+  This file uses ExampleClient to set up a cluster, write data, and then read it.
