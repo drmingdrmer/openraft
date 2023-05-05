@@ -15,6 +15,7 @@ jobs:
         if: |
           contains(github.event.comment.body, '/gpt-translate') || 
           contains(github.event.comment.body, '/gt')
-        uses: drmingdrmer/gpt-translate@v1.0
+        # uses: drmingdrmer/gpt-translate@v1.0
+        uses: drmingdrmer/gpt-translate@master
         with:
           apikey: ${{ secrets.OPENAI_API_KEY }}
