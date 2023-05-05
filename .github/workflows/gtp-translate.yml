@@ -1,0 +1,21 @@
+name: GPT Translate
+
+on:
+  issue_comment:
+    types: [ created ]
+
+jobs:
+  gpt_translate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run GPT Translate
+        if: |
+          contains(github.event.comment.body, '/gpt-translate') || 
+          contains(github.event.comment.body, '/gt')
+        # uses: drmingdrmer/gpt-translate@v1.0
+        uses: drmingdrmer/gpt-translate@master
+        with:
+          apikey: ${{ secrets.OPENAI_API_KEY }}
