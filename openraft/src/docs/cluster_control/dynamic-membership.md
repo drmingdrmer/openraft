@@ -1,36 +1,36 @@
 # Dynamic Membership
 
-Unlike the original raft, openraft treats all membership as a **joint** membership.
-A uniform config is just a special case of joint: the joint of only one config.
+In contrast to the original raft, openraft considers all memberships as **joint** memberships.
+A uniform configuration is simply a specific case of joint: the combination of only one configuration.
 
-Openraft offers these mechanisms for controlling member node lifecycle:
+Openraft provides the following mechanisms for managing member node lifecycles:
 
 
 ## Membership API
 
 ### [`Raft::add_learner(node_id, node, blocking)`][`Raft::add_learner()`]
 
-This method will add a learner to the cluster,
-and immediately begin syncing logs from the leader.
+This method adds a learner to the cluster,
+and immediately starts synchronizing logs from the leader.
 
-- A **Learner** won't vote for leadership.
+- A **Learner** does not vote for leadership.
 
 
 ### [`Raft::change_membership(members, retain)`][`Raft::change_membership()`]
 
 This method initiates a membership change and returns when the proposed
-membership takes effect and is committed.
+membership is effective and committed.
 
-If there are nodes in the given membership that is not a `Learner`, this method will fail.
-Thus the application should always call [`Raft::add_learner()`] first.
+If there are nodes in the given membership that are not `Learners`, this method will fail.
+Therefore, the application should always call [`Raft::add_learner()`] first.
 
-Once the new membership is committed, a `Voter` not in the new config is removed if `retain=false`,
-otherwise it is converted to a `Learner` if `retain=true`.
+Once the new membership is committed, a `Voter` not in the new configuration is removed if `retain=false`,
+otherwise, it is converted to a `Learner` if `retain=true`.
 
 
 #### Example of using `retain`
 
-Given the original membership to be `{"members":{1,2,3}, "learners":{}}`,
+Given the original membership as `{"members":{1,2,3}, "learners":{}}`,
 call `change_membership` with `members={3,4,5}`, then:
 
 - If `retain=true`,  the new membership is `{"members":{3,4,5}, "learners":{1,2}}`.
@@ -41,8 +41,8 @@ call `change_membership` with `members={3,4,5}`, then:
 
 To add a new node as a `Voter`:
 - First, add it as a `Learner`(non-voter) with [`Raft::add_learner()`].
-  In this step, the leader sets up replication to the new node, but it can not vote yet.
-- Then turn it into a `Voter` with [`Raft::change_membership()`].
+  In this step, the leader sets up replication to the new node, but it cannot vote yet.
+- Then, convert it into a `Voter` with [`Raft::change_membership()`].
 
 ```ignore
 let client = ExampleClient::new(1, get_addr(1)?);
@@ -58,14 +58,14 @@ A complete snippet of adding voters can be found in [Mem KV cluster example](htt
 ## Remove a voter node
 
 -   Call `Raft::change_membership()` on the leader to initiate a two-phase
-    membership config change, e.g., the leader will propose two config logs:
-    joint config log: `[{1, 2, 3}, {3, 4, 5}]` and then the uniform config log:
+    membership configuration change, e.g., the leader will propose two configuration logs:
+    joint configuration log: `[{1, 2, 3}, {3, 4, 5}]` and then the uniform configuration log:
     `{3, 4, 5}`.
 
--   As soon as the leader commits the second config log, the node to remove can
-    be terminated safely.
+-   As soon as the leader commits the second configuration log, the node to remove can
+    be safely terminated.
 
-**Note that** An application does not have to wait for the config log to be
+**Note that** An application does not have to wait for the configuration log to be
 replicated to the node to remove. Because a distributed consensus protocol
 tolerates a minority member crash.
 
