@@ -1,49 +1,48 @@
-# Node life cycle
+# Node Lifecycle
 
-- When a node is added with [`Raft::add_learner()`], it starts to receive log
-  replication from the leader at once, i.e., becomes a `Learner`.
+- When a node is added using [`Raft::add_learner()`], it immediately starts receiving log
+  replication from the leader, meaning it becomes a `Learner`.
 
-- A learner becomes a `Voter`, when [`Raft::change_membership()`] adds it as a
-  `Voter`. A `Voter` will then become `Candidate` or `Leader`.
+- A `Learner` transitions to a `Voter` when [`Raft::change_membership()`] includes it as a
+  `Voter`. A `Voter` can then become a `Candidate` or `Leader`.
 
-- When a node, no matter a `Learner` or `Voter`, is removed from membership, the
-  leader stops replicating to it at once, i.e., when the new membership that
-  does not contain the node is seen(no need to commit).
+- When a node, regardless of being a `Learner` or `Voter`, is removed from membership, the
+  leader ceases replication to it immediately, i.e., when the new membership that
+  excludes the node is observed (no need for commitment).
 
-  The removed node won't receive any log replication or heartbeat from the
-  leader. It will enter `Candidate` because it does not know it is removed.
+  The removed node will not receive any log replication or heartbeat from the
+  leader. It will enter the `Candidate` state because it is unaware of its removal.
 
 
-## Remove a node from membership config
+## Removing a Node from Membership Configuration
 
-When membership changes, e.g., from a joint config `[(1,2,3),
-(3,4,5)]` to uniform config `[3,4,5]`(assuming the leader is `3`), the leader
-stops replication to `1,2` when the uniform config `[3,4,5]` is seen(no need to be committed).
+When membership changes, for example, from a joint configuration `[(1,2,3),
+(3,4,5)]` to a uniform configuration `[3,4,5]` (assuming the leader is `3`), the leader
+stops replication to `1,2` when the uniform configuration `[3,4,5]` is observed (no need for commitment).
 
-It is correct because:
+This is correct because:
 
-- If the leader(`3`) finally committed `[3,4,5]`, it will eventually stop replication to `1,2`.
+- If the leader (`3`) eventually commits `[3,4,5]`, it will ultimately stop replication to `1,2`.
 
-- If the leader(`3`) crashes before committing `[3,4,5]`:
-    - And a new leader sees the membership config log `[3,4,5]`, it will continue to commit it and finally stop replication to `1,2`.
-    - Or a new leader does not see membership config log `[3,4,5]`, it will re-establish replication to `1,2`.
+- If the leader (`3`) crashes before committing `[3,4,5]`:
+    - And a new leader observes the membership configuration log `[3,4,5]`, it will proceed to commit it and finally stop replication to `1,2`.
+    - Or a new leader does not observe the membership configuration log `[3,4,5]`, it will re-establish replication to `1,2`.
 
-In any case, stopping replication at once is OK.
+In any scenario, stopping replication immediately is acceptable.
 
-One of the considerations is:
-The nodes, e.g., `1,2` do not know they have been removed from the cluster:
+One consideration is that nodes, such as `1,2`, are unaware of their removal from the cluster:
 
-- Removed node will enter the candidate state and keeps increasing its term and electing itself.
-  This won't affect the working cluster:
+- Removed nodes will enter the candidate state and continue to increase their term and elect themselves.
+  This will not impact the functioning cluster:
 
-    - The nodes in the working cluster have greater logs; thus, the election will never succeed.
+    - The nodes in the functioning cluster have more extensive logs; thus, the election will never succeed.
 
-    - The leader won't try to communicate with the removed nodes thus it won't see their higher `term`.
+    - The leader will not attempt to communicate with the removed nodes, so it will not see their higher `term`.
 
-- Removed nodes should be shut down finally. No matter whether the leader
-  replicates the membership without these removed nodes to them, there should
-  always be an external process that shuts them down. Because there is no
-  guarantee that a removed node can receive the membership log in a finite time.
+- Removed nodes should eventually be shut down. Regardless of whether the leader
+  replicates the membership without these removed nodes to them, an external process should
+  always shut them down. This is because there is no
+  guarantee that a removed node can receive the membership log within a finite time.
 
 
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
