@@ -1,22 +1,18 @@
-# Cluster Management: add/remove nodes
+# Managing Clusters: Adding/Removing Nodes
 
-A raft cluster may be controlled in various ways using the API methods of the `Raft` type.
-This allows the application to influence the raft behavior.
+The `Raft` type offers various API methods to control a raft cluster, enabling the application to affect the raft's behavior.
 
-There are several concepts related to cluster control:
+Several concepts are associated with cluster management:
 
-- `Voter`: a raft node that is responsible to vote, elect itself for leadership(Candidate),
-  become `Leader` or `Follower`.
+- `Voter`: A raft node responsible for voting, electing itself as a Candidate, and becoming a `Leader` or `Follower`.
 
-- `Candidate`: a node tries to elect itself as the Leader.
+- `Candidate`: A node attempting to elect itself as the Leader.
 
-- `Leader`: the only node in a cluster that deals with application request.
+- `Leader`: The sole node in a cluster that handles application requests.
 
-- `Follower`: a node that believes there is a legal leader and just receives
-  replicated logs.
+- `Follower`: A node that acknowledges the presence of a legitimate leader and only receives replicated logs.
 
-- `Learner`: a node that is not allow to vote but only receives logs.
-
+- `Learner`: A node that cannot vote but only receives logs.
 
 `Voter` state transition:
 
@@ -28,5 +24,3 @@ timeout   |     | seen a higher Leader             | seen a higher Leader
           |     v                                  |
           '----Follower <--------------------------'
 ```
-
-
