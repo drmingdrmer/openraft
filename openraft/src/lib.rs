@@ -66,6 +66,7 @@ pub mod testing;
 pub mod timer;
 pub mod type_config;
 
+pub(crate) mod acceptor;
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
