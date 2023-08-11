@@ -195,16 +195,19 @@ impl RocksStateMachine {
         Ok(r)
     }
 
+    /// Creates a new RocksStateMachine with the given database.
     fn new(db: Arc<DB>) -> RocksStateMachine {
         Self { db }
     }
 
+    /// Inserts a key-value pair into the state machine's database.
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
         self.db
             .put_cf(self.cf_sm_data(), key.as_bytes(), value.as_bytes())
             .map_err(|e| StorageIOError::write(&e).into())
     }
 
+    /// Retrieves a value from the state machine's database given a key.
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
         self.db
