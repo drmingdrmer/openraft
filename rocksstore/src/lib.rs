@@ -180,11 +180,11 @@ impl RocksStateMachine {
     }
 
     fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<DB>) -> StorageResult<Self> {
-        let r = Self { db };
+            let rocks_state_machine = Self { db };
 
         for (key, value) in sm.data {
-            r.db.put_cf(r.cf_sm_data(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
-        }
+                    rocks_state_machine.db.put_cf(rocks_state_machine.column_family_sm_data(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
+                }
 
         if let Some(log_id) = sm.last_applied_log {
             r.set_last_applied_log(log_id)?;
@@ -310,18 +310,18 @@ impl RocksStore {
     ///
     /// It returns `None` if the store does not have such a metadata stored.
     fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<RocksNodeId>> {
-        let v = self
-            .db
-            .get_cf(self.cf_meta(), M::KEY)
-            .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
+            let value = self
+                .db
+                .get_cf(self.cf_meta(), M::KEY)
+                .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
 
-        let t = match v {
-            None => None,
-            Some(bytes) => Some(
-                serde_json::from_slice(&bytes)
-                    .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
-            ),
-        };
+        let deserialized_value = match value {
+                    None => None,
+                    Some(bytes) => Some(
+                        serde_json::from_slice(&bytes)
+                            .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
+                    ),
+                };
         Ok(t)
     }
 
