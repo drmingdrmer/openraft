@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Remove the unnecessary build_ver_changelog function
 # coding: utf-8
 
 import sys
