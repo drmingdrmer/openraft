@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import subprocess
+from subprocess import run,capture_output
 import subprocess
 import os
 import re
@@ -127,10 +127,10 @@ def cmd(cmds):
     return out
 
 def list_tags():
-    out = cmd(["git", "tag", "-l"])
+    out = cmd(["git", "tag", "-l"]).stdout
     tags = out.splitlines()
-    tags[0].lstrip('v')
-    tags = [semantic_version.Version(t.lstrip('v'))
+    
+    tags = [semantic_version.Version(t)
             for t in tags
             if t != '' and t != 'base' ]
     return tags
