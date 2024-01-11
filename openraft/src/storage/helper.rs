@@ -106,16 +106,16 @@ where
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
         if last_log_id < last_applied {
-            self.log_store.purge(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
-
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
                 last_log_id.display(),
                 last_applied.display(),
                 last_applied.display(),
             );
+
+            self.log_store.purge(last_applied.unwrap()).await?;
+            last_log_id = last_applied;
+            last_purged_log_id = last_applied;
         }
 
         tracing::info!(
@@ -124,9 +124,6 @@ where
             last_log_id.display()
         );
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
-
-        // TODO: `flushed` is not set.
-        let io_state = IOState::new(vote, LogIOId::default(), last_applied, last_purged_log_id);
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -145,6 +142,15 @@ where
             s @ Some(_) => s,
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
+
+        // TODO: `flushed` is not set.
+        let io_state = IOState::new(
+            vote,
+            LogIOId::default(),
+            last_applied,
+            snapshot_meta.last_log_id,
+            last_purged_log_id,
+        );
 
         let now = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
 

@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::less_equal;
-use crate::validate::Validate;
+use validit::Validate;
+
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -77,6 +77,12 @@ where
         Self { committed, effective }
     }
 
+    /// Return true if the given node id is an either voter or learner.
+    pub(crate) fn contains(&self, id: &NID) -> bool {
+        self.effective.membership().contains(id)
+    }
+
+    /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership().is_voter(id)
     }
@@ -226,8 +232,8 @@ where
     N: Node,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        less_equal!(self.committed.log_id(), self.effective.log_id());
-        less_equal!(self.committed.log_id().index(), self.effective.log_id().index());
+        validit::less_equal!(self.committed.log_id(), self.effective.log_id());
+        validit::less_equal!(self.committed.log_id().index(), self.effective.log_id().index());
         Ok(())
     }
 }

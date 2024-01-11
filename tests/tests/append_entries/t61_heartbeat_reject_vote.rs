@@ -38,7 +38,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     {
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state, _store, _net| {
+        router.external_request(1, move |state| {
             let mut l = m.lock().unwrap();
             *l = state.vote_last_modified();
             assert!(state.vote_last_modified() > Some(now));
@@ -49,7 +49,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
 
         let m = vote_modified_time.clone();
 
-        router.external_request(1, move |state, _store, _net| {
+        router.external_request(1, move |state| {
             let l = m.lock().unwrap();
             assert!(state.vote_last_modified() > Some(now));
             assert!(state.vote_last_modified() > *l);
@@ -69,7 +69,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     {
         // TODO: this part can be removed when blank-log heartbeat is removed.
         sleep(Duration::from_millis(1500)).await;
-        router.wait(&1, timeout()).log(Some(log_index), "no log is written").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
     }
 
     tracing::info!(log_index, "--- disable heartbeat, vote request will be granted");
@@ -77,7 +77,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
         node0.runtime_config().heartbeat(false);
         sleep(Duration::from_millis(1500)).await;
 
-        router.wait(&1, timeout()).log(Some(log_index), "no log is written").await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "no log is written").await?;
 
         let res = node1.vote(VoteRequest::new(Vote::new(10, 2), Some(log_id(10, 1, 10)))).await?;
         assert!(res.vote_granted, "vote is granted after leader lease expired");

@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
-#![cfg_attr(feature = "bt", feature(provide_any))]
 
 #[macro_use]
 #[path = "../fixtures/mod.rs"]
@@ -14,3 +13,4 @@ mod t50_follower_restart_does_not_interrupt;
 mod t50_single_follower_restart;
 mod t50_single_leader_restart_re_apply_logs;
 mod t90_issue_607_single_restart;
+mod t90_issue_920_non_voter_leader_restart;

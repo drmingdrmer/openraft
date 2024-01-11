@@ -2,8 +2,14 @@
 
 By default openraft enables no features.
 
+- `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
+  `test` thus it can not be used with stable rust. In order to run the benchmark with stable
+  toolchain, the unstable features have to be enabled explicitly with environment variable
+  `RUSTC_BOOTSTRAP=1`.
+  <br/><br/>
+
 - `bt`:
-  attaches backtrace to generated errors.
+  attaches backtrace to generated errors. This feature works ONLY with nightly rust, because it requires unstable feature `error_generic_member_access`.
   <br/><br/>
 
 - `loosen-follower-log-revert`:
@@ -37,9 +43,15 @@ By default openraft enables no features.
   This feature disables `Adapter`, which is for v1 storage to be used as v2.
   V2 storage separates log store and state machine store so that log IO and state machine IO can be parallelized naturally.
   <br/><br/>
-  
-- `singlethreaded`: removes `Send` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, and `SnapshotData` to force the
-  asynchronous runtime to spawn any tasks in the current thread.
+
+- `singlethreaded`: removes `Send` and `Sync` bounds from `AppData`, `AppDataResponse`, `RaftEntry`, `SnapshotData`
+  and other types to force the  asynchronous runtime to spawn any tasks in the current thread.
   This is for any single-threaded application that never allows a raft instance to be shared among multiple threads.
+  This feature relies on the `async_fn_in_trait` language feature that is officially supported from Rust 1.75.0.
+  If the feature is enabled, affected asynchronous trait methods and associated functions no longer use `async_trait`.
   In order to use the feature, `AsyncRuntime::spawn` should invoke `tokio::task::spawn_local` or equivalents.
   <br/><br/>
+
+- `tracing-log`: enables "log" feature in `tracing` crate, to let tracing events
+  emit log record.
+  See: [tracing doc: emitting-log-records](https://docs.rs/tracing/latest/tracing/#emitting-log-records)

@@ -1,27 +1,12 @@
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("lib_readme.md")]
+#![doc = include_str!("docs/docs.md")]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
-#![cfg_attr(feature = "bt", feature(provide_any))]
 #![cfg_attr(feature = "bench", feature(test))]
 // TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
 #![allow(clippy::bool_assert_comparison, clippy::type_complexity, clippy::result_large_err)]
 #![deny(unused_qualifications)]
 // TODO: Enable this when doc is complete
 // #![warn(missing_docs)]
-
-//! # Feature flags
-//!
-//! - `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
-//!   `test` thus it can not be used with stable rust. In order to run the benchmark with stable
-//!   toolchain, the unstable features have to be enabled explicitly with environment variable
-//!   `RUSTC_BOOTSTRAP=1`.
-//!
-//! - `bt`: Enable backtrace: generate backtrace for errors. This requires unstable feature
-//! `error_generic_member_access` and `provide_any` thus it can not be used with stable rust.
-//!
-//! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use
-//!   `serde` to serialize messages.
-//!
-//! - `singlethreaded`: Prevent `Raft` instances from being shared among multiple threads.
 
 macro_rules! func_name {
     () => {{
@@ -70,7 +55,6 @@ pub mod type_config;
 pub(crate) mod engine;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
-pub(crate) mod validate;
 
 mod display_ext;
 
@@ -190,9 +174,9 @@ impl<T: Sync + ?Sized> OptionalSync for T {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: OptionalSend + Sync + 'static + OptionalSerde {}
+pub trait AppData: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
-impl<T> AppData for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
+impl<T> AppData for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
 /// A trait defining application specific response data.
 ///
@@ -211,6 +195,6 @@ impl<T> AppData for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: OptionalSend + Sync + 'static + OptionalSerde {}
+pub trait AppDataResponse: OptionalSend + OptionalSync + 'static + OptionalSerde {}
 
-impl<T> AppDataResponse for T where T: OptionalSend + Sync + 'static + OptionalSerde {}
+impl<T> AppDataResponse for T where T: OptionalSend + OptionalSync + 'static + OptionalSerde {}

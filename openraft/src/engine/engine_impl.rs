@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use validit::Valid;
+
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::ResultSender;
@@ -36,7 +38,6 @@ use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::summary::MessageSummary;
-use crate::validate::Valid;
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::LogId;
@@ -95,7 +96,6 @@ where C: RaftTypeConfig
         }
     }
 
-    // TODO: test it
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn startup(&mut self) {
         // Allows starting up as a leader.
@@ -517,10 +517,7 @@ where C: RaftTypeConfig
 
         #[allow(clippy::collapsible_if)]
         if em.log_id().as_ref() <= self.state.committed() {
-            if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
-                tracing::debug!("leader {} is stepping down", self.config.id);
-                self.vote_handler().become_following();
-            }
+            self.vote_handler().update_internal_server_state();
         }
     }
 

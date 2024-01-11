@@ -32,7 +32,7 @@ fn m12() -> Membership<u64, ()> {
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
     eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
     eng
 }
 
@@ -73,7 +73,7 @@ fn test_elect() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: LogId {
@@ -126,7 +126,7 @@ fn test_elect() -> anyhow::Result<()> {
                         index: 1,
                     },),
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: LogId {

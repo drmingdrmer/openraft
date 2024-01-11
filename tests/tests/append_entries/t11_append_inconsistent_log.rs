@@ -73,7 +73,7 @@ async fn append_inconsistent_log() -> Result<()> {
     );
     {
         router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
     }
 
     tracing::info!(log_index, "--- restart node 0 and 2");
@@ -109,7 +109,7 @@ async fn append_inconsistent_log() -> Result<()> {
     router
         .wait(&0, Some(Duration::from_millis(2000)))
         // leader appends at least one blank log. There may be more than one transient leaders
-        .log_at_least(Some(log_index), "sync log to node 0")
+        .applied_index_at_least(Some(log_index), "sync log to node 0")
         .await?;
 
     let logs = sto0.get_log_entries(60..=60).await?;

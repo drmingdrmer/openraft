@@ -27,7 +27,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
     tracing::info!(log_index, "--- isolate node 4");
     {
-        router.set_node_network_failure(4, true);
+        router.set_network_error(4, true);
     }
 
     // logs on node 4 will stop here:
@@ -36,7 +36,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     tracing::info!(log_index, "--- changing config to 0,1,2");
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(btreeset![0, 1, 2], false).await?;
+        node.change_membership([0, 1, 2], false).await?;
         log_index += 2;
 
         for i in &[0, 1, 2] {
@@ -74,7 +74,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         "--- restore network isolation, node 4 won't catch up log and will enter candidate state"
     );
     {
-        router.set_node_network_failure(4, false);
+        router.set_network_error(4, false);
 
         router
             .wait(&4, timeout())

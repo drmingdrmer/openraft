@@ -1,9 +1,14 @@
 //! Public Raft interface and data types.
 
+mod external_request;
 mod message;
 mod raft_inner;
 mod runtime_config_handle;
 mod trigger;
+
+use std::collections::BTreeMap;
+
+pub(crate) use self::external_request::BoxCoreFn;
 
 pub(in crate::raft) mod core_state;
 
@@ -48,6 +53,7 @@ use crate::error::RaftError;
 use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
+use crate::metrics::WaitError;
 use crate::network::RaftNetworkFactory;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::runtime_config_handle::RuntimeConfigHandle;
@@ -123,38 +129,15 @@ macro_rules! declare_raft_types {
 /// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
-pub struct Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+#[derive(Clone)]
+pub struct Raft<C>
+where C: RaftTypeConfig
 {
-    inner: Arc<RaftInner<C, N, LS>>,
-    _phantom: PhantomData<SM>,
+    inner: Arc<RaftInner<C>>,
 }
 
-impl<C, N, LS, SM> Clone for Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<C, N, LS, SM> Raft<C, N, LS, SM>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
-    SM: RaftStateMachine<C>,
+impl<C> Raft<C>
+where C: RaftTypeConfig
 {
     /// Create and spawn a new Raft task.
     ///
@@ -176,13 +159,18 @@ where
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
-    pub async fn new(
+    pub async fn new<LS, N, SM>(
         id: C::NodeId,
         config: Arc<Config>,
         network: N,
         mut log_store: LS,
         mut state_machine: SM,
-    ) -> Result<Self, Fatal<C::NodeId>> {
+    ) -> Result<Self, Fatal<C::NodeId>>
+    where
+        N: RaftNetworkFactory<C>,
+        LS: RaftLogStorage<C>,
+        SM: RaftStateMachine<C>,
+    {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_notify, rx_notify) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
@@ -224,6 +212,9 @@ where
             sm_handle,
 
             engine,
+
+            client_resp_channels: BTreeMap::new(),
+
             leader_data: None,
 
             tx_api: tx_api.clone(),
@@ -253,10 +244,7 @@ where
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
 
-        Ok(Self {
-            inner: Arc::new(inner),
-            _phantom: Default::default(),
-        })
+        Ok(Self { inner: Arc::new(inner) })
     }
 
     /// Return a handle to update runtime config.
@@ -268,7 +256,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<C, N, LS> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -295,7 +283,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect().await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<C, N, LS> {
+    pub fn trigger(&self) -> Trigger<C> {
         Trigger::new(self.inner.as_ref())
     }
 
@@ -380,10 +368,96 @@ where
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
+    #[deprecated(note = "use `Raft::ensure_linearizable()` instead. deprecated since 0.9.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn is_leader(&self) -> Result<(), RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await
+        let _ = self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        Ok(())
+    }
+
+    /// Ensures a read operation performed following this method are linearizable across the
+    /// cluster.
+    ///
+    /// This method is just a shorthand for calling [`get_read_log_id()`](Raft::get_read_log_id) and
+    /// then calling [Raft::wait].
+    ///
+    /// This method confirms the node's leadership at the time of invocation by sending
+    /// heartbeats to a quorum of followers, and the state machine is up to date.
+    /// This method blocks until all these conditions are met.
+    ///
+    /// Returns:
+    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
+    ///   represents the log id up to which the state machine has applied to ensure a linearizable
+    ///   read.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
+    ///   communicate with a quorum of followers.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// my_raft.ensure_linearizable().await?;
+    /// // Proceed with the state machine read
+    /// ```
+    /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn ensure_linearizable(
+        &self,
+    ) -> Result<Option<LogId<C::NodeId>>, RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>> {
+        let (read_log_id, applied) = self.get_read_log_id().await?;
+
+        if read_log_id.index() > applied.index() {
+            self.wait(None)
+                .applied_index_at_least(read_log_id.index(), "ensure_linearizable")
+                .await
+                .map_err(|e| match e {
+                    WaitError::Timeout(_, _) => {
+                        unreachable!("did not specify timeout")
+                    }
+                    WaitError::ShuttingDown => Fatal::Stopped,
+                })?;
+        }
+        Ok(read_log_id)
+    }
+
+    /// Ensures this node is leader and returns the log id up to which the state machine should
+    /// apply to ensure a read can be linearizable across the cluster.
+    ///
+    /// The leadership is ensured by sending heartbeats to a quorum of followers.
+    /// Note that this is just the first step for linearizable read. The second step is to wait for
+    /// state machine to reach the returned `read_log_id`.
+    ///
+    /// Returns:
+    /// - `Ok((read_log_id, last_applied_log_id))` on successful confirmation that the node is the
+    ///   leader. `read_log_id` represents the log id up to which the state machine should apply to
+    ///   ensure a linearizable read.
+    /// - `Err(RaftError<CheckIsLeaderError>)` if it detects a higher term, or if it fails to
+    ///   communicate with a quorum of followers.
+    ///
+    /// The caller should then wait for `last_applied_log_id` to catch up, which can be done by
+    /// subscribing to [`Raft::metrics`] and waiting for `last_applied_log_id` to
+    /// reach `read_log_id`.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let (read_log_id, applied_log_id) = my_raft.get_read_log_id().await?;
+    /// if read_log_id.index() > applied_log_id.index() {
+    ///     my_raft.wait(None).applied_index_at_least(read_log_id.index()).await?;
+    /// }
+    /// // Proceed with the state machine read
+    /// ```
+    /// The comparison `read_log_id > applied_log_id` would also be valid in the above example.
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn get_read_log_id(
+        &self,
+    ) -> Result<
+        (Option<LogId<C::NodeId>>, Option<LogId<C::NodeId>>),
+        RaftError<C::NodeId, CheckIsLeaderError<C::NodeId, C::Node>>,
+    > {
+        let (tx, rx) = oneshot::channel();
+        let (read_log_id, applied) = self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await?;
+        Ok((read_log_id, applied))
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -652,7 +726,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(
         &self,
-        mes: RaftMsg<C, N, LS>,
+        mes: RaftMsg<C>,
         rx: oneshot::Receiver<Result<T, E>>,
     ) -> Result<T, RaftError<C::NodeId, E>>
     where
@@ -684,6 +758,47 @@ where
         }
     }
 
+    /// Provides read-only access to [`RaftState`] through a user-provided function.
+    ///
+    /// The function `func` is applied to the current [`RaftState`]. The result of this function,
+    /// of type `V`, is returned wrapped in `Result<V, Fatal<C::NodeId>>`. `Fatal` error will be
+    /// returned if failed to receive a reply from `RaftCore`.
+    ///
+    /// A `Fatal` error is returned if:
+    /// - Raft core task is stopped normally.
+    /// - Raft core task is panicked due to programming error.
+    /// - Raft core task is encountered a storage error.
+    ///
+    /// Example for getting the current committed log id:
+    /// ```ignore
+    /// let committed = my_raft.with_raft_state(|st| st.committed).await?;
+    /// ```
+    pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C::NodeId>>
+    where
+        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) -> V + Send + 'static,
+        V: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+
+        self.external_request(|st| {
+            let result = func(st);
+            if let Err(_err) = tx.send(result) {
+                tracing::error!("{}: to-Raft tx send error", func_name!());
+            }
+        });
+
+        match rx.await {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                tracing::error!(error = display(&err), "{}: rx recv error", func_name!());
+
+                let when = format!("{}: rx recv", func_name!());
+                let fatal = self.inner.get_core_stopped_error(when, None::<u64>).await;
+                Err(fatal)
+            }
+        }
+    }
+
     /// Send a request to the Raft core loop in a fire-and-forget manner.
     ///
     /// The request functor will be called with a mutable reference to both the state machine
@@ -696,15 +811,10 @@ where
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<
-        F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-            + Send
-            + 'static,
-    >(
-        &self,
-        req: F,
-    ) {
-        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req: Box::new(req) });
+    pub fn external_request<F>(&self, req: F)
+    where F: FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>) + Send + 'static {
+        let req: BoxCoreFn<C> = Box::new(req);
+        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req });
     }
 
     /// Get a handle to the metrics channel.

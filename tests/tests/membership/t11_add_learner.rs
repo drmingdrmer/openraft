@@ -46,7 +46,7 @@ async fn add_learner_basic() -> Result<()> {
         log_index += 1;
 
         assert_eq!(log_index, res.log_id.index);
-        router.wait(&0, timeout()).log(Some(log_index), "commit re-adding leader log").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding leader log").await?;
     }
 
     tracing::info!(log_index, "--- add new node node-1");
@@ -86,7 +86,7 @@ async fn add_learner_basic() -> Result<()> {
         log_index += 1;
 
         assert_eq!(log_index, res.log_id.index);
-        router.wait(&0, timeout()).log(Some(log_index), "commit re-adding node-1 log").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding node-1 log").await?;
 
         let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
         let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
@@ -122,22 +122,37 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.client_request_many(0, "learner_add", 100 - log_index as usize).await?;
         log_index = 100;
 
-        router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
+        router.wait(&0, timeout()).applied_index(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
 
         // Replication problem should not block adding-learner in non-blocking mode.
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         let raft = router.get_raft_handle(&0)?;
         raft.add_learner(1, (), false).await?;
 
-        sleep(Duration::from_millis(500)).await;
+        let n = 6;
+        for i in 0..=n {
+            if i == n {
+                unreachable!("no replication status is reported to metrics!");
+            }
 
-        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
-        let repl = metrics.replication.as_ref().unwrap();
-        let n1_repl = repl.get(&1);
-        assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+            let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+            let repl = metrics.replication.as_ref().unwrap();
+
+            // The result is Some(&None) when there is no success replication is made,
+            // and is None if no replication attempt is made(no success or failure is reported to metrics).
+            let n1_repl = repl.get(&1);
+            if n1_repl.is_none() {
+                tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);
+
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+            break;
+        }
     }
 
     Ok(())
@@ -193,11 +208,11 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 
     tracing::info!(log_index, "--- block replication to prevent committing any log");
     {
-        router.set_node_network_failure(1, true);
+        router.set_network_error(1, true);
 
         let node = router.get_raft_handle(&0)?;
         tokio::spawn(async move {
-            let res = node.change_membership(btreeset![0, 1], false).await;
+            let res = node.change_membership([0, 1], false).await;
             tracing::info!("do not expect res: {:?}", res);
             unreachable!("do not expect any res");
         });
@@ -257,14 +272,14 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
 
     let node = router.get_raft_handle(&orig_leader_id)?;
-    node.change_membership(btreeset![1, 3, 4], false).await?;
+    node.change_membership([1, 3, 4], false).await?;
     log_index += 2; // 2 change_membership log
 
     tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
             .wait(&orig_leader_id, timeout())
-            .log(Some(log_index), "old leader commits 2 membership log")
+            .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -276,7 +291,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         for id in [1, 3, 4] {
             router
                 .wait(&id, timeout())
-                .log_at_least(
+                .applied_index_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
@@ -310,7 +325,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         log_index += 1;
 
         for i in [1, 2, 3, 4] {
-            router.wait(&i, timeout()).log_at_least(Some(log_index), "learner recv new log").await?;
+            router.wait(&i, timeout()).applied_index_at_least(Some(log_index), "learner recv new log").await?;
         }
     }
 

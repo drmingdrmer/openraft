@@ -17,6 +17,8 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
         Config {
             enable_tick: false,
             enable_heartbeat: false,
+            // Make sure the replication is done in more than one steps
+            max_payload_entries: 1,
             ..Default::default()
         }
         .validate()?,
@@ -31,7 +33,7 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1, 2, 3] {
-            router.wait(&i, timeout()).log(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
 
@@ -51,7 +53,7 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1, 2, 3] {
-            router.wait(&i, timeout()).log(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
 

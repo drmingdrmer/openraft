@@ -38,12 +38,12 @@ fn m1_2() -> Membership<u64, ()> {
 }
 
 fn m23() -> Membership<u64, ()> {
-    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
+    Membership::<u64, ()>::new(vec![btreeset! {2,3}], btreeset! {1,2,3})
 }
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 1;
     eng.state.committed = Some(log_id(0, 1, 0));

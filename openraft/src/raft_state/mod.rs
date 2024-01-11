@@ -1,15 +1,14 @@
 use std::error::Error;
 use std::ops::Deref;
 
+use validit::Validate;
+
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
-use crate::equal;
 use crate::error::ForwardToLeader;
-use crate::less_equal;
 use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::utime::UTime;
-use crate::validate::Validate;
 use crate::Instant;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -33,6 +32,7 @@ mod tests {
     mod accepted_test;
     mod forward_to_leader_test;
     mod log_state_reader_test;
+    mod read_log_id_test;
     mod validate_test;
 }
 
@@ -41,6 +41,7 @@ pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
+use crate::display_ext::DisplayOptionExt;
 pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -138,6 +139,10 @@ where
         self.io_state.applied()
     }
 
+    fn io_snapshot_last_log_id(&self) -> Option<&LogId<NID>> {
+        self.io_state.snapshot()
+    }
+
     fn io_purged(&self) -> Option<&LogId<NID>> {
         self.io_state.purged()
     }
@@ -177,22 +182,22 @@ where
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         if self.purged_next == 0 {
-            less_equal!(self.log_ids.first().index(), Some(0));
+            validit::less_equal!(self.log_ids.first().index(), Some(0));
         } else {
-            equal!(self.purged_next, self.log_ids.first().next_index());
+            validit::equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.purge_upto());
+        validit::less_equal!(self.last_purged_log_id(), self.purge_upto());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            less_equal!(self.purge_upto(), self.committed());
+            validit::less_equal!(self.purge_upto(), self.committed());
         } else {
-            less_equal!(self.purge_upto(), self.snapshot_last_log_id());
+            validit::less_equal!(self.purge_upto(), self.snapshot_last_log_id());
         }
-        less_equal!(self.snapshot_last_log_id(), self.committed());
-        less_equal!(self.committed(), self.last_log_id());
+        validit::less_equal!(self.snapshot_last_log_id(), self.committed());
+        validit::less_equal!(self.committed(), self.last_log_id());
 
         self.membership_state.validate()?;
 
@@ -214,6 +219,29 @@ where
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<I> {
         self.vote.utime()
+    }
+
+    /// Get the log id for a linearizable read.
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    pub(crate) fn get_read_log_id(&self) -> Option<&LogId<NID>> {
+        // Get the first known log id appended by the last leader.
+        // - This log may not be committed.
+        // - The leader blank log may have been purged and this could be the last purged log id.
+        // - There must be such an entry, which is guaranteed by `Engine::establish_leader()`.
+        let leader_first = self.log_ids.by_last_leader().first();
+
+        debug_assert_eq!(
+            leader_first.map(|log_id| *log_id.committed_leader_id()),
+            self.vote_ref().committed_leader_id(),
+            "leader_first must belong to a leader of current vote: leader_first: {}, vote.committed_leader_id: {}",
+            leader_first.map(|log_id| log_id.committed_leader_id()).display(),
+            self.vote_ref().committed_leader_id().display(),
+        );
+
+        let committed = self.committed();
+
+        std::cmp::max(leader_first, committed)
     }
 
     /// Return the accepted last log id of the current leader.
@@ -315,24 +343,34 @@ where
     }
 
     /// Determine the current server state by state.
+    ///
+    /// See [Determine Server State][] for more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_server_state(&self, id: &NID) -> ServerState {
         tracing::debug!(
-            is_member = display(self.is_voter(id)),
+            contains = display(self.membership_state.contains(id)),
+            is_voter = display(self.is_voter(id)),
             is_leader = display(self.is_leader(id)),
             is_leading = display(self.is_leading(id)),
             "states"
         );
-        if self.is_voter(id) {
-            if self.is_leader(id) {
-                ServerState::Leader
-            } else if self.is_leading(id) {
-                ServerState::Candidate
-            } else {
-                ServerState::Follower
-            }
+
+        // Openraft does not require Leader/Candidate to be a voter, i.e., a learner node could
+        // also be possible to be a leader. Although currently it is not supported.
+        // Allowing this will simplify leader step down: The leader just run as long as it wants to,
+        #[allow(clippy::collapsible_else_if)]
+        if self.is_leader(id) {
+            ServerState::Leader
+        } else if self.is_leading(id) {
+            ServerState::Candidate
         } else {
-            ServerState::Learner
+            if self.is_voter(id) {
+                ServerState::Follower
+            } else {
+                ServerState::Learner
+            }
         }
     }
 
@@ -342,12 +380,25 @@ where
 
     /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
     /// by a quorum)
+    ///
+    /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
+    /// more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &NID) -> bool {
-        self.vote.leader_id().voted_for().as_ref() == Some(id)
+        self.membership_state.contains(id) && self.vote.leader_id().voted_for().as_ref() == Some(id)
     }
 
+    /// The node is leader
+    ///
+    /// Leadership is granted by a quorum and the vote is committed.
+    ///
+    /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
+    /// more details about determining the server state.
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leader(&self, id: &NID) -> bool {
-        self.vote.leader_id().voted_for().as_ref() == Some(id) && self.vote.is_committed()
+        self.is_leading(id) && self.vote.is_committed()
     }
 
     pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(

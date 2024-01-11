@@ -10,17 +10,17 @@ use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::BoxCoreFn;
 use crate::raft::ClientWriteResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::storage::RaftLogStorage;
-use crate::AsyncRuntime;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 use crate::ChangeMembers;
 use crate::MessageSummary;
-use crate::RaftNetworkFactory;
-use crate::RaftState;
 use crate::RaftTypeConfig;
 
 pub(crate) mod external_command;
@@ -38,17 +38,17 @@ pub(crate) type VoteTx<NID> = ResultSender<VoteResponse<NID>, Infallible>;
 pub(crate) type AppendEntriesTx<NID> = ResultSender<AppendEntriesResponse<NID>, Infallible>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C> =
-    ResultSender<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
+pub(crate) type ClientWriteTx<C> = ResultSender<ClientWriteResponse<C>, ClientWriteError<NodeIdOf<C>, NodeOf<C>>>;
+
+/// TX for Linearizable Read Response
+pub(crate) type ClientReadTx<C> =
+    ResultSender<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), CheckIsLeaderError<NodeIdOf<C>, NodeOf<C>>>;
 
 /// A message sent by application to the [`RaftCore`].
 ///
 /// [`RaftCore`]: crate::core::RaftCore
-pub(crate) enum RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+pub(crate) enum RaftMsg<C>
+where C: RaftTypeConfig
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
@@ -71,7 +71,7 @@ where
     },
 
     CheckIsLeaderRequest {
-        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
+        tx: ClientReadTx<C>,
     },
 
     Initialize {
@@ -90,12 +90,7 @@ where
     },
 
     ExternalRequest {
-        #[allow(clippy::type_complexity)]
-        req: Box<
-            dyn FnOnce(&RaftState<C::NodeId, C::Node, <C::AsyncRuntime as AsyncRuntime>::Instant>, &mut LS, &mut N)
-                + Send
-                + 'static,
-        >,
+        req: BoxCoreFn<C>,
     },
 
     ExternalCommand {
@@ -103,11 +98,8 @@ where
     },
 }
 
-impl<C, N, LS> MessageSummary<RaftMsg<C, N, LS>> for RaftMsg<C, N, LS>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    LS: RaftLogStorage<C>,
+impl<C> MessageSummary<RaftMsg<C>> for RaftMsg<C>
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         match self {

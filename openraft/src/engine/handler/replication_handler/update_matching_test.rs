@@ -27,7 +27,7 @@ fn m123() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.config.id = 2;
     eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
@@ -100,7 +100,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 1, 1))
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 1,
                     already_committed: None,
                     upto: log_id(2, 1, 1)
@@ -120,7 +120,7 @@ fn test_update_matching() -> anyhow::Result<()> {
                 Command::ReplicateCommitted {
                     committed: Some(log_id(2, 1, 3))
                 },
-                Command::Apply {
+                Command::Commit {
                     seq: 2,
                     already_committed: Some(log_id(2, 1, 1)),
                     upto: log_id(2, 1, 3)

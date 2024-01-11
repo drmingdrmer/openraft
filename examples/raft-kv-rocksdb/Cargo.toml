@@ -13,7 +13,7 @@ categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An example distributed key-value store built upon `openraft`."
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 [[bin]]
@@ -21,7 +21,7 @@ name = "raft-key-value-rocks"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde"] }
+openraft = { path = "../../openraft", features = ["serde", "storage-v2"] }
 
 async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 async-trait = "0.1.36"
@@ -35,7 +35,7 @@ tide = { version = "0.16" }
 # for toy-rpc, use `serde_json` instead of the default `serde_bincode`:
 # bincode which enabled by default by toy-rpc, does not support `#[serde(flatten)]`: https://docs.rs/bincode/2.0.0-alpha.1/bincode/serde/index.html#known-issues
 toy-rpc = { version = "0.8.6", default-features = false, features = [ "serde_json", "ws_async_std", "server", "client", "async_std_runtime", ] }
-tracing = "0.1.29"
+tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]

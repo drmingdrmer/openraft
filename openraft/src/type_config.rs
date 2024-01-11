@@ -12,6 +12,7 @@ use crate::AsyncRuntime;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
+use crate::OptionalSync;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -40,7 +41,7 @@ use crate::OptionalSend;
 /// ```
 /// [`Raft`]: crate::Raft
 pub trait RaftTypeConfig:
-    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
+    Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// Application-specific request data passed to the state machine.
     type D: AppData;
@@ -61,8 +62,34 @@ pub trait RaftTypeConfig:
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + Sync + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + OptionalSend + OptionalSync + Unpin + 'static;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
+}
+
+#[allow(dead_code)]
+pub(crate) mod alias {
+    //! Type alias for types used in `RaftTypeConfig`.
+
+    pub(crate) type DOf<C> = <C as crate::RaftTypeConfig>::D;
+    pub(crate) type ROf<C> = <C as crate::RaftTypeConfig>::R;
+    pub(crate) type NodeIdOf<C> = <C as crate::RaftTypeConfig>::NodeId;
+    pub(crate) type NodeOf<C> = <C as crate::RaftTypeConfig>::Node;
+    pub(crate) type EntryOf<C> = <C as crate::RaftTypeConfig>::Entry;
+    pub(crate) type SnapshotDataOf<C> = <C as crate::RaftTypeConfig>::SnapshotData;
+    pub(crate) type AsyncRuntimeOf<C> = <C as crate::RaftTypeConfig>::AsyncRuntime;
+
+    pub(crate) type JoinErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinError;
+    pub(crate) type JoinHandleOf<C, T> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::JoinHandle<T>;
+    pub(crate) type SleepOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Sleep;
+    pub(crate) type InstantOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Instant;
+    pub(crate) type TimeoutErrorOf<C> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::TimeoutError;
+    pub(crate) type TimeoutOf<C, R, F> = <AsyncRuntimeOf<C> as crate::AsyncRuntime>::Timeout<R, F>;
+
+    // Usually used types
+    pub(crate) type LogIdOf<C> = crate::LogId<NodeIdOf<C>>;
+    pub(crate) type VoteOf<C> = crate::Vote<NodeIdOf<C>>;
+    pub(crate) type LeaderIdOf<C> = crate::LeaderId<NodeIdOf<C>>;
+    pub(crate) type CommittedLeaderIdOf<C> = crate::CommittedLeaderId<NodeIdOf<C>>;
 }

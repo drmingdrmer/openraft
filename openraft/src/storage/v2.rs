@@ -9,6 +9,7 @@ use crate::storage::v2::sealed::Sealed;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
+use crate::OptionalSync;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
@@ -43,7 +44,7 @@ pub(crate) mod sealed {
 ///   write request before a former write request is completed. This rule applies to both `vote` and
 ///   `log` IO. E.g., Saving a vote and appending a log entry must be serialized too.
 #[add_async_trait]
-pub trait RaftLogStorage<C>: Sealed + RaftLogReader<C> + Send + Sync + 'static
+pub trait RaftLogStorage<C>: Sealed + RaftLogReader<C> + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Log reader type.
@@ -83,6 +84,9 @@ where C: RaftTypeConfig
     ///
     /// If the state machine flushes state to disk before
     /// returning from `apply()`, then the application does not need to implement this method.
+    /// Otherwise, this method is also optional(but not recommended), but your application has to
+    /// deal with state reversion of state machine carefully upon restart. E.g., do not serve
+    /// read operation a new `commit` message is received.
     ///
     /// See: [`docs::data::log_pointers`].
     ///
@@ -103,7 +107,7 @@ where C: RaftTypeConfig
     /// It should returns immediately after saving the input log entries in memory, and calls the
     /// `callback` when the entries are persisted on disk, i.e., avoid blocking.
     ///
-    /// This method is still async because preparing preparing the IO is usually async.
+    /// This method is still async because preparing the IO is usually async.
     ///
     /// ### To ensure correctness:
     ///
@@ -141,7 +145,7 @@ where C: RaftTypeConfig
 /// Snapshot is part of the state machine, because usually a snapshot is the persisted state of the
 /// state machine.
 #[add_async_trait]
-pub trait RaftStateMachine<C>: Sealed + Send + Sync + 'static
+pub trait RaftStateMachine<C>: Sealed + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Snapshot builder type.

@@ -22,7 +22,7 @@ fn m23() -> Membership<u64, ()> {
 
 fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::default();
-    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng.state.enable_validation(false); // Disable validation for incomplete state
 
     eng.state.committed = Some(log_id(1, 1, 1));
     eng.state.membership_state = MembershipState::new(
@@ -68,7 +68,7 @@ fn test_following_handler_commit_entries_ge_accepted() -> anyhow::Result<()> {
         eng.state.membership_state
     );
     assert_eq!(
-        vec![Command::Apply {
+        vec![Command::Commit {
             seq: 1,
             already_committed: Some(log_id(1, 1, 1)),
             upto: log_id(1, 1, 2),
@@ -98,7 +98,7 @@ fn test_following_handler_commit_entries_le_accepted() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::Apply {
+            Command::Commit {
                 seq: 1,
                 already_committed: Some(log_id(1, 1, 1)),
                 upto: log_id(2, 1, 3)

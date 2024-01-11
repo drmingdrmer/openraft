@@ -1,9 +1,10 @@
 //! Replication stream.
 
+pub(crate) mod hint;
 mod replication_session_id;
-mod response;
+pub(crate) mod request;
+pub(crate) mod response;
 
-use std::fmt;
 use std::io::SeekFrom;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,6 +12,10 @@ use std::time::Duration;
 use anyerror::AnyError;
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
+use request::Data;
+use request::DataWithId;
+use request::Replicate;
+use response::ReplicationResult;
 pub(crate) use response::Response;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
@@ -24,7 +29,10 @@ use crate::core::notify::Notify;
 use crate::display_ext::DisplayOption;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::HigherVote;
+use crate::error::Infallible;
+use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
+use crate::error::RaftError;
 use crate::error::ReplicationClosed;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
@@ -38,9 +46,13 @@ use crate::network::RaftNetworkFactory;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
+use crate::replication::hint::ReplicationHint;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::Snapshot;
+use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::JoinHandleOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ErrorSubject;
@@ -48,7 +60,7 @@ use crate::ErrorVerb;
 use crate::Instant;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::NodeId;
+use crate::RaftLogId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageIOError;
@@ -59,7 +71,7 @@ pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
     /// The spawn handle the `ReplicationCore` task.
-    pub(crate) join_handle: <C::AsyncRuntime as AsyncRuntime>::JoinHandle<Result<(), ReplicationClosed>>,
+    pub(crate) join_handle: JoinHandleOf<C, Result<(), ReplicationClosed>>,
 
     /// The channel used for communicating with the replication task.
     pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<C>>,
@@ -110,6 +122,10 @@ where
 
     /// Next replication action to run.
     next_action: Option<Data<C>>,
+
+    /// Appropriate number of entries to send.
+    /// This is only used by AppendEntries RPC.
+    entries_hint: ReplicationHint,
 }
 
 impl<C, N, LS> ReplicationCore<C, N, LS>
@@ -156,6 +172,7 @@ where
             tx_raft_core,
             rx_repl,
             next_action: None,
+            entries_hint: Default::default(),
         };
 
         let join_handle = C::AsyncRuntime::spawn(this.main().instrument(span));
@@ -169,17 +186,22 @@ where
             let action = self.next_action.take();
 
             let mut repl_id = None;
+            // Backup the log data for retrying.
+            let mut log_data = None;
 
             let res = match action {
                 None => Ok(None),
                 Some(d) => {
                     tracing::debug!(replication_data = display(&d), "{} send replication RPC", func_name!());
 
-                    repl_id = d.request_id;
+                    repl_id = d.request_id();
 
-                    match d.payload {
-                        Payload::Logs(log_id_range) => self.send_log_entries(d.request_id, log_id_range).await,
-                        Payload::Snapshot(snapshot_rx) => self.stream_snapshot(d.request_id, snapshot_rx).await,
+                    match d {
+                        Data::Logs(log) => {
+                            log_data = Some(log.clone());
+                            self.send_log_entries(log).await
+                        }
+                        Data::Snapshot(snap) => self.stream_snapshot(snap).await,
                     }
                 }
             };
@@ -188,7 +210,7 @@ where
 
             match res {
                 Ok(next) => {
-                    // reset backoff
+                    // reset backoff at once if replication succeeds
                     self.backoff = None;
 
                     // If the RPC was successful but not finished, continue.
@@ -225,28 +247,32 @@ where
                         ReplicationError::RPCError(err) => {
                             tracing::error!(err = display(&err), "RPCError");
 
-                            if let Some(request_id) = repl_id {
-                                let _ = self.tx_raft_core.send(Notify::Network {
-                                    response: Response::Progress {
-                                        target: self.target,
-                                        request_id,
-                                        result: Err(err.to_string()),
-                                        session_id: self.session_id,
-                                    },
-                                });
-                            } else {
-                                tracing::warn!(
-                                    err = display(&err),
-                                    "encountered RPCError but request_id is None, no response is sent"
-                                );
-                            }
-
-                            // If there is an [`Unreachable`] error, we will backoff for a period of time
-                            // Backoff will be reset if there is a successful RPC is sent.
-                            if let RPCError::Unreachable(_unreachable) = err {
-                                if self.backoff.is_none() {
-                                    self.backoff = Some(self.network.backoff());
+                            let retry = match &err {
+                                RPCError::Timeout(_) => false,
+                                RPCError::Unreachable(_unreachable) => {
+                                    // If there is an [`Unreachable`] error, we will backoff for a
+                                    // period of time. Backoff will be reset if there is a
+                                    // successful RPC is sent.
+                                    if self.backoff.is_none() {
+                                        self.backoff = Some(self.network.backoff());
+                                    }
+                                    false
                                 }
+                                RPCError::PayloadTooLarge(too_large) => {
+                                    self.update_hint(too_large);
+
+                                    // PayloadTooLarge is a retryable error: retry at once.
+                                    self.next_action = Some(Data::Logs(log_data.unwrap()));
+                                    true
+                                }
+                                RPCError::Network(_) => false,
+                                RPCError::RemoteError(_) => false,
+                            };
+
+                            if retry {
+                                debug_assert!(self.next_action.is_some(), "next_action must be Some");
+                            } else {
+                                self.send_progress_error(repl_id, err);
                             }
                         }
                     };
@@ -259,10 +285,29 @@ where
                     Duration::from_millis(500)
                 });
 
-                self.backoff_drain_events(<C::AsyncRuntime as AsyncRuntime>::Instant::now() + duration).await?;
+                self.backoff_drain_events(InstantOf::<C>::now() + duration).await?;
             }
 
             self.drain_events().await?;
+        }
+    }
+
+    /// When a [`PayloadTooLarge`] error is received, update the hint for the next several RPC.
+    fn update_hint(&mut self, too_large: &PayloadTooLarge) {
+        const DEFAULT_ENTRIES_HINT_TTL: u64 = 10;
+
+        match too_large.action() {
+            RPCTypes::Vote => {
+                unreachable!("Vote RPC should not be too large")
+            }
+            RPCTypes::AppendEntries => {
+                self.entries_hint = ReplicationHint::new(too_large.entries_hint(), DEFAULT_ENTRIES_HINT_TTL);
+                tracing::debug!(entries_hint = debug(&self.entries_hint), "updated entries hint");
+            }
+            RPCTypes::InstallSnapshot => {
+                // TODO: handle too large
+                tracing::error!("InstallSnapshot RPC is too large, but it is not supported yet");
+            }
         }
     }
 
@@ -275,39 +320,63 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     async fn send_log_entries(
         &mut self,
-        request_id: Option<u64>,
-        log_id_range: LogIdRange<C::NodeId>,
+        log_ids: DataWithId<LogIdRange<C::NodeId>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
+        let request_id = log_ids.request_id();
+
         tracing::debug!(
             request_id = display(request_id.display()),
-            log_id_range = display(&log_id_range),
+            log_id_range = display(log_ids.data()),
             "send_log_entries",
         );
 
-        let start = log_id_range.prev_log_id.next_index();
-        let end = log_id_range.last_log_id.next_index();
+        // Series of logs to send, and the last log id to send
+        let (logs, sending_range) = {
+            let rng = log_ids.data();
 
-        let logs = if start == end {
-            vec![]
-        } else {
-            let logs = self.log_reader.try_get_log_entries(start..end).await?;
-            debug_assert_eq!(
-                logs.len(),
-                (end - start) as usize,
-                "expect logs {}..{} but got only {} entries",
-                start,
-                end,
-                logs.len()
-            );
-            logs
+            // The log index start and end to send.
+            let (start, end) = {
+                let start = rng.prev_log_id.next_index();
+                let end = rng.last_log_id.next_index();
+
+                if let Some(hint) = self.entries_hint.get() {
+                    let hint_end = start + hint;
+                    (start, std::cmp::min(end, hint_end))
+                } else {
+                    (start, end)
+                }
+            };
+
+            if start == end {
+                // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
+                let r = LogIdRange::new(rng.prev_log_id, rng.prev_log_id);
+                (vec![], r)
+            } else {
+                let logs = self.log_reader.try_get_log_entries(start..end).await?;
+                debug_assert_eq!(
+                    logs.len(),
+                    (end - start) as usize,
+                    "expect logs {}..{} but got only {} entries, first: {}, last: {}",
+                    start,
+                    end,
+                    logs.len(),
+                    logs.first().map(|ent| ent.get_log_id()).display(),
+                    logs.last().map(|ent| ent.get_log_id()).display()
+                );
+
+                let last_log_id = logs.last().map(|ent| *ent.get_log_id());
+
+                let r = LogIdRange::new(rng.prev_log_id, last_log_id);
+                (logs, r)
+            }
         };
 
-        let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+        let leader_time = InstantOf::<C>::now();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote,
-            prev_log_id: log_id_range.prev_log_id,
+            prev_log_id: sending_range.prev_log_id,
             leader_commit: self.committed,
             entries: logs,
         };
@@ -322,7 +391,7 @@ where
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let option = RPCOption::new(the_timeout);
-        let res = C::AsyncRuntime::timeout(the_timeout, self.network.append_entries(payload, option)).await;
+        let res = AsyncRuntimeOf::<C>::timeout(the_timeout, self.network.append_entries(payload, option)).await;
 
         tracing::debug!("append_entries res: {:?}", res);
 
@@ -334,56 +403,26 @@ where
                 timeout: the_timeout,
             };
             RPCError::Timeout(to)
-        })?;
+        })?; // return Timeout error
+
         let append_resp = append_res?;
 
         tracing::debug!(
-            req = display(&log_id_range),
+            req = display(&sending_range),
             resp = display(&append_resp),
             "append_entries resp"
         );
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                self.update_matching(request_id, leader_time, log_id_range.last_log_id);
-                Ok(None)
+                let matching = sending_range.last_log_id;
+                let next = self.finish_success_append(matching, leader_time, log_ids);
+                Ok(next)
             }
             AppendEntriesResponse::PartialSuccess(matching) => {
-                debug_assert!(
-                    matching <= log_id_range.last_log_id,
-                    "matching ({}) should be <= last_log_id ({})",
-                    matching.display(),
-                    log_id_range.last_log_id.display()
-                );
-                debug_assert!(
-                    matching.index() <= log_id_range.last_log_id.index(),
-                    "matching.index ({}) should be <= last_log_id.index ({})",
-                    matching.index().display(),
-                    log_id_range.last_log_id.index().display()
-                );
-                debug_assert!(
-                    matching >= log_id_range.prev_log_id,
-                    "matching ({}) should be >= prev_log_id ({})",
-                    matching.display(),
-                    log_id_range.prev_log_id.display()
-                );
-                debug_assert!(
-                    matching.index() >= log_id_range.prev_log_id.index(),
-                    "matching.index ({}) should be >= prev_log_id.index ({})",
-                    matching.index().display(),
-                    log_id_range.prev_log_id.index().display()
-                );
-
-                self.update_matching(request_id, leader_time, matching);
-                if matching < log_id_range.last_log_id {
-                    // TODO(9): an RPC has already been made, it should use a newer time
-                    Ok(Some(Data::new_logs(
-                        request_id,
-                        LogIdRange::new(matching, log_id_range.last_log_id),
-                    )))
-                } else {
-                    Ok(None)
-                }
+                Self::debug_assert_partial_success(&sending_range, &matching);
+                let next = self.finish_success_append(matching, leader_time, log_ids);
+                Ok(next)
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 debug_assert!(
@@ -400,21 +439,47 @@ where
                 }))
             }
             AppendEntriesResponse::Conflict => {
-                let conflict = log_id_range.prev_log_id;
+                let conflict = sending_range.prev_log_id;
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
 
                 let conflict = conflict.unwrap();
-                self.update_conflicting(request_id, leader_time, conflict);
+                self.send_progress_conflicting(request_id, leader_time, conflict);
 
                 Ok(None)
             }
         }
     }
 
-    fn update_conflicting(
+    /// Send the error result to RaftCore.
+    /// RaftCore will then submit another replication command.
+    fn send_progress_error(
         &mut self,
         request_id: Option<u64>,
-        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
+        err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, Infallible>>,
+    ) {
+        if let Some(request_id) = request_id {
+            let _ = self.tx_raft_core.send(Notify::Network {
+                response: Response::Progress {
+                    target: self.target,
+                    request_id,
+                    result: Err(err.to_string()),
+                    session_id: self.session_id,
+                },
+            });
+        } else {
+            tracing::warn!(
+                err = display(&err),
+                "encountered RPCError but request_id is None, no response is sent"
+            );
+        }
+    }
+
+    /// Send a `conflict` message to RaftCore.
+    /// RaftCore will then submit another replication command.
+    fn send_progress_conflicting(
+        &mut self,
+        request_id: Option<u64>,
+        leader_time: InstantOf<C>,
         conflict: LogId<C::NodeId>,
     ) {
         tracing::debug!(
@@ -448,10 +513,10 @@ where
     /// Update the `matching` log id, which is for tracking follower replication, and report the
     /// matched log id to `RaftCore` to commit an entry.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_matching(
+    fn send_progress_matching(
         &mut self,
         request_id: Option<u64>,
-        leader_time: <C::AsyncRuntime as AsyncRuntime>::Instant,
+        leader_time: InstantOf<C>,
         new_matching: Option<LogId<C::NodeId>>,
     ) {
         tracing::debug!(
@@ -463,7 +528,22 @@ where
             func_name!()
         );
 
-        debug_assert!(self.matching <= new_matching);
+        if cfg!(feature = "loosen-follower-log-revert") {
+            if self.matching > new_matching {
+                tracing::warn!(
+                "follower log is reverted from {} to {}; with 'loosen-follower-log-revert' enabled, this is allowed",
+                self.matching.display(),
+                new_matching.display(),
+            );
+            }
+        } else {
+            debug_assert!(
+                self.matching <= new_matching,
+                "follower log is reverted from {} to {}",
+                self.matching.display(),
+                new_matching.display(),
+            );
+        }
 
         self.matching = new_matching;
 
@@ -487,11 +567,8 @@ where
     /// In the backoff period, we should not send out any RPCs, but we should still receive events,
     /// in case the channel is closed, it should quit at once.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn backoff_drain_events(
-        &mut self,
-        until: <C::AsyncRuntime as AsyncRuntime>::Instant,
-    ) -> Result<(), ReplicationClosed> {
-        let d = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+    pub async fn backoff_drain_events(&mut self, until: InstantOf<C>) -> Result<(), ReplicationClosed> {
+        let d = until - InstantOf::<C>::now();
         tracing::warn!(
             interval = debug(d),
             "{} backoff mode: drain events without processing them",
@@ -499,7 +576,7 @@ where
         );
 
         loop {
-            let sleep_duration = until - <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+            let sleep_duration = until - InstantOf::<C>::now();
             let sleep = C::AsyncRuntime::sleep(sleep_duration);
 
             let recv = self.rx_repl.recv();
@@ -541,14 +618,8 @@ where
             let m = &self.matching;
 
             // empty message, just for syncing the committed index
-            self.next_action = Some(Data {
-                // request_id==None will be ignored by RaftCore.
-                request_id: None,
-                payload: Payload::Logs(LogIdRange {
-                    prev_log_id: *m,
-                    last_log_id: *m,
-                }),
-            });
+            // request_id==None will be ignored by RaftCore.
+            self.next_action = Some(Data::new_logs(None, LogIdRange::new(*m, *m)));
         }
 
         Ok(())
@@ -613,9 +684,11 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     async fn stream_snapshot(
         &mut self,
-        request_id: Option<u64>,
-        rx: oneshot::Receiver<Option<Snapshot<C>>>,
+        snapshot_rx: DataWithId<oneshot::Receiver<Option<Snapshot<C>>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
+        let request_id = snapshot_rx.request_id();
+        let rx = snapshot_rx.into_data();
+
         tracing::info!(request_id = display(request_id.display()), "{}", func_name!());
 
         let snapshot = rx.await.map_err(|e| {
@@ -642,24 +715,31 @@ where
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-        let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
 
         loop {
             // Build the RPC.
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
-            let leader_time = <C::AsyncRuntime as AsyncRuntime>::Instant::now();
+            let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
+            while buf.capacity() > buf.len() {
+                let n = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+                if n == 0 {
+                    break;
+                }
+            }
+
+            let n_read = buf.len();
+
+            let leader_time = InstantOf::<C>::now();
 
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
                 vote: self.session_id.vote,
                 meta: snapshot.meta.clone(),
                 offset,
-                data: Vec::from(&buf[..n_read]),
+                data: buf,
                 done,
             };
-            buf.clear();
 
             // Send the RPC over to the target.
             tracing::debug!(
@@ -727,7 +807,7 @@ where
                 );
 
                 // TODO: update leader lease for every successfully sent chunk.
-                self.update_matching(request_id, leader_time, snapshot.meta.last_log_id);
+                self.send_progress_matching(request_id, leader_time, snapshot.meta.last_log_id);
 
                 return Ok(None);
             }
@@ -739,148 +819,53 @@ where
             self.try_drain_events().await?;
         }
     }
-}
 
-/// Request to replicate a chunk of data, logs or snapshot.
-///
-/// It defines what data to send to a follower/learner and an id to identify who is sending this
-/// data.
-#[derive(Debug)]
-pub(crate) struct Data<C>
-where C: RaftTypeConfig
-{
-    /// The id of this replication request.
+    /// Update matching and build a return value for a successful append-entries RPC.
     ///
-    /// A replication request without an id does not need to send a reply to the caller.
-    request_id: Option<u64>,
+    /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.
+    fn finish_success_append(
+        &mut self,
+        matching: Option<LogId<C::NodeId>>,
+        leader_time: InstantOf<C>,
+        log_ids: DataWithId<LogIdRange<C::NodeId>>,
+    ) -> Option<Data<C>> {
+        self.send_progress_matching(log_ids.request_id(), leader_time, matching);
 
-    payload: Payload<C>,
-}
-
-impl<C: RaftTypeConfig> fmt::Display for Data<C> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{id: {}, payload: {}}}", self.request_id.display(), self.payload)
-    }
-}
-
-impl<C> MessageSummary<Data<C>> for Data<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        match &self.payload {
-            Payload::Logs(log_id_range) => {
-                format!("Logs{{request_id={}, {}}}", self.request_id.display(), log_id_range)
-            }
-            Payload::Snapshot(_) => {
-                format!("Snapshot{{request_id={}}}", self.request_id.display())
-            }
-        }
-    }
-}
-
-impl<C> Data<C>
-where C: RaftTypeConfig
-{
-    fn new_logs(request_id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self {
-            request_id,
-            payload: Payload::Logs(log_id_range),
+        if matching < log_ids.data().last_log_id {
+            Some(Data::new_logs(
+                log_ids.request_id(),
+                LogIdRange::new(matching, log_ids.data().last_log_id),
+            ))
+        } else {
+            None
         }
     }
 
-    fn new_snapshot(request_id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
-        Self {
-            request_id,
-            payload: Payload::Snapshot(snapshot_rx),
-        }
-    }
-}
-
-/// The data to replication.
-///
-/// Either a series of logs or a snapshot.
-pub(crate) enum Payload<C>
-where C: RaftTypeConfig
-{
-    Logs(LogIdRange<C::NodeId>),
-    Snapshot(oneshot::Receiver<Option<Snapshot<C>>>),
-}
-
-impl<C> fmt::Display for Payload<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Logs(log_id_range) => {
-                write!(f, "Logs({})", log_id_range)
-            }
-            Self::Snapshot(_) => {
-                write!(f, "Snapshot()")
-            }
-        }
-    }
-}
-
-impl<C> fmt::Debug for Payload<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Logs(log_id_range) => {
-                write!(f, "Logs({})", log_id_range)
-            }
-            Self::Snapshot(_) => {
-                write!(f, "Snapshot()")
-            }
-        }
-    }
-}
-
-/// Result of an replication action.
-#[derive(Clone, Debug)]
-pub(crate) enum ReplicationResult<NID: NodeId> {
-    Matching(Option<LogId<NID>>),
-    Conflict(LogId<NID>),
-}
-
-/// A replication request sent by RaftCore leader state to replication stream.
-pub(crate) enum Replicate<C>
-where C: RaftTypeConfig
-{
-    /// Inform replication stream to forward the committed log id to followers/learners.
-    Committed(Option<LogId<C::NodeId>>),
-
-    /// Send an empty AppendEntries RPC as heartbeat.
-    Heartbeat,
-
-    /// Send a chunk of data, e.g., logs or snapshot.
-    Data(Data<C>),
-}
-
-impl<C> Replicate<C>
-where C: RaftTypeConfig
-{
-    pub(crate) fn logs(id: Option<u64>, log_id_range: LogIdRange<C::NodeId>) -> Self {
-        Self::Data(Data::new_logs(id, log_id_range))
-    }
-
-    pub(crate) fn snapshot(id: Option<u64>, snapshot_rx: oneshot::Receiver<Option<Snapshot<C>>>) -> Self {
-        Self::Data(Data::new_snapshot(id, snapshot_rx))
-    }
-}
-
-impl<C> MessageSummary<Replicate<C>> for Replicate<C>
-where C: RaftTypeConfig
-{
-    fn summary(&self) -> String {
-        match self {
-            Replicate::Committed(c) => {
-                format!("Replicate::Committed: {:?}", c)
-            }
-            Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
-            Replicate::Data(d) => {
-                format!("Replicate::Data({})", d.summary())
-            }
-        }
+    /// Check if partial success result(`matching`) is valid for a given log range to send.
+    fn debug_assert_partial_success(to_send: &LogIdRange<C::NodeId>, matching: &Option<LogId<C::NodeId>>) {
+        debug_assert!(
+            matching <= &to_send.last_log_id,
+            "matching ({}) should be <= last_log_id ({})",
+            matching.display(),
+            to_send.last_log_id.display()
+        );
+        debug_assert!(
+            matching.index() <= to_send.last_log_id.index(),
+            "matching.index ({}) should be <= last_log_id.index ({})",
+            matching.index().display(),
+            to_send.last_log_id.index().display()
+        );
+        debug_assert!(
+            matching >= &to_send.prev_log_id,
+            "matching ({}) should be >= prev_log_id ({})",
+            matching.display(),
+            to_send.prev_log_id.display()
+        );
+        debug_assert!(
+            matching.index() >= to_send.prev_log_id.index(),
+            "matching.index ({}) should be >= prev_log_id.index ({})",
+            matching.index().display(),
+            to_send.prev_log_id.index().display()
+        );
     }
 }

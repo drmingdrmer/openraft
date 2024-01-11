@@ -13,7 +13,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
-use crate::replication::ReplicationResult;
+use crate::replication::response::ReplicationResult;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::EffectiveMembership;
@@ -246,7 +246,7 @@ where C: RaftTypeConfig
             });
 
             let seq = self.output.next_sm_seq();
-            self.output.push_command(Command::Apply {
+            self.output.push_command(Command::Commit {
                 seq,
                 already_committed: prev_committed,
                 upto: self.state.committed().copied().unwrap(),

@@ -18,12 +18,13 @@ repository    = { workspace = true }
 [dependencies]
 
 [dev-dependencies]
-openraft           = { path="../openraft", version = "0.8.4" }
+openraft           = { path="../openraft", version = "0.9.0" }
 openraft-memstore  = { path="../memstore" }
 
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }
 async-entry        = { workspace = true }
+derive_more        = { workspace = true }
 futures            = { workspace = true }
 lazy_static        = { workspace = true }
 maplit             = { workspace = true }

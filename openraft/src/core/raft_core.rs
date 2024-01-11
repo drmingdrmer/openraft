@@ -29,6 +29,7 @@ use crate::core::command_state::CommandState;
 use crate::core::notify::Notify;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::AppendEntriesTx;
+use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::ClientWriteTx;
 use crate::core::raft_msg::InstallSnapshotTx;
 use crate::core::raft_msg::RaftMsg;
@@ -45,7 +46,6 @@ use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::entry::FromAppData;
 use crate::entry::RaftEntry;
-use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -72,16 +72,18 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::replication;
-use crate::replication::Replicate;
+use crate::replication::request::Replicate;
+use crate::replication::response::ReplicationResult;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
-use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::InstantOf;
 use crate::utime::UTime;
 use crate::AsyncRuntime;
 use crate::ChangeMembers;
@@ -133,9 +135,6 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
 ///
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
-    /// Channels to send result back to client when logs are committed.
-    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
-
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
@@ -148,7 +147,6 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
-            client_resp_channels: Default::default(),
             replications: BTreeMap::new(),
             next_heartbeat: <C::AsyncRuntime as AsyncRuntime>::Instant::now(),
         }
@@ -183,11 +181,14 @@ where
 
     pub(crate) engine: Engine<C>,
 
+    /// Channels to send result back to client when logs are applied.
+    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
+
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, LS>>,
-    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, LS>>,
+    pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C>>,
+    pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -262,11 +263,18 @@ where
     // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
     //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(
-        &mut self,
-        tx: ResultSender<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    ) {
+    pub(super) async fn handle_check_is_leader_request(&mut self, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
+
+        let resp = {
+            let read_log_id = self.engine.state.get_read_log_id().copied();
+
+            // TODO: this applied is a little stale when being returned to client.
+            //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
+            let applied = self.engine.state.io_applied().copied();
+
+            (read_log_id, applied)
+        };
 
         let my_id = self.id;
         let my_vote = *self.engine.state.vote_ref();
@@ -277,7 +285,7 @@ where
         let mut granted = btreeset! {my_id};
 
         if eff_mem.is_quorum(granted.iter()) {
-            let _ = tx.send(Ok(()));
+            let _ = tx.send(Ok(resp));
             return;
         }
 
@@ -350,7 +358,7 @@ where
                     }
                 };
 
-                // If we receive a response with a greater term, then revert to follower and abort this
+                // If we receive a response with a greater vote, then revert to follower and abort this
                 // request.
                 if let AppendEntriesResponse::HigherVote(vote) = append_res {
                     debug_assert!(
@@ -367,7 +375,7 @@ where
                     });
 
                     if let Err(_e) = send_res {
-                        tracing::error!("fail to send HigherVote to raft core");
+                        tracing::error!("fail to send HigherVote to RaftCore");
                     }
 
                     // we are no longer leader so error out early
@@ -379,7 +387,7 @@ where
                 granted.insert(target);
 
                 if eff_mem.is_quorum(granted.iter()) {
-                    let _ = tx.send(Ok(()));
+                    let _ = tx.send(Ok(resp));
                     return;
                 }
             }
@@ -394,7 +402,11 @@ where
             .into()));
         };
 
-        C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        // TODO: do not spawn, manage read requests with a queue by RaftCore
+
+        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::AsyncRuntime::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -459,9 +471,7 @@ where
 
         // Install callback channels.
         if let Some(tx) = tx {
-            if let Some(l) = &mut self.leader_data {
-                l.client_resp_channels.insert(index, tx);
-            }
+            self.client_resp_channels.insert(index, tx);
         }
 
         true
@@ -521,7 +531,7 @@ where
             vote: *st.io_state().vote(),
             last_log_index: st.last_log_id().index(),
             last_applied: st.io_applied().copied(),
-            snapshot: st.snapshot_meta.last_log_id,
+            snapshot: st.io_snapshot_last_log_id().copied(),
             purged: st.io_purged().copied(),
 
             // --- cluster ---
@@ -702,17 +712,15 @@ where
     pub(crate) fn handle_apply_result(&mut self, res: ApplyResult<C>) {
         tracing::debug!(last_applied = display(res.last_applied), "{}", func_name!());
 
-        if let Some(l) = &mut self.leader_data {
-            let mut results = res.apply_results.into_iter();
-            let mut applying_entries = res.applying_entries.into_iter();
+        let mut results = res.apply_results.into_iter();
+        let mut applying_entries = res.applying_entries.into_iter();
 
-            for log_index in res.since..res.end {
-                let ent = applying_entries.next().unwrap();
-                let apply_res = results.next().unwrap();
-                let tx = l.client_resp_channels.remove(&log_index);
+        for log_index in res.since..res.end {
+            let ent = applying_entries.next().unwrap();
+            let apply_res = results.next().unwrap();
+            let tx = self.client_resp_channels.remove(&log_index);
 
-                Self::send_response(ent, apply_res, tx);
-            }
+            Self::send_response(ent, apply_res, tx);
         }
     }
 
@@ -997,7 +1005,9 @@ where
             let id = self.id;
             let option = RPCOption::new(ttl);
 
-            C::AsyncRuntime::spawn(
+            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::AsyncRuntime::spawn(
                 async move {
                     let tm_res = C::AsyncRuntime::timeout(ttl, client.vote(req, option)).await;
                     let res = match tm_res {
@@ -1063,7 +1073,7 @@ where
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, LS>) {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1120,7 +1130,7 @@ where
                 self.change_membership(changes, retain, tx);
             }
             RaftMsg::ExternalRequest { req } => {
-                req(&self.engine.state, &mut self.log_store, &mut self.network);
+                req(&self.engine.state);
             }
             RaftMsg::ExternalCommand { cmd } => {
                 tracing::info!(cmd = debug(&cmd), "received RaftMsg::ExternalCommand: {}", func_name!());
@@ -1311,7 +1321,15 @@ where
                             meta.summary(),
                             func_name!()
                         );
+
+                        // Update in-memory state first, then the io state.
+                        // In-memory state should always be ahead or equal to the io state.
+
+                        let last_log_id = meta.last_log_id;
                         self.engine.finish_building_snapshot(meta);
+
+                        let st = self.engine.state.io_state_mut();
+                        st.update_snapshot(last_log_id);
                     }
                     sm::Response::ReceiveSnapshotChunk(_) => {
                         tracing::info!("sm::StateMachine command done: ReceiveSnapshotChunk: {}", func_name!());
@@ -1324,7 +1342,9 @@ where
                         );
 
                         if let Some(meta) = meta {
-                            self.engine.state.io_state_mut().update_applied(meta.last_log_id);
+                            let st = self.engine.state.io_state_mut();
+                            st.update_applied(meta.last_log_id);
+                            st.update_snapshot(meta.last_log_id);
                         }
                     }
                     sm::Response::Apply(res) => {
@@ -1409,7 +1429,7 @@ where
         &mut self,
         target: C::NodeId,
         id: u64,
-        result: Result<UTime<ReplicationResult<C::NodeId>, <C::AsyncRuntime as AsyncRuntime>::Instant>, String>,
+        result: Result<UTime<ReplicationResult<C::NodeId>, InstantOf<C>>, String>,
     ) {
         tracing::debug!(
             target = display(target),
@@ -1519,16 +1539,6 @@ where
                 self.leader_data = Some(LeaderData::new());
             }
             Command::QuitLeader => {
-                if let Some(l) = &mut self.leader_data {
-                    // Leadership lost, inform waiting clients
-                    let chans = std::mem::take(&mut l.client_resp_channels);
-                    for (_, tx) in chans.into_iter() {
-                        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                            leader_id: None,
-                            leader_node: None,
-                        })));
-                    }
-                }
                 self.leader_data = None;
             }
             Command::AppendEntry { entry } => {
@@ -1565,6 +1575,30 @@ where
             }
             Command::DeleteConflictLog { since } => {
                 self.log_store.truncate(since).await?;
+
+                // Inform clients waiting for logs to be applied.
+                let removed = self.client_resp_channels.split_off(&since.index);
+                if !removed.is_empty() {
+                    let leader_id = self.current_leader();
+                    let leader_node = self.get_leader_node(leader_id);
+
+                    // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+                    #[allow(clippy::let_underscore_future)]
+                    let _ = AsyncRuntimeOf::<C>::spawn(async move {
+                        for (log_index, tx) in removed.into_iter() {
+                            let res = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                                leader_id,
+                                leader_node: leader_node.clone(),
+                            })));
+
+                            tracing::debug!(
+                                "sent ForwardToLeader for log_index: {}, is_ok: {}",
+                                log_index,
+                                res.is_ok()
+                            );
+                        }
+                    });
+                }
             }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
@@ -1578,7 +1612,7 @@ where
                     unreachable!("it has to be a leader!!!");
                 }
             }
-            Command::Apply {
+            Command::Commit {
                 seq,
                 ref already_committed,
                 ref upto,
