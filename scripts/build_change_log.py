@@ -5,6 +5,7 @@ import subprocess
 from subprocess import run,capture_output
 import os
 import re
+import re
 import toml
 import sys
 import yaml
@@ -189,17 +190,18 @@ def changes(frm, to):
         rst.append(item)
 
     return rst
-
+    
 def replace_subject(line):
     output = line
     for (ptn, repl) in replace_subjects:
         output = re.sub(ptn, repl, output)
 
-    if output != line:
-        print("--- Fix commit message, replace", ptn, 'with', repl)
-        print("input: ", line)
-        print("output:", output)
-        print()
+    return output
+
+def replace_subject(line):
+    output = line
+    for (ptn, repl) in replace_subjects:
+        output = re.sub(ptn, repl, output)
     return output
 
 def if_ignore(line):
