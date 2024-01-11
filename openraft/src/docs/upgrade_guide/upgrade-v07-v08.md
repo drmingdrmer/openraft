@@ -109,6 +109,11 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
 - To upgrade to `v0.8`, data types have generic type parameters need to be updated, such as:
     - `LogId` becomes `LogId<u64>`,
     - `Membership` becomes `Membership<u64, openraft::EmptyNode>`,
+- To upgrade to `v0.8`, data types have generic type parameters need to be updated, such as:
+    - `LogId` becomes `LogId<u64>`,
+    - `Membership` becomes `Membership<u64, openraft::EmptyNode>`,
+    - `Entry<D>` becomes `Entry<MyTypeConfig>`.
+  Where `u64` is node id type in `v0.7` and `MyTypeConfig` is the type config defined in the previous step.
     - `Entry<D>` becomes `Entry<MyTypeConfig>`.
   Where `u64` is node id type in `v0.7` and `MyTypeConfig` is the type config defined in the previous step.
 
