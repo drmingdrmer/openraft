@@ -120,7 +120,7 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
 - Update `RaftStorage` methods implementation according to the
   [Storage API changes](#storage-api-changes) chapter.
 
-    - Replace `HardState` with `Vote`, and `[read/save]_hard_state` with `[read/write]_vote`.
+    - Replace `HardState` with `Vote`.
     - Replace `EffectiveMembership` with `StoredMembership`.
 
   In order to ensure compatibility with version `0.7`, the storage implementation must replace the types used for deserialization with those supplied by [`compat::compat07`].
