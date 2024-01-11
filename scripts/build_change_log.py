@@ -15,7 +15,7 @@ with open('scripts/change-types.yaml', 'r') as f:
 
 typs = {x:x for x in typs}
 
-# categories has another mapping to fix typo in commit message
+# Remove the unnecessary mapping in the categories dictionary
 categories = {
         'data-change:':  typs['data-change'],
         'data-changes:': typs['data-change'],
@@ -25,36 +25,13 @@ categories = {
         'api-change:':   typs['api-change'],
         'new-feature:':  typs['new-feature'],
         'improve:':      typs['improve'],
-        'Improve:':      typs['improve'],
         'internal:':     typs['internal'],
         'doc:':          typs['doc'],
-        'Doc:':          typs['doc'],
         'refactor:':     typs['refactor'],
         'fixbug:':       typs['fixbug'],
         'fixdoc:':       typs['fixdoc'],
-        'Fixdoc:':       typs['fixdoc'],
         'dep:':          typs['dep'],
         'ci:':           typs['ci'],
-        'CI:':           typs['ci'],
-
-        # fix typo
-        'Change:':       typs['api-change'],
-        'change:':       typs['api-change'],
-        'changes:':      typs['api-change'],
-        'api-changes:':  typs['api-change'],
-        'Add:':          typs['new-feature'],
-        'add:':          typs['new-feature'],
-        'Feature:':      typs['new-feature'],
-        'feature:':      typs['new-feature'],
-        'Features:':     typs['new-feature'],
-        'features:':     typs['new-feature'],
-        'new-features:': typs['new-feature'],
-        'docs:':         typs['doc'],
-        'fix:':          typs['fixbug'],
-        'Fix:':          typs['fixbug'],
-        'fixup:':        typs['fixbug'],
-
-        'test:':         typs['test'],
         'build(deps):':  typs['dep'],
         'Build(deps):':  typs['dep'],
 
