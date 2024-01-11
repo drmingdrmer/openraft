@@ -429,7 +429,7 @@ Function `get_log_entries()` and `try_get_log_entry()` are provided with default
 [`compat::compat07::Entry`]: `crate::compat::compat07::Entry`
 
 [compatibility test]: https://github.com/datafuselabs/openraft/blob/release-0.8/rocksstore-compat07/src/compatibility_test.rs
-[`RaftStorage` test suite]: https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs
+the compatibility test for the application storage API: rocksstore-compat07 at [rocksstore-compat07]
 
 
 [`compat::testing::Suite07`]: `crate::compat::testing::Suite07`
