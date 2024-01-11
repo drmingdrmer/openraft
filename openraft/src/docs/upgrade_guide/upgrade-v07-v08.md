@@ -39,7 +39,7 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
 
 - Add type config to define concrete types to use for openraft, See [`RaftTypeConfig`].
 
-  Openraft `v0.8` introduces several more generic types to define application types that are defined as associated types of `RaftTypeConfig`.
+  Openraft `v0.8` introduces a macro `declare_raft_types` to declare these generic application types that are defined as associated types of `RaftTypeConfig`.
   An `v0.8` application should implement [`RaftTypeConfig`]:
 
   ```ignore
@@ -89,6 +89,13 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
 
   ```ignore
   openraft::declare_raft_types!(
+	pub MyTypeConfig:
+		D = ClientRequest,
+		R = ClientResponse,
+		NodeId = u64,
+		Node = openraft::EmptyNode,
+		Entry = openraft::entry::Entry<MyTypeConfig>,
+		SnapshotData = Cursor<Vec<u8>>,
       pub MyTypeConfig:
           D = ClientRequest,
           R = ClientResponse,
