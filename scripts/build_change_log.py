@@ -13,7 +13,55 @@ from collections import defaultdict
 with open('scripts/change-types.yaml', 'r') as f:
     typs = yaml.load(f.read())
 
-typs = {x:x for x in typs}
+typs =
+        {
+            'data-change': 'data-change',
+            'data-changes': 'data-change',
+            'DataChange:': 'data-change',
+            'DataChanges:': 'data-change',
+            'api-change:': 'api-change',
+            'new-feature:': 'new-feature',
+            'improve:': 'improve',
+            'Improve:': 'improve',
+            'internal:': 'internal',
+            'doc:': 'doc',
+            'Doc:': 'doc',
+            'refactor:': 'refactor',
+            'fixbug:': 'fixbug',
+            'fixdoc:': 'fixdoc',
+            'Fixdoc:': 'fixdoc',
+            'dep:': 'dep',
+            'ci:': 'ci',
+            'CI:': 'ci',
+            'Change:': 'api-change',
+            'change:': 'api-change',
+            'changes:': 'api-change',
+            'api-changes:': 'api-change',
+            'Add:': 'new-feature',
+            'add:': 'new-feature',
+            'Feature:': 'new-feature',
+            'feature:': 'new-feature',
+            'Features:': 'new-feature',
+            'features:': 'new-feature',
+            'new-features:': 'new-feature',
+            'docs:': 'doc',
+            'fix:': 'fixbug',
+            'Fix:': 'fixbug',
+            'fixup:': 'fixbug',
+            'test:': 'test',
+            'build(deps):': 'dep',
+            'Build(deps):': 'dep',
+            'Update:': 'other',
+            'update:': 'other',
+            'turn:': 'other',
+            'replace:': 'refactor',
+            'format:': 'refactor',
+            'use:': 'refactor',
+            'Create:': 'other',
+            'BumpVer:': 'other',
+            'Chore:': 'other',
+            'chore:': 'other'
+        }
 
 # categories has another mapping to fix typo in commit message
 categories = {
@@ -233,7 +281,8 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
     If ``since`` is specified, build change log since ``since`` upto ``commit``.
     '''
 
-    fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver)
+    fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver.lstrip('v'))
+    # Handle different commit message formats or categories
     if os.path.exists(fn):
         print("--- Version {new_ver} change log exists, skip...".format(new_ver=new_ver))
         print("--- To rebuild it, delete {fn} and re-run".format(fn=fn))
@@ -246,7 +295,9 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
         new_ver = new_ver.lstrip('v')
         new_ver = semantic_version.Version(new_ver)
         tags = [t for t in tags if t < new_ver]
+        tags.sort()
         latest = tags[-1]
+        # Ensure the latest tags are listed
     else:
         latest = since
 
