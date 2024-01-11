@@ -50,6 +50,21 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
       type NodeId = u64;
       type Node = openraft::EmptyNode;
       type Entry = openraft::entry::Entry<MyTypeConfig>;
+      type SnapshotData = Cursor<Vec<u8>;
+  }
+  ```
+
+  Openraft `v0.8` introduces several more generic types to define application types that are defined as associated types of `RaftTypeConfig`.
+  An `v0.8` application should implement [`RaftTypeConfig`]:
+
+  ```ignore
+  pub(crate) struct MyTypeConfig {}
+  impl RaftTypeConfig for MyTypeConfig {
+      type D = ClientRequest;
+      type R = ClientResponse;
+      type NodeId = u64;
+      type Node = openraft::EmptyNode;
+      type Entry = openraft::entry::Entry<MyTypeConfig>;
       type SnapshotData = Cursor<Vec<u8>>;
   }
   ```
