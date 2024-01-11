@@ -17,6 +17,8 @@ import re
 import toml
 import sys
 
+import re
+import collections
 from semantic_version import Version
 
 # Define missing functions and classes
@@ -232,7 +234,7 @@ def norm_changes(changes):
 
         c = rst[catetitle]
         bodylines = ch['body'].strip().splitlines()
-        bodylines = ['    ' + x for x in bodylines]
+        bodylines = [re.sub(r'^', '    ', x) for x in bodylines]
         desc = {
                 'hash': ch['hash'],
                 "content": cont,
