@@ -150,6 +150,7 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
   where
       C: RaftTypeConfig,
       N: RaftNetworkFactory<C>,
+	  S: RaftStorage<C>,
       S: RaftStorage<C>,
   ```
 
