@@ -21,7 +21,7 @@ import sys
 
 import re
 import collections
-from semantic_version import Version
+from import semantic_version import Version
 
 # Define missing functions and classes
 replace_subjects = []
@@ -346,7 +346,7 @@ def load_cargo_version():
         ver = t['workspace']['package']['version']
 
     print("--- openraft/Cargo.toml version is",  ver)
-    return ver
+    ver
 
 
 if __name__ == "__main__":
