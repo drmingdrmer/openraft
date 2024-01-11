@@ -126,8 +126,8 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
   In order to ensure compatibility with version `0.7`, the storage implementation must replace the types used for deserialization with those supplied by [`compat::compat07`].
   [`compat::compat07`] includes types like [`compat::compat07::Entry`] that can be deserialized from both `v0.7` serialized `Entry` and `v0.8` serialized `Entry`.
 
-- Move `RaftNetwork` methods implementation according to the
-  [Network-API-changes](#network-api-changes) chapter.
+- Move `RaftNetwork` and `RaftNetworkFactory` methods implementation according to the
+  [Network API changes](#network-api-changes), and update the code to split `RaftNetwork` and `RaftNetworkFactory` as follows:
 
 - Use `v0.8` [`Adaptor`] to install `RaftStorage` to `Raft`.
 
