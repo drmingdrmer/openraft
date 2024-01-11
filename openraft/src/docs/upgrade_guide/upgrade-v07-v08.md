@@ -1,4 +1,4 @@
-# Guide for upgrading from [v0.7](https://github.com/datafuselabs/openraft/tree/v0.7.4) to [v0.8](https://github.com/datafuselabs/openraft/tree/release-0.8):
+# Guide for upgrading from `v0.7` to `v0.8`:
 
 [Change log v0.8](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md)
 
@@ -13,7 +13,7 @@ To upgrade:
 1. Update the application to adopt `v0.8` openraft.
    The updated `RaftStorage` implementation must pass [`testing::Suite`](`crate::testing::Suite`):
    an example of running it is [`RaftStorage` test suite](https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs),
-   and the compatibility test: [compatibility test](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs)
+   and the compatibility test: `compatibility test`.
 
 2. Then shutdown all `v0.7` nodes and then bring up `v0.8` nodes.
 
@@ -230,7 +230,7 @@ that can be deserialized from `v0.7` or `v0.8` data, such as
 
 Openraft also provides a testing suite
 [`compat::testing::Suite07`] to ensure old data will be correctly read.
-An application should ensure that its storage passes this test suite.  Just like [rocksdb-compatability-test][compatibility test] does.
+An application should ensure that its storage passes this test suite.  Just like rocksdb-compatability-test does.
 
 To test compatibility of the application storage API:
 
