@@ -32,6 +32,7 @@ Openraft `v0.8` provides several [`feature_flags`] to provide compatibility with
 - `serde`: Make sure that the application uses `serde` to serialize data; Openraft v0.8 provides a compatibility layer that is built upon `serde`.
 
 - `compat-07`: Enable feature flag `compat-07` to enable the compatibility layer [`compat::compat07`](`crate::compat::compat07`).
+- Optionally enable feature flag `single-term-leader` if the application wants to use standard raft. See [Multi/single leader in each term](#multisingle-leader-in-each-term) chapter.
 
 - Optionally enable feature flag `single-term-leader` if the application wants to use standard raft. See [Multi/single leader in each term](#multisingle-leader-in-each-term) chapter.
 
@@ -203,8 +204,8 @@ And `v0.8` will be compatible with `v0.7` only when it uses `u64` as `NodeId` an
 ## Implement a compatible storage layer
 
 In addition to enabling `compat-07` feature flag, openraft provides a compatible layer in
-[`compat::compat07`] to help application developer to upgrade.
-This mod provides several types that can deserialize from both `v0.7` format data and the latest format data.
+[`compat::compat07`] to help the application developer to upgrade.
+[`compat::compat07`] provides several types that can deserialize from both `v0.7` format data and the latest format data.
 
 An application uses these types to replace the corresponding ones in a
 `RaftStorage` implementation, so that `v0.7` data and `v0.8` data can both be read.
