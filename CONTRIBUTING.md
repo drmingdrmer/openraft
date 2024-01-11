@@ -12,7 +12,7 @@ Review their guide for more details on how to work with mdBook. Here are a few o
 cargo install mdbook
 
 # Build the guide.
-mdbook build
+cd guide-directory \\nmdbook build
 
 # Watch the FS for changes & rebuild.
 mdbook watch
@@ -29,7 +29,10 @@ mdbook watch
 
 ## Release checklist
 
-- `make`: pass the unit test, format and clippy check.
+- First, make sure you have installed the necessary dependencies through cargo and have a proper configuration for the Rust project.
+- To run the unit tests, use `cargo test`.
+- To perform a format check, use `cargo fmt`.
+- To perform a clippy check, use `cargo clippy`.
 
 - Any documentation updates should also be reflected in the guide.
 
