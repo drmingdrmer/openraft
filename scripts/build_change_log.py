@@ -1,4 +1,21 @@
 #!/usr/bin/env python
+
+import subprocess
+import os
+import re
+import toml
+import sys
+
+from semantic_version import Version
+
+# Define missing functions and classes
+replace_subjects = []
+ignores = []
+typs = {}
+categories = {}
+to_display = {}
+category_display = {}
+commit_url_ptn = ''
 # coding: utf-8
 
 import sys
