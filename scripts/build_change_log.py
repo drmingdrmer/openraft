@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import subprocess
+import subprocess
 import os
 import re
 import toml
@@ -121,17 +122,8 @@ to_display = {
 commit_url_ptn = 'https://github.com/datafuselabs/openraft/commit/{hash}'
 
 def cmd(cmds):
-    subproc = subprocess.Popen(cmds,
-                               encoding='utf-8',
-                                  stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, )
-    out, err = subproc.communicate()
-    subproc.wait()
-
-    code = subproc.returncode
-    if code != 0:
-        raise OSError(out + "\n" + err)
-
+    result = subprocess.run(cmds, capture_output=True)
+    out = result.stdout
     return out
 
 def list_tags():
