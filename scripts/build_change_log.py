@@ -2,6 +2,13 @@
 
 from subprocess import run,capture_output
 import subprocess
+from subprocess import run,capture_output
+import os
+import re
+import toml
+import sys
+import yaml
+from collections import defaultdict
 import os
 import re
 import toml
@@ -140,7 +147,7 @@ def changes(frm, to):
     # subject, author time, author name, email.
 
     git_cmd = ["git", 'merge-base', frm, to]
-    common_base = cmd(git_cmd).strip()
+    common_base = cmd(git_cmd).decode('utf-8').strip()
     print("--- Find common base {common_base} of {frm} {to} with: {git_cmd}".format(
             common_base=common_base,
             frm=frm,
@@ -150,14 +157,14 @@ def changes(frm, to):
     git_cmd = ["git", "log", '--format=%H', '--reverse', common_base + '..' + to]
     print("--- List commits with: {git_cmd}".format(git_cmd=' '.join(git_cmd)))
 
-    commits = cmd(git_cmd)
+    commits = cmd(git_cmd).decode('utf-8').splitlines()
     commits = commits.splitlines()
 
     rst = []
 
     for commit in commits:
         # Extract subject, date, author and email
-        out = cmd(["git", "log", '-1', '--format=%s ||| %ai ||| %an ||| %ae', commit])
+        out = cmd(["git", "log", '-1', '--format=%s ||| %ai ||| %an ||| %ae', commit]).decode('utf-8')
         line = out.strip()
 
         if if_ignore(line):
@@ -167,7 +174,7 @@ def changes(frm, to):
 
         elts = line.split(" ||| ")
 
-        body = cmd(["git", "log", '-1', '--format=%b', commit])
+        body = cmd(["git", "log", '-1', '--format=%b', commit]).decode('utf-8')
 
         item = {
                 'hash': commit,
