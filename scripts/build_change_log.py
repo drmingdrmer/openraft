@@ -3,6 +3,8 @@
 import re
 
 from subprocess import run,capture_output
+import os
+import re
 import subprocess
 from subprocess import run,capture_output
 import os
@@ -311,13 +313,13 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
 
 def build_changelog():
 
-    out = cmd(["ls", "change-log"])
+    out = cmd(["ls", "change-log"]).decode('utf-8').splitlines()
     vers = out.splitlines()
     # remove suffix "md"
     vers = [x.rsplit('.', 1)[0] for x in vers if x != '']
     vers.sort(key=lambda x: semantic_version.Version(x.lstrip('v')))
 
-    with open('change-log.md', 'w') as f:
+    with open('change-log.md', 'w', encoding='utf-8') as f:
         for v in reversed(vers):
             print("--- append change log of {v}".format(v=v))
 
