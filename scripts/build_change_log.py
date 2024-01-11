@@ -256,6 +256,7 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
     '''
 
     fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver)
+    new_ver = new_ver.lstrip('v')
     if os.path.exists(fn):
         print("--- Version {new_ver} change log exists, skip...".format(new_ver=new_ver))
         print("--- To rebuild it, delete {fn} and re-run".format(fn=fn))
@@ -265,7 +266,10 @@ def build_ver_changelog(new_ver, commit="HEAD", since=None):
         tags = list_tags()
         tags.sort()
 
-        new_ver = new_ver.lstrip('v')
+        new_ver = load_cargo_version()
+    tags = [t for t in tags if t < new_ver]
+    latest = tags[-1] if since is None else since
+    chs = changes('v' + str(latest), commit)
         new_ver = semantic_version.Version(new_ver)
         tags = [t for t in tags if t < new_ver]
         latest = tags[-1]
