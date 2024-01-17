@@ -106,16 +106,16 @@ commit_url_ptn = 'https://github.com/datafuselabs/openraft/commit/{hash}'
 def cmd(cmds):
     subproc = subprocess.Popen(cmds,
                                encoding='utf-8',
-                                  stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, )
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
     out, err = subproc.communicate()
     subproc.wait()
 
     code = subproc.returncode
     if code != 0:
-        raise OSError(out + "\n" + err)
+        raise OSError(out.decode('utf-8') + "\n" + err.decode('utf-8'))
 
-    return out
+    return out.decode('utf-8')
 
 def list_tags():
     out = cmd(["git", "tag", "-l"])
