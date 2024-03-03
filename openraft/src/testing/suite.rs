@@ -4,7 +4,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use maplit::btreeset;
 
 use crate::entry::RaftEntry;
@@ -13,7 +12,7 @@ use crate::membership::EffectiveMembership;
 use crate::raft_state::LogIOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::storage::LogFlushed;
+use crate::storage::LogIO;
 use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
@@ -29,7 +28,6 @@ use crate::OptionalSend;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::StoredMembership;
 use crate::Vote;
 
@@ -1288,13 +1286,7 @@ where
     I: IntoIterator<Item = C::Entry> + OptionalSend,
     I::IntoIter: OptionalSend,
 {
-    let (tx, rx) = C::oneshot();
-
-    // Dummy log io id for blocking append
-    let log_io_id = LogIOId::<C>::new(Vote::<C::NodeId>::default(), None);
-    let cb = LogFlushed::new(log_io_id, tx);
-
-    store.append(entries, cb).await?;
-    rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    let entries = entries.into_iter().collect::<Vec<_>>();
+    store.blocking_write(LogIO::append(entries)).await?;
     Ok(())
 }

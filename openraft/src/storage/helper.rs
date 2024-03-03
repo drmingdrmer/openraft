@@ -7,6 +7,8 @@ use crate::entry::RaftPayload;
 use crate::log_id::RaftLogId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::raft_state::IOState;
+use crate::raft_state::LogIOId;
+use crate::storage::LogIO;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -59,67 +61,67 @@ where
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
-        let vote = self.log_store.read_vote().await?;
-        let vote = vote.unwrap_or_default();
+    {
+        // 1. Load log state
 
-        let mut committed = self.log_store.read_committed().await?;
+        let mut log_meta = self.log_store.read_meta().await?;
 
-        let st = self.log_store.get_log_state().await?;
-        let mut last_purged_log_id = st.last_purged_log_id;
-        let mut last_log_id = st.last_log_id;
+        tracing::info!(meta = display(&log_meta), "get_initial_state");
 
         let (mut last_applied, _) = self.state_machine.applied_state().await?;
 
-        tracing::info!(
-            vote = display(&vote),
-            last_purged_log_id = display(last_purged_log_id.display()),
-            last_applied = display(last_applied.display()),
-            committed = display(committed.display()),
-            last_log_id = display(last_log_id.display()),
-            "get_initial_state"
-        );
-
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
-        if committed < last_applied {
-            committed = last_applied;
+        if log_meta.committed < last_applied {
+            log_meta.committed = last_applied;
         }
 
         // Re-apply log entries to recover SM to latest state.
-        if last_applied < committed {
+        if last_applied < log_meta.committed {
             let start = last_applied.next_index();
-            let end = committed.next_index();
+            let end = log_meta.committed.next_index();
 
             tracing::info!("re-apply log {}..{} to state machine", start, end);
 
             let entries = self.log_store.get_log_entries(start..end).await?;
             self.state_machine.apply(entries).await?;
 
-            last_applied = committed;
+            last_applied = log_meta.committed;
         }
 
-        let mem_state = self.get_membership().await?;
+        // In case the `purged` in meta is written to log store but the actual purge did not finish.
+        if let Some(purged) = log_meta.purged {
+            self.log_store.blocking_write(LogIO::purge(purged)).await?;
+        }
+        // In case the `truncate` in meta is written to log store but the actual truncate did not finish.
+        if let Some(last) = log_meta.last {
+            self.log_store.blocking_write(LogIO::truncate(last)).await?;
+        }
 
         // Clean up dirty state: snapshot is installed but logs are not cleaned.
-        if last_log_id < last_applied {
+        if log_meta.last < last_applied {
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
-                last_log_id.display(),
+                log_meta.last.display(),
                 last_applied.display(),
                 last_applied.display(),
             );
 
-            self.log_store.purge(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
+            log_meta.last = last_applied;
+            log_meta.purged = last_applied;
+
+            self.log_store.blocking_write(LogIO::meta(log_meta.clone())).await?;
+            self.log_store.blocking_write(LogIO::purge(log_meta.purged.unwrap())).await?;
         }
 
         tracing::info!(
             "load key log ids from ({},{}]",
-            last_purged_log_id.display(),
-            last_log_id.display()
+            log_meta.purged.display(),
+            log_meta.last.display()
         );
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self.log_store).await?;
+        let log_ids = LogIdList::load_log_ids(log_meta.purged, log_meta.last, self.log_store).await?;
+
+        let mem_state = self.get_membership().await?;
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
@@ -127,7 +129,7 @@ where
         // we just rebuild it so that replication can use it.
         let snapshot = match snapshot {
             None => {
-                if last_purged_log_id.is_some() {
+                if log_meta.purged.is_some() {
                     let mut b = self.state_machine.get_snapshot_builder().await;
                     let s = b.build_snapshot().await?;
                     Some(s)
@@ -141,11 +143,11 @@ where
 
         // TODO: `flushed` is not set.
         let io_state = IOState::new(
-            vote,
+            log_meta.vote,
             LogIOId::default(),
             last_applied,
             snapshot_meta.last_log_id,
-            last_purged_log_id,
+            log_meta.purged,
         );
 
         let now = C::now();
@@ -156,8 +158,8 @@ where
             // See: [Conditions for initialization][precondition]
             //
             // [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
-            vote: UTime::new(now, vote),
-            purged_next: last_purged_log_id.next_index(),
+            vote: UTime::new(now, log_meta.vote),
+            purged_next: log_meta.purged.next_index(),
             log_ids,
             membership_state: mem_state,
             snapshot_meta,
@@ -166,7 +168,7 @@ where
             server_state: Default::default(),
             accepted: Default::default(),
             io_state,
-            purge_upto: last_purged_log_id,
+            purge_upto: log_meta.purged,
         })
     }
 
@@ -224,13 +226,13 @@ where
         &mut self,
         since_index: u64,
     ) -> Result<Vec<StoredMembership<C>>, StorageError<C>> {
-        let st = self.log_store.get_log_state().await?;
+        let log_meta = self.log_store.read_meta().await?;
 
-        let mut end = st.last_log_id.next_index();
+        let mut end = log_meta.last.next_index();
 
         tracing::info!("load membership from log: [{}..{})", since_index, end);
 
-        let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
+        let start = std::cmp::max(log_meta.purged.next_index(), since_index);
         let step = 64;
 
         let mut res = vec![];

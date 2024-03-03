@@ -6,6 +6,8 @@ mod log_store_ext;
 mod snapshot_signature;
 mod v2;
 
+pub mod v3;
+
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
@@ -15,6 +17,8 @@ pub use log_store_ext::RaftLogReaderExt;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 pub use snapshot_signature::SnapshotSignature;
+pub use v2::LogIO;
+pub use v2::LogMetaV3;
 pub use v2::RaftLogStorage;
 pub use v2::RaftLogStorageExt;
 pub use v2::RaftStateMachine;
@@ -173,6 +177,19 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, StorageError<C>> {
         self.try_get_log_entries(start..end).await
+    }
+
+    /// Returns the last saved metadata from the log store.
+    ///
+    /// Despite the function not modifying `self`, it is marked as `mut`, to indicate that only a
+    /// single reader should access the metadata at a time.
+    ///
+    /// ### Implementation Note:
+    ///
+    /// If there is no metadata saved, the implementation should return a default value.
+    async fn read_meta(&mut self) -> Result<LogMetaV3<C>, StorageError<C::NodeId>> {
+        // TODO: provide default impl upon read_vote?
+        todo!()
     }
 }
 

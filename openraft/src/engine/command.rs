@@ -13,6 +13,7 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::storage::LogMetaV3;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::LeaderId;
 use crate::LogId;
@@ -74,6 +75,10 @@ where C: RaftTypeConfig
         targets: Vec<(C::NodeId, ProgressEntry<C>)>,
     },
 
+    /// Save log store metadata
+    #[allow(dead_code)]
+    SaveLogMeta { log_meta: LogMetaV3<C> },
+
     /// Save vote to storage
     SaveVote { vote: Vote<C::NodeId> },
 
@@ -123,6 +128,7 @@ where
             (Command::Commit { seq, already_committed, upto, }, Command::Commit { seq: b_seq, already_committed: b_committed, upto: b_upto, }, ) => seq == b_seq && already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )                     => target == b_target && req == other_req,
             (Command::RebuildReplicationStreams { targets },   Command::RebuildReplicationStreams { targets: b }, )                            => targets == b,
+            (Command::SaveLogMeta { log_meta },                Command::SaveLogMeta { log_meta: b })                                           => log_meta == b,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                                  => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                            => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                                  => upto == b,
@@ -145,6 +151,7 @@ where C: RaftTypeConfig
             Command::Respond { .. }                   => CommandKind::Main,
 
             Command::AppendInputEntries { .. }        => CommandKind::Log,
+            Command::SaveLogMeta { .. }               => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
             Command::PurgeLog { .. }                  => CommandKind::Log,
             Command::TruncateLog { .. }         => CommandKind::Log,
@@ -171,6 +178,7 @@ where C: RaftTypeConfig
             Command::Commit { .. }                     => None,
             Command::Replicate { .. }                 => None,
             Command::RebuildReplicationStreams { .. } => None,
+            Command::SaveLogMeta { .. }               => None,
             Command::SaveVote { .. }                  => None,
             Command::SendVote { .. }                  => None,
             Command::PurgeLog { .. }                  => None,

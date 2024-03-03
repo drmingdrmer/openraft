@@ -40,6 +40,8 @@ pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+pub(crate) use crate::raft_state::snapshot_streaming::StreamingState;
+use crate::storage::LogMetaV3;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -52,7 +54,7 @@ where C: RaftTypeConfig
     /// The vote state of this node.
     pub(crate) vote: UTime<Vote<C::NodeId>, InstantOf<C>>,
 
-    /// The LogId of the last log committed(AKA applied) to the state machine.
+    /// The LogId of the last log committed.
     ///
     /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term
     ///   of the leader.
@@ -235,6 +237,21 @@ where C: RaftTypeConfig
 
         if accepted.as_ref() > self.accepted.last_accepted_log_id(self.vote_ref().leader_id()) {
             self.accepted = Accepted::new(*self.vote_ref().leader_id(), accepted);
+        }
+    }
+
+    /// Retrieve the metadata for the log store.
+    ///
+    /// The returned value represents the state of the store after
+    /// all queued commands have been executed, not the current state
+    /// of the underlying store
+    #[allow(dead_code)]
+    pub(crate) fn log_store_meta(&self) -> LogMetaV3<C> {
+        LogMetaV3 {
+            vote: *self.vote_ref(),
+            purged: self.last_purged_log_id().copied(),
+            committed: self.committed().copied(),
+            last: self.last_log_id().copied(),
         }
     }
 
