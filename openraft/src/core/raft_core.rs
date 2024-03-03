@@ -82,6 +82,7 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::LogFlushed;
+use crate::storage::LogIO;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
@@ -719,7 +720,8 @@ where
 
         let (tx, rx) = C::AsyncRuntime::oneshot();
         let callback = LogFlushed::new(Some(last_log_id), tx);
-        self.log_store.append(entries, callback).await?;
+        let log_io = LogIO::append(entries);
+        self.log_store.write(log_io, callback).await?;
         rx.await
             .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?
             .map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
@@ -1614,6 +1616,11 @@ where
                 if let Ok(mut lh) = self.engine.leader_handler() {
                     lh.replication_handler().update_local_progress(Some(last_log_id));
                 }
+            }
+            Command::SaveLogMeta { log_meta } => {
+                self.log_store.blocking_write(LogIO::meta(log_meta)).await?;
+                // TODO: update log_meta to io_state
+                self.engine.state.io_state_mut().update_vote(log_meta.vote);
             }
             Command::SaveVote { vote } => {
                 self.log_store.save_vote(&vote).await?;

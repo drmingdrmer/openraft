@@ -3,12 +3,18 @@
 //! [`RaftLogStorage`] is responsible for storing logs,
 //! and [`RaftStateMachine`] is responsible for storing state machine and snapshot.
 
+mod log_io;
+mod log_store_meta;
 mod raft_log_storage_ext;
 
 use openraft_macros::add_async_trait;
 pub use raft_log_storage_ext::RaftLogStorageExt;
 
+pub use self::log_io::LogIO;
+pub use self::log_store_meta::LogMetaV3;
 use crate::storage::callback::LogFlushed;
+use crate::type_config::alias::AsyncRuntimeOf;
+use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogState;
 use crate::OptionalSend;
@@ -19,6 +25,7 @@ use crate::RaftTypeConfig;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::StorageError;
+use crate::StorageIOError;
 use crate::StoredMembership;
 use crate::Vote;
 

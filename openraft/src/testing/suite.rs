@@ -4,7 +4,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use maplit::btreeset;
 
 use crate::entry::RaftEntry;
@@ -12,16 +11,14 @@ use crate::log_id::RaftLogId;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
-use crate::storage::LogFlushed;
+use crate::storage::LogIO;
 use crate::storage::LogState;
 use crate::storage::RaftLogReaderExt;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::StoreBuilder;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::vote::CommittedLeaderId;
-use crate::AsyncRuntime;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
@@ -29,7 +26,6 @@ use crate::OptionalSend;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::StorageIOError;
 use crate::StoredMembership;
 use crate::Vote;
 
@@ -1224,13 +1220,6 @@ where
     I: IntoIterator<Item = C::Entry>,
 {
     let entries = entries.into_iter().collect::<Vec<_>>();
-    let last_log_id = *entries.last().unwrap().get_log_id();
-
-    let (tx, rx) = AsyncRuntimeOf::<C>::oneshot();
-
-    let cb = LogFlushed::new(Some(last_log_id), tx);
-
-    store.append(entries, cb).await?;
-    rx.await.unwrap().map_err(|e| StorageIOError::write_logs(AnyError::error(e)))?;
+    store.blocking_write(LogIO::append(entries)).await?;
     Ok(())
 }
