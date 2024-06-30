@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crate::leader::voting::Voting;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
@@ -30,7 +29,7 @@ use crate::Vote;
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Leading<C, QS: QuorumSet<C::NodeId>>
+pub(crate) struct Leader<C, QS: QuorumSet<C::NodeId>>
 where C: RaftTypeConfig
 {
     /// The vote this leader works in.
@@ -46,11 +45,6 @@ where C: RaftTypeConfig
     /// It is set when leader established.
     pub(crate) noop_log_id: Option<LogIdOf<C>>,
 
-    quorum_set: QS,
-
-    /// Voting state, i.e., there is a Candidate running.
-    voting: Option<Voting<C, QS>>,
-
     /// Tracks the replication progress and committed index
     pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C::NodeId>, Option<LogIdOf<C>>, QS>,
 
@@ -62,7 +56,7 @@ where C: RaftTypeConfig
     pub(crate) clock_progress: VecProgress<C::NodeId, Option<InstantOf<C>>, Option<InstantOf<C>>, QS>,
 }
 
-impl<C, QS> Leading<C, QS>
+impl<C, QS> Leader<C, QS>
 where
     C: RaftTypeConfig,
     QS: QuorumSet<C::NodeId> + Clone + fmt::Debug + 'static,
@@ -73,14 +67,19 @@ where
         learner_ids: impl IntoIterator<Item = C::NodeId>,
         last_log_id: Option<LogIdOf<C>>,
     ) -> Self {
+        debug_assert!(vote.is_committed());
+
         let learner_ids = learner_ids.into_iter().collect::<Vec<_>>();
+
+        let noop_log_id = Some(LogId::new(
+            vote.committed_leader_id().unwrap(),
+            last_log_id.next_index(),
+        ));
 
         Self {
             vote,
             last_log_id,
-            noop_log_id: None,
-            quorum_set: quorum_set.clone(),
-            voting: None,
+            noop_log_id,
             progress: VecProgress::new(
                 quorum_set.clone(),
                 learner_ids.iter().copied(),
@@ -90,22 +89,16 @@ where
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn voting(&self) -> Option<&Voting<C, QS>> {
-        self.voting.as_ref()
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn voting_mut(&mut self) -> Option<&mut Voting<C, QS>> {
-        self.voting.as_mut()
-    }
-
     /// Return the last log id this leader knows of.
     ///
     /// The leader's last log id may be different from the local RaftState.last_log_id.
     /// The later is used by the `Acceptor` part of a Raft node.
     pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.last_log_id.as_ref()
+    }
+
+    pub(crate) fn vote_ref(&self) -> &Vote<C::NodeId> {
+        &self.vote
     }
 
     /// Assign log ids to the entries.
@@ -138,23 +131,6 @@ where
         }
 
         Ok(())
-    }
-
-    /// Initialize a new voting process with specified vote, last_log_id and wall clock time.
-    pub(crate) fn initialize_voting(
-        &mut self,
-        vote: Vote<C::NodeId>,
-        last_log_id: Option<LogIdOf<C>>,
-        now: InstantOf<C>,
-    ) -> &mut Voting<C, QS> {
-        self.voting = Some(Voting::new(now, vote, last_log_id, self.quorum_set.clone()));
-        self.voting.as_mut().unwrap()
-    }
-
-    /// Finish the voting process and return the state.
-    pub(crate) fn finish_voting(&mut self) -> Voting<C, QS> {
-        // it has to be in voting progress
-        self.voting.take().unwrap()
     }
 
     /// Get the last timestamp acknowledged by a quorum.
@@ -198,7 +174,7 @@ where
 mod tests {
     use crate::engine::testing::UTConfig;
     use crate::entry::RaftEntry;
-    use crate::leader::Leading;
+    use crate::leader::Leader;
     use crate::progress::Progress;
     use crate::testing::blank_ent;
     use crate::testing::log_id;
@@ -210,7 +186,7 @@ mod tests {
     #[test]
     fn test_leader_not_established() {
         let vote = Vote::new(2, 2);
-        let mut leading = Leading::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None);
+        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None);
 
         let mut entries = vec![Entry::<UTConfig>::new_blank(log_id(5, 5, 2))];
         let res = leading.assign_log_ids(&mut entries);
@@ -227,7 +203,7 @@ mod tests {
     #[test]
     fn test_1_entry_none_last_log_id() {
         let vote = Vote::new(0, 0);
-        let mut leading = Leading::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None);
+        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None);
 
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1)];
         let result = leading.assign_log_ids(&mut entries);
@@ -240,7 +216,7 @@ mod tests {
     #[test]
     fn test_no_entries_provided() {
         let vote = Vote::new_committed(2, 2);
-        let mut leading = Leading::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], Some(log_id(1, 1, 8)));
+        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], Some(log_id(1, 1, 8)));
 
         let mut entries: Vec<Entry<UTConfig>> = vec![];
         let result = leading.assign_log_ids(&mut entries);
@@ -251,7 +227,7 @@ mod tests {
     #[test]
     fn test_multiple_entries() {
         let vote = Vote::new_committed(2, 2);
-        let mut leading = Leading::<UTConfig, _>::new(vote, vec![1, 2, 3], [], Some(log_id(1, 1, 8)));
+        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], [], Some(log_id(1, 1, 8)));
 
         let mut entries: Vec<Entry<UTConfig>> = vec![blank_ent(1, 1, 1), blank_ent(1, 1, 1), blank_ent(1, 1, 1)];
 
@@ -265,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
-        let mut leading = Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 1), vec![1, 2, 3], [4], None);
+        let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 1), vec![1, 2, 3], [4], None);
 
         let now1 = InstantOf::<UTConfig>::now();
 
@@ -276,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
-        let mut leading = Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 4), vec![1, 2, 3], [4], None);
+        let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 4), vec![1, 2, 3], [4], None);
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));
@@ -291,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
-        let mut leading = Leading::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 5), vec![1, 2, 3], [4], None);
+        let mut leading = Leader::<UTConfig, Vec<u64>>::new(Vote::new_committed(2, 5), vec![1, 2, 3], [4], None);
 
         let t2 = InstantOf::<UTConfig>::now();
         let _ = leading.clock_progress.increase_to(&2, Some(t2));

@@ -56,7 +56,7 @@ fn test_update_matching_no_leader() -> anyhow::Result<()> {
 #[test]
 fn test_update_matching() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.new_leading();
+    eng.testing_new_leader();
     eng.output.take_commands();
 
     let mut rh = eng.replication_handler();

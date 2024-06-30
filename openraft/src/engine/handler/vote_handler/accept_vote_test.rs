@@ -39,7 +39,7 @@ fn eng() -> Engine<UTConfig> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
 
-    eng.new_leading();
+    eng.testing_new_leader();
     eng
 }
 

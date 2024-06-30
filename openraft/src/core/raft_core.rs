@@ -311,7 +311,7 @@ where
         let mut pending = FuturesUnordered::new();
 
         let voter_progresses = {
-            let l = &self.engine.internal_server_state.leading().unwrap();
+            let l = &self.engine.leader.leader_ref().unwrap();
             l.progress.iter().filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
         };
 
@@ -521,7 +521,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        let leader_metrics = if let Some(leader) = self.engine.internal_server_state.leading() {
+        let leader_metrics = if let Some(leader) = self.engine.leader.leader_ref() {
             let prog = &leader.progress;
             Some(prog.iter().map(|(id, p)| (*id, *p.borrow())).collect())
         } else {
@@ -690,7 +690,7 @@ where
     /// from a quorum of followers, indicating its leadership is current and recognized.
     /// If the node is not a leader or no acknowledgment has been received, `None` is returned.
     fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
-        let leading = self.engine.internal_server_state.leading_mut();
+        let leading = self.engine.leader.leader_mut();
         leading.and_then(|l| l.last_quorum_acked_time())
     }
 
@@ -819,7 +819,9 @@ where
         let network = self.network.new_client(target, target_node).await;
         let snapshot_network = self.network.new_client(target, target_node).await;
 
-        let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref().leader_id(), *membership_log_id);
+        let leader = self.engine.leader.leader_ref().unwrap();
+
+        let session_id = ReplicationSessionId::new(leader.vote, *membership_log_id);
 
         ReplicationCore::<C, N, LS>::spawn(
             target,
@@ -1500,7 +1502,7 @@ where
         }
 
         // A leader may have stepped down.
-        if self.engine.internal_server_state.is_leading() {
+        if self.engine.leader.is_leader() {
             self.engine.replication_handler().update_progress(target, request_id, result);
         }
     }
@@ -1508,24 +1510,17 @@ where
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
     fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
-        let Some(l) = self.engine.internal_server_state.leading() else {
-            tracing::warn!(
-                "This node is no longer in Leading state, ignore this msg: sent by: {:?}; ignore when ({})",
-                sender_vote,
-                msg
-            );
-            return false;
-        };
-
         // Get the current leading vote:
         // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against current
         //   Leader's vote.
         // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
         let my_vote = if sender_vote.is_committed() {
-            Some(l.vote)
+            let l = self.engine.leader.leader_ref();
+            l.map(|x| x.vote)
         } else {
             // If it finished voting, Candidate's vote is None.
-            l.voting().map(|x| *x.vote_ref())
+            let candidate = self.engine.candidate_ref();
+            candidate.map(|x| *x.vote_ref())
         };
 
         if Some(*sender_vote) != my_vote {
@@ -1547,7 +1542,7 @@ where
         session_id: &ReplicationSessionId<C::NodeId>,
         msg: impl Display + Copy,
     ) -> bool {
-        if !self.does_vote_match(&session_id.to_committed_vote(), msg) {
+        if !self.does_vote_match(session_id.vote_ref(), msg) {
             return false;
         }
 

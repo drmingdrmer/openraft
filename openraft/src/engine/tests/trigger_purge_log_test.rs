@@ -107,8 +107,8 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     eng.state.log_ids = LogIdList::new([log_id(1, 0, 2), log_id(1, 0, 10)]);
 
     // Make it a leader and mark the logs are in flight.
-    eng.vote_handler().become_leading();
-    let l = eng.internal_server_state.leading_mut().unwrap();
+    eng.vote_handler().become_leader();
+    let l = eng.leader.leader_mut().unwrap();
     let _ = l.progress.get_mut(&2).unwrap().next_send(eng.state.deref(), 10).unwrap();
 
     eng.trigger_purge_log(5);

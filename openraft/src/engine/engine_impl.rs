@@ -9,6 +9,7 @@ use crate::core::ServerState;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::engine::engine_config::EngineConfig;
+use crate::engine::handler::establish_handler::EstablishHandler;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
@@ -20,7 +21,6 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
-use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
@@ -29,7 +29,9 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
-use crate::leader::Leading;
+use crate::internal_server_state::LeaderQuorumSet;
+use crate::leader::voting::Voting;
+use crate::leader::Leader;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -75,8 +77,10 @@ where C: RaftTypeConfig
     /// should be greater.
     pub(crate) seen_greater_log: bool,
 
-    /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<C>,
+    /// The internal server state(Leader or following) used by Engine.
+    pub(crate) leader: InternalServerState<C>,
+
+    pub(crate) candidate: Option<Voting<C, LeaderQuorumSet<C::NodeId>>>,
 
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C>,
@@ -90,9 +94,31 @@ where C: RaftTypeConfig
             config,
             state: Valid::new(init_state),
             seen_greater_log: false,
-            internal_server_state: InternalServerState::default(),
+            leader: InternalServerState::default(),
+            candidate: None,
             output: EngineOutput::new(4096),
         }
+    }
+
+    /// Create a new candidate state and return the mutable reference to it.
+    ///
+    /// The candidate `last_log_id` is initialized with the attributes of Acceptor part:
+    /// [`RaftState`]
+    pub(crate) fn new_candidate(&mut self, vote: Vote<C::NodeId>) -> &mut Voting<C, LeaderQuorumSet<C::NodeId>> {
+        let now = InstantOf::<C>::now();
+        let last_log_id = self.state.last_log_id().copied();
+
+        let membership = self.state.membership_state.effective().membership();
+
+        self.candidate = Some(Voting::new(
+            now,
+            vote,
+            last_log_id,
+            membership.to_quorum_set(),
+            membership.learner_ids(),
+        ));
+
+        self.candidate.as_mut().unwrap()
     }
 
     /// Create a default Engine for testing.
@@ -178,31 +204,30 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
         let new_vote = Vote::new(self.state.vote_ref().leader_id().term + 1, self.config.id);
-        let last_log_id = self.state.last_log_id().copied();
-        tracing::info!(
-            new_vote = display(&new_vote),
-            last_log_id = display(last_log_id.display()),
-            "{}",
-            func_name!()
-        );
 
-        // Initialize vote for leading state
+        let candidate = self.new_candidate(new_vote);
 
-        self.new_leading();
-        let leading = self.internal_server_state.leading_mut().unwrap();
+        tracing::info!("{}, new candidate: {}", func_name!(), candidate);
 
-        leading.vote = new_vote;
-        let _voting = leading.initialize_voting(new_vote, last_log_id, InstantOf::<C>::now());
+        let last_log_id = candidate.last_log_id().copied();
 
         // Simulate sending RequestVote RPC to local node.
         // Safe unwrap(): it won't reject itself ˙–˙
         self.vote_handler().update_vote(&new_vote).unwrap();
 
         self.output.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(*self.state.vote_ref(), self.state.last_log_id().copied()),
+            vote_req: VoteRequest::new(new_vote, last_log_id),
         });
 
         self.server_state_handler().update_server_state_if_changed();
+    }
+
+    pub(crate) fn candidate_ref(&self) -> Option<&Voting<C, LeaderQuorumSet<C::NodeId>>> {
+        self.candidate.as_ref()
+    }
+
+    pub(crate) fn candidate_mut(&mut self) -> Option<&mut Voting<C, LeaderQuorumSet<C::NodeId>>> {
+        self.candidate.as_mut()
     }
 
     /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it send back a
@@ -309,15 +334,15 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        let Some(voting) = self.internal_server_state.voting_mut() else {
+        let Some(candidate) = self.candidate_mut() else {
             // If the voting process has finished or canceled,
             // just ignore the delayed vote_resp.
             return;
         };
 
         // A vote request is granted iff the replied vote is the same as the requested vote.
-        if &resp.vote == voting.vote_ref() {
-            let quorum_granted = voting.grant_by(&target);
+        if &resp.vote == candidate.vote_ref() {
+            let quorum_granted = candidate.grant_by(&target);
             if quorum_granted {
                 tracing::info!("a quorum granted my vote");
                 self.establish_leader();
@@ -458,25 +483,16 @@ where C: RaftTypeConfig
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
-    /// Create a new leading state, if it is not.
-    ///
-    /// Leading state represent Leader of Candidate,
-    /// and is responsible for voting.
-    pub(crate) fn new_leading(&mut self) {
-        let em = &self.state.membership_state.effective();
-
-        // Do not update clock_progress, until the first replication reply is received.
-        let leading = Leading::new(
-            *self.state.vote_ref(),
-            em.membership().to_quorum_set(),
-            em.learner_ids(),
-            self.state.last_log_id().copied(),
-        );
-
-        self.internal_server_state = InternalServerState::Leading(Box::new(leading));
-
-        let mut rh = self.replication_handler();
-        rh.rebuild_replication_streams();
+    /// Create a Leader state just for testing purpose only,
+    /// without initializing related resource,
+    /// such as setting up replication, propose blank log.
+    #[deprecated]
+    #[allow(dead_code)]
+    #[cfg(test)]
+    pub(crate) fn testing_new_leader(&mut self) -> &mut Leader<C, LeaderQuorumSet<C::NodeId>> {
+        let leader = self.state.new_leader();
+        self.leader = InternalServerState::Leader(Box::new(leader));
+        self.leader.leader_mut().unwrap()
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
@@ -546,7 +562,7 @@ where C: RaftTypeConfig
             func_name!()
         );
 
-        if self.internal_server_state.is_leading() {
+        if self.leader.is_leader() {
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
@@ -606,53 +622,8 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     fn establish_leader(&mut self) {
         tracing::info!("{}", func_name!());
-
-        // Mark the vote as committed, i.e., being granted and saved by a quorum.
-        //
-        // The committed vote, is not necessary in original raft.
-        // Openraft insists doing this because:
-        // - Voting is not in the hot path, thus no performance penalty.
-        // - Leadership won't be lost if a leader restarted quick enough.
-        let vote = {
-            let leading = self.internal_server_state.leading_mut().unwrap();
-            let voting = leading.finish_voting();
-            let mut vote = *voting.vote_ref();
-
-            debug_assert!(!vote.is_committed());
-            debug_assert_eq!(
-                vote.leader_id().voted_for(),
-                Some(self.config.id),
-                "it can only commit its own vote"
-            );
-            vote.commit();
-
-            debug_assert!(vote >= leading.vote);
-            leading.vote = vote;
-            vote
-        };
-
-        // Update the noop log index
-        {
-            let leading = self.internal_server_state.leading_mut().unwrap();
-
-            let vote = leading.vote;
-            let index = self.state.last_log_id().next_index();
-
-            // TODO: in future the leader will be able to start another new election without quit leader.
-            debug_assert!(leading.noop_log_id.is_none());
-            leading.noop_log_id = Some(LogId::new(vote.committed_leader_id().unwrap(), index));
-        }
-
-        // Before sending any log, update the vote.
-        // This could not fail because `internal_server_state` will be cleared
-        // once `state.vote` is changed to a value of other node.
-        let _res = self.vote_handler().update_vote(&vote);
-        debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
-
-        // Safe unwrap(): Leader is just established
-        self.leader_handler()
-            .unwrap()
-            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        let candidate = self.candidate.take().unwrap();
+        self.establish_handler().establish(candidate);
     }
 
     /// Check if a raft node is in a state that allows to initialize.
@@ -716,10 +687,10 @@ where C: RaftTypeConfig
 
     pub(crate) fn vote_handler(&mut self) -> VoteHandler<C> {
         VoteHandler {
-            config: &self.config,
+            config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
-            internal_server_state: &mut self.internal_server_state,
+            leader: &mut self.leader,
         }
     }
 
@@ -739,7 +710,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<C>, ForwardToLeader<C>> {
-        let leader = match self.internal_server_state.leading_mut() {
+        let leader = match self.leader.leader_mut() {
             None => {
                 tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
                 return Err(self.state.forward_to_leader());
@@ -765,7 +736,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
-        let leader = match self.internal_server_state.leading_mut() {
+        let leader = match self.leader.leader_mut() {
             None => {
                 unreachable!("There is no leader, can not handle replication");
             }
@@ -781,7 +752,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<C> {
-        debug_assert!(self.internal_server_state.is_following());
+        debug_assert!(self.leader.is_following());
 
         FollowingHandler {
             config: &mut self.config,
@@ -793,6 +764,14 @@ where C: RaftTypeConfig
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
         ServerStateHandler {
             config: &self.config,
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+    pub(crate) fn establish_handler(&mut self) -> EstablishHandler<C> {
+        EstablishHandler {
+            config: &mut self.config,
+            leader: &mut self.leader,
             state: &mut self.state,
             output: &mut self.output,
         }

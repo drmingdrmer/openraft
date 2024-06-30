@@ -48,11 +48,8 @@ fn test_elect_single_node() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
-        assert!(
-            eng.internal_server_state.voting_mut().is_some(),
-            "voting state is pending"
-        );
+        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert!(eng.candidate_ref().is_some(), "candidate state is pending");
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
@@ -86,18 +83,15 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
 
         // Build in-progress election state
         eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(1, 2));
-        eng.new_leading();
-        eng.internal_server_state.voting_mut().map(|voting| voting.grant_by(&1));
+        eng.testing_new_leader();
+        eng.candidate_mut().map(|candidate| candidate.grant_by(&1));
 
         eng.elect();
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
+        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
 
-        assert!(
-            eng.internal_server_state.voting_mut().is_some(),
-            "voting state is pending"
-        );
+        assert!(eng.candidate_mut().is_some(), "candidate state is pending");
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
@@ -132,11 +126,11 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.internal_server_state.leading().unwrap().noop_log_id);
+        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
 
         assert_eq!(
             Some(btreeset! {},),
-            eng.internal_server_state.leading().map(|x| x.voting().unwrap().granters().collect::<BTreeSet<_>>())
+            eng.candidate_ref().map(|x| x.granters().collect::<BTreeSet<_>>())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);

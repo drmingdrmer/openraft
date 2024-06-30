@@ -68,13 +68,6 @@ impl<NID: NodeId> Vote<NID> {
         }
     }
 
-    pub(crate) fn new_committed_from_leader_id(leader_id: LeaderId<NID>) -> Self {
-        Self {
-            leader_id,
-            committed: true,
-        }
-    }
-
     pub fn commit(&mut self) {
         self.committed = true
     }
