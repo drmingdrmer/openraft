@@ -9,7 +9,6 @@ use crate::engine::testing::UTConfig;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::progress::entry::ProgressEntry;
 use crate::raft::VoteRequest;
 use crate::testing::log_id;
 use crate::utime::UTime;

@@ -230,10 +230,10 @@ where C: RaftTypeConfig
         let leader = self.leader.leader_mut().unwrap();
 
         LeaderHandler {
-            config: &mut self.config,
+            config: self.config,
             leader,
-            state: &mut self.state,
-            output: &mut self.output,
+            state: self.state,
+            output: self.output,
         }
     }
 }

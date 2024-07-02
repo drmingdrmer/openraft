@@ -10,7 +10,6 @@ use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
-use crate::progress::entry::ProgressEntry;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::testing::log_id;

@@ -31,7 +31,6 @@ use crate::error::RejectAppendEntries;
 use crate::internal_server_state::InternalServerState;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::voting::Voting;
-use crate::leader::Leader;
 use crate::raft::responder::Responder;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
@@ -482,18 +481,6 @@ where C: RaftTypeConfig
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
-    /// Create a Leader state just for testing purpose only,
-    /// without initializing related resource,
-    /// such as setting up replication, propose blank log.
-    #[deprecated]
-    #[allow(dead_code)]
-    #[cfg(test)]
-    pub(crate) fn testing_new_leader(&mut self) -> &mut Leader<C, LeaderQuorumSet<C::NodeId>> {
-        let leader = self.state.new_leader();
-        self.leader = InternalServerState::Leader(Box::new(leader));
-        self.leader.leader_mut().unwrap()
-    }
-
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
     ///
     /// This is only called by leader.
@@ -773,6 +760,28 @@ where C: RaftTypeConfig
             leader: &mut self.leader,
             state: &mut self.state,
             output: &mut self.output,
+        }
+    }
+}
+
+/// Supporting utilities for unit test
+#[cfg(test)]
+mod engine_testing {
+    use crate::engine::Engine;
+    use crate::internal_server_state::InternalServerState;
+    use crate::internal_server_state::LeaderQuorumSet;
+    use crate::RaftTypeConfig;
+
+    impl<C> Engine<C>
+    where C: RaftTypeConfig
+    {
+        /// Create a Leader state just for testing purpose only,
+        /// without initializing related resource,
+        /// such as setting up replication, propose blank log.
+        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::leader::Leader<C, LeaderQuorumSet<C::NodeId>> {
+            let leader = self.state.new_leader();
+            self.leader = InternalServerState::Leader(Box::new(leader));
+            self.leader.leader_mut().unwrap()
         }
     }
 }

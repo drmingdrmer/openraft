@@ -219,8 +219,7 @@ mod tests {
         tracing::info!("--- vote greater than last log id, create new noop_log_id");
         {
             let vote = Vote::new_committed(2, 2);
-            let mut leader =
-                Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 1), log_id(1, 2, 3)]);
+            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 1), log_id(1, 2, 3)]);
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(2, 2, 4)));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
@@ -229,8 +228,7 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id");
         {
             let vote = Vote::new_committed(1, 2);
-            let mut leader =
-                Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 1), log_id(1, 2, 3)]);
+            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 1), log_id(1, 2, 3)]);
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 1)));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
@@ -239,7 +237,7 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
         {
             let vote = Vote::new_committed(1, 2);
-            let mut leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 3)]);
+            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 2, 3)]);
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 3)));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
@@ -248,7 +246,7 @@ mod tests {
         tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
         {
             let vote = Vote::new_committed(1, 2);
-            let mut leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[]);
+            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[]);
 
             assert_eq!(leader.noop_log_id(), Some(&log_id(1, 2, 0)));
             assert_eq!(leader.last_log_id(), None);
@@ -289,7 +287,7 @@ mod tests {
         let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], &[log_id(1, 1, 8)]);
 
         let mut entries: Vec<Entry<UTConfig>> = vec![];
-        let result = leading.assign_log_ids(&mut entries);
+        leading.assign_log_ids(&mut entries);
         assert_eq!(Some(log_id(1, 1, 8)), leading.last_log_id);
     }
 

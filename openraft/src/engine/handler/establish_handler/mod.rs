@@ -35,6 +35,7 @@ where C: RaftTypeConfig
         );
 
         if let Some(l) = self.leader.leader_ref() {
+            #[allow(clippy::neg_cmp_op_on_partial_ord)]
             if !(&vote > l.vote_ref()) {
                 tracing::warn!(
                     "vote is not greater than current existing leader vote. Do not establish new leader and quit"
@@ -63,10 +64,10 @@ where C: RaftTypeConfig
         let leader = self.leader.leader_mut().unwrap();
 
         ReplicationHandler {
-            config: &mut self.config,
+            config: self.config,
             leader,
-            state: &mut self.state,
-            output: &mut self.output,
+            state: self.state,
+            output: self.output,
         }
     }
 
@@ -83,10 +84,10 @@ where C: RaftTypeConfig
         let leader = self.leader.leader_mut().unwrap();
 
         LeaderHandler {
-            config: &mut self.config,
+            config: self.config,
             leader,
-            state: &mut self.state,
-            output: &mut self.output,
+            state: self.state,
+            output: self.output,
         }
     }
 }
