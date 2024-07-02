@@ -48,7 +48,7 @@ fn eng() -> Engine<UTConfig> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m23())),
     );
-    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 2));
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(6, 2));
     eng.state.server_state = eng.calc_server_state();
     eng
 }
