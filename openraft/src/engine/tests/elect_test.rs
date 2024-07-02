@@ -48,14 +48,14 @@ fn test_elect_single_node() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert!(eng.leader.is_following());
         assert!(eng.candidate_ref().is_some(), "candidate state is pending");
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
         assert_eq!(
             vec![
-                Command::RebuildReplicationStreams { targets: vec![] },
+                //
                 Command::SaveVote { vote: Vote::new(1, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest {
@@ -89,7 +89,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert_eq!(Vote::new(2, 1), *eng.candidate_ref().unwrap().vote_ref());
 
         assert!(eng.candidate_mut().is_some(), "candidate state is pending");
 
@@ -97,7 +97,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::RebuildReplicationStreams { targets: vec![] },
+                //
                 Command::SaveVote { vote: Vote::new(2, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest {
@@ -126,7 +126,8 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert!(eng.leader.is_following());
+        assert_eq!(Vote::new(1, 1), *eng.candidate_ref().unwrap().vote_ref());
 
         assert_eq!(
             Some(btreeset! {},),
@@ -137,9 +138,7 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::RebuildReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(2))]
-                },
+                //
                 Command::SaveVote { vote: Vote::new(1, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1)))

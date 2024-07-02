@@ -110,6 +110,8 @@ where
             vote
         };
 
-        Leader::new(vote, self.quorum_set.clone(), self.learner_ids, self.last_log_id)
+        let last_leader_log_ids = self.last_log_id().copied().into_iter().collect::<Vec<_>>();
+
+        Leader::new(vote, self.quorum_set.clone(), self.learner_ids, &last_leader_log_ids)
     }
 }

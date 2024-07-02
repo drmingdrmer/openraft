@@ -120,8 +120,10 @@ where C: RaftTypeConfig
 
     /// Update to Leader or following state depending on `Engine.state.vote`.
     pub(crate) fn update_internal_server_state(&mut self) {
-        if self.state.is_leading(&self.config.id) {
+        if self.state.is_leader(&self.config.id) {
             self.become_leader();
+        } else if self.state.is_leading(&self.config.id) {
+            // candidate, nothing to do
         } else {
             self.become_following();
         }
@@ -172,8 +174,15 @@ where C: RaftTypeConfig
 
         self.replication_handler().rebuild_replication_streams();
 
-        self.leader_handler()
-            .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        let leader = self.leader.leader_ref().unwrap();
+
+        // TODO: test building a Leader with proposed logs, check leader.noop_log_id, last_log_id
+
+        // If the leader has not yet proposed any log, propose a blank log
+        if leader.last_log_id() < leader.noop_log_id() {
+            self.leader_handler()
+                .leader_append_entries(vec![C::Entry::new_blank(LogId::<C::NodeId>::default())]);
+        }
     }
 
     /// Enter following state(vote.node_id != self.id or self is not a voter).
@@ -189,9 +198,9 @@ where C: RaftTypeConfig
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
-        if self.leader.is_following() {
-            return;
-        }
+        // if self.leader.is_following() {
+        //     return;
+        // }
 
         *self.leader = InternalServerState::Following;
 

@@ -83,7 +83,6 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     // An applied log id has to be committed thus
     let mut eng = eng();
     eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
-    eng.testing_new_leader();
     eng.output.take_commands();
 
     let res = eng.append_entries(
@@ -214,7 +213,6 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
 fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.vote = UTime::new(TokioInstant::now(), Vote::new(1, 2));
-    eng.testing_new_leader();
     eng.output.take_commands();
 
     let res = eng.append_entries(&Vote::new_committed(2, 1), Some(log_id(2, 1, 4)), vec![

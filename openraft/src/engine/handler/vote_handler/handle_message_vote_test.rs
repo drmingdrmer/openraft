@@ -32,7 +32,6 @@ fn eng() -> Engine<UTConfig> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m01())));
 
-    eng.testing_new_leader();
     eng.output.take_commands();
     eng
 }
@@ -40,12 +39,14 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.state.vote = UTime::new(TokioInstant::now(), Vote::new_committed(2, 1));
+    eng.testing_new_leader();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(1, 2));
 
-    assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new(2, 1))), resp);
+    assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new_committed(2, 1))), resp);
 
-    assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
     assert!(eng.leader.is_leader());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);

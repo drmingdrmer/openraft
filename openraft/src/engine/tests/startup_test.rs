@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::engine::testing::UTConfig;
 use crate::engine::Command;

@@ -61,7 +61,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     vote: Vote::default(),
                     entries: vec![Entry::<UTConfig>::new_membership(LogId::default(), m1())],
                 },
-                Command::RebuildReplicationStreams { targets: vec![] },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output
                 // command.
@@ -114,9 +113,6 @@ fn test_initialize() -> anyhow::Result<()> {
                 Command::AppendInputEntries {
                     vote: Vote::default(),
                     entries: vec![Entry::new_membership(LogId::default(), m12())],
-                },
-                Command::RebuildReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output

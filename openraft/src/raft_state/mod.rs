@@ -384,11 +384,13 @@ where C: RaftTypeConfig
     pub(crate) fn new_leader(&mut self) -> Leader<C, LeaderQuorumSet<C::NodeId>> {
         let em = &self.membership_state.effective().membership();
 
+        let last_leader_log_ids = self.log_ids.by_last_leader();
+
         Leader::new(
             *self.vote_ref(),
             em.to_quorum_set(),
             em.learner_ids(),
-            self.last_log_id().copied(),
+            last_leader_log_ids,
         )
     }
 

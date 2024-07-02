@@ -44,6 +44,7 @@ where C: RaftTypeConfig
         }
 
         let leader = candidate.into_leader();
+        let vote = *leader.vote_ref();
         *self.leader = InternalServerState::Leader(Box::new(leader));
 
         self.replication_handler().rebuild_replication_streams();

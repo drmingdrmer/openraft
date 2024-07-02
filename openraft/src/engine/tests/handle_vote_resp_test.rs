@@ -79,7 +79,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
             btreeset! {1},
             eng.candidate_ref().unwrap().granters().collect::<BTreeSet<_>>()
@@ -140,7 +140,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
         assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
-        assert_eq!(None, eng.leader.leader_ref().unwrap().noop_log_id);
+        assert_eq!(&Vote::new(2, 1), eng.candidate_ref().unwrap().vote_ref());
         assert_eq!(
             btreeset! {1,2},
             eng.candidate_ref().unwrap().granters().collect::<BTreeSet<_>>()
@@ -150,7 +150,11 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         assert_eq!(eng.output.take_commands(), vec![]);
     }
+    Ok(())
+}
 
+#[test]
+fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
     {
         let mut eng = eng();
@@ -168,7 +172,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2))));
 
-        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
         assert_eq!(Some(log_id(2, 1, 1)), eng.leader.leader_ref().unwrap().noop_log_id);
         assert!(
             eng.candidate_ref().is_none(),
