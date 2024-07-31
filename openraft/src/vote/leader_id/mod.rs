@@ -13,3 +13,5 @@ pub use leader_id_std::CommittedLeaderId;
 pub use leader_id_std::LeaderId;
 
 mod impl_into_leader_id;
+
+mod raft_leader_id;
