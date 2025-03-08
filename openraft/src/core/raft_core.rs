@@ -49,6 +49,8 @@ use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::Infallible;
 use crate::error::InitializeError;
+use crate::error::NodeNotFound;
+use crate::error::Operation;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
@@ -68,6 +70,7 @@ use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
+use crate::raft::trigger::error::SendSnapshotError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
@@ -685,6 +688,25 @@ where
         self.engine.snapshot_handler().trigger_snapshot();
     }
 
+    /// Trigger a snapshot sending job if there is no pending sending job.
+    fn trigger_send_snapshot(&mut self, to: C::NodeId) -> Result<(), SendSnapshotError<C>> {
+        if !self.replications.contains_key(&to) {
+            return Err(SendSnapshotError::NodeNotFound(NodeNotFound::new(
+                to,
+                Operation::SendSnapshot,
+            )));
+        }
+
+        let snapshot_log_id = self.engine.state.io_state().snapshot().cloned();
+
+        self.engine.output.push_command(Command::Replicate {
+            target: to,
+            req: Replicate::snapshot(snapshot_log_id),
+        });
+
+        Ok(())
+    }
+
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T: OptionalSend, E>(&self, tx: ResultSender<C, T, E>)
@@ -1288,6 +1310,9 @@ where
                         self.send_heartbeat("ExternalCommand");
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
+                    ExternalCommand::SendSnapshot { to } => {
+                        self.trigger_send_snapshot(to);
+                    }
                     ExternalCommand::GetSnapshot { tx } => {
                         let cmd = sm::Command::get_snapshot(tx);
                         let res = self.sm_handle.send(cmd);

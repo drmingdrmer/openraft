@@ -1,7 +1,11 @@
 //! Trigger an action to RaftCore by external caller.
 
+pub mod error;
+
+use openraft_macros::since;
+
+use self::error::SendSnapshotError;
 use crate::core::raft_msg::external_command::ExternalCommand;
-use crate::error::AllowNextRevertError;
 use crate::error::Fatal;
 use crate::raft::RaftInner;
 use crate::type_config::TypeConfigExt;
@@ -59,6 +63,14 @@ where C: RaftTypeConfig
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     pub async fn snapshot(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+    }
+
+    /// Trigger to send a snapshot to the specified node.
+    ///
+    /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
+    #[since(version = "0.10.0")]
+    pub async fn send_snapshot(&self, to: C::NodeId) -> Result<Result<(), SendSnapshotError<C>>, Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::SendSnapshot { to }, "send_snapshot").await
     }
 
     /// Initiate the log purge up to and including the given `upto` log index.
@@ -127,6 +139,7 @@ where C: RaftTypeConfig
     /// - Restart the target node.
     ///
     /// [`Config::allow_log_reversion`]: `crate::Config::allow_log_reversion`
+    #[since(version = "0.10.0")]
     pub async fn allow_next_revert(
         &self,
         to: &C::NodeId,

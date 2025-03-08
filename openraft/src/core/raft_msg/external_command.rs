@@ -24,6 +24,9 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// Initiate to build a snapshot on this node.
     Snapshot,
 
+    /// Send a snapshot to a specified node. If `to` is `None`, send to all nodes.
+    SendSnapshot { to: C::NodeId },
+
     /// Get a snapshot from the state machine, send back via a oneshot::Sender.
     GetSnapshot { tx: ResultSender<C, Option<Snapshot<C>>> },
 
@@ -70,6 +73,9 @@ where C: RaftTypeConfig
             }
             ExternalCommand::Snapshot => {
                 write!(f, "Snapshot")
+            }
+            ExternalCommand::SendSnapshot { to } => {
+                write!(f, "SendSnapshot: to {}", to)
             }
             ExternalCommand::GetSnapshot { .. } => {
                 write!(f, "GetSnapshot")

@@ -69,7 +69,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
 
 /// Test trigger transfer leader on the Leader.
 ///
-/// Call [`trigger().transfer_leader()`](openraft::raft::trigger::Trigger::transfer_leader) on the
+/// Call [`trigger().transfer_leader()`](openraft::raft::r#mod::Trigger::transfer_leader) on the
 /// Leader node to force establish a new leader.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

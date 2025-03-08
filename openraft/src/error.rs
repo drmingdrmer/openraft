@@ -1,6 +1,5 @@
 //! Error types exposed by this crate.
 
-mod allow_next_revert_error;
 pub mod decompose;
 pub mod into_ok;
 mod invalid_sm;
@@ -18,7 +17,6 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
-pub use self::allow_next_revert_error::AllowNextRevertError;
 pub use self::invalid_sm::InvalidStateMachineType;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
@@ -26,6 +24,8 @@ pub use self::operation::Operation;
 pub use self::replication_closed::ReplicationClosed;
 pub use self::streaming_error::StreamingError;
 use crate::network::RPCTypes;
+// Keep for backward compatibility
+pub use crate::raft::trigger::error::AllowNextRevertError;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;

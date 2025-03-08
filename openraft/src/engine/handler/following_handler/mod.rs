@@ -279,7 +279,16 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_full_snapshot(&mut self, snapshot: Snapshot<C>) -> Option<Condition<C>> {
         let meta = &snapshot.meta;
-        tracing::info!("install_full_snapshot: meta:{:?}", meta);
+        let io_state = self.state.io_state();
+        let applied = self.state.io_applied().cloned();
+        let committed = self.state.committed();
+
+        let tracing::info!(
+            "install_full_snapshot: meta:{}, local state: {{applied: {}, committed: {}, last: {} }}",
+            meta,
+            io_state.applied().display(),
+            io_state.committed().display(),
+        );
 
         let snap_last_log_id = meta.last_log_id.clone();
 

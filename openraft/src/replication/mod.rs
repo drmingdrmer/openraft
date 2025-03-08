@@ -706,6 +706,11 @@ where
     ) -> Result<Option<Data<C>>, ReplicationError<C>> {
         tracing::info!("{}", func_name!());
 
+        if self.snapshot_state.is_some() {
+            tracing::warn!("snapshot is already in progress");
+            return Ok(None);
+        }
+
         let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
             tracing::warn!(error = display(&reason), "failed to get snapshot from state machine");
             ReplicationClosed::new(reason)

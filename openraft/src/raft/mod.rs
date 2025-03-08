@@ -75,10 +75,10 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::raft::r#mod::Trigger;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::Responder;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
-use crate::raft::trigger::Trigger;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::Snapshot;
@@ -655,7 +655,7 @@ where C: RaftTypeConfig
     /// Otherwise, it just resets the Leader lease to allow the `to` node to become the Leader.
     ///
     /// The application calls
-    /// [`Raft::trigger().transfer_leader()`](crate::raft::trigger::Trigger::transfer_leader) to
+    /// [`Raft::trigger().transfer_leader()`](crate::raft::r#mod::Trigger::transfer_leader) to
     /// submit Transfer Leader command. Then, the current Leader will broadcast it to every node in
     /// the cluster via [`RaftNetworkV2::transfer_leader`] and the implementation on the remote node
     /// responds to transfer leader request by calling this method.

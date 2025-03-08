@@ -20,6 +20,9 @@ pub enum Operation {
     /// Send a heartbeat message to a follower or learner.
     SendHeartbeat,
 
+    /// Send a snapshot to a follower or learner.
+    SendSnapshot,
+
     /// Receive a snapshot.
     ReceiveSnapshot,
 
@@ -43,6 +46,7 @@ impl fmt::Display for Operation {
             Operation::AllowNextRevert => write!(f, "set flag to allow replication revert for once"),
             Operation::TransferLeader => write!(f, "transfer leadership"),
             Operation::SendHeartbeat => write!(f, "send heartbeat"),
+            Operation::SendSnapshot => write!(f, "send snapshot"),
             Operation::ReceiveSnapshot => write!(f, "receive snapshot"),
             Operation::InstallSnapshot => write!(f, "install snapshot"),
             Operation::ClientWrite => write!(f, "write application data"),

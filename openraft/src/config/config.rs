@@ -239,7 +239,7 @@ pub struct Config {
     /// rebooting it(log reverts to empty) will not result in data loss.
     ///
     /// For one-shot log reversion, use
-    /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
+    /// [`Raft::trigger().allow_next_revert()`](crate::raft::r#mod::Trigger::allow_next_revert).
     ///
     /// Since: 0.10.0
     #[clap(long,
