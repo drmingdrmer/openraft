@@ -3,6 +3,8 @@
 //! [`NodeId`]: `RaftTypeConfig::NodeId`
 //! [`Entry`]: `RaftTypeConfig::Entry`
 
+pub mod primitive_config;
+
 pub mod async_runtime;
 pub(crate) mod util;
 
