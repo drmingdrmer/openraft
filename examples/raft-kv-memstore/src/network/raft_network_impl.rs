@@ -1,7 +1,13 @@
+use std::future::Future;
+use std::marker::PhantomData;
+
+use openraft::alias::VoteOf;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RemoteError;
+use openraft::error::ReplicationClosed;
 use openraft::error::Unreachable;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetwork;
 use openraft::network::RaftNetworkFactory;
@@ -12,6 +18,7 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -103,5 +110,42 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<RaftError>> {
         self.owner.send_rpc(self.target, &self.target_node, "raft-vote", req).await
+    }
+}
+
+pub struct NetworkConnection2<T> {
+    owner: Network,
+    target: NodeId,
+    target_node: BasicNode,
+    t: PhantomData<T>,
+}
+
+impl<T> RaftNetworkV2<TypeConfig> for NetworkConnection2<T>
+where T: Send + Sync + 'static
+{
+    async fn append_entries(
+        &mut self,
+        rpc: AppendEntriesRequest<TypeConfig>,
+        option: RPCOption,
+    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError> {
+        todo!()
+    }
+
+    async fn vote(
+        &mut self,
+        rpc: VoteRequest<TypeConfig>,
+        option: RPCOption,
+    ) -> Result<VoteResponse<TypeConfig>, RPCError> {
+        todo!()
+    }
+
+    async fn full_snapshot(
+        &mut self,
+        vote: VoteOf<TypeConfig>,
+        snapshot: openraft::Snapshot<TypeConfig>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse, StreamingError> {
+        todo!()
     }
 }
