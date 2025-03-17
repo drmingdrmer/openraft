@@ -6,9 +6,9 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::display_ext::DisplayOptionExt;
+use crate::type_config::base_config::RaftBaseConfig;
 use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
-use crate::RaftTypeConfig;
 
 /// ID of a `leader`, enforcing single leader per term.
 ///
@@ -18,53 +18,53 @@ use crate::RaftTypeConfig;
 /// defined below.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LeaderId<C>
-where C: RaftTypeConfig
+pub struct LeaderId<B>
+where B: RaftBaseConfig
 {
-    pub term: C::Term,
+    pub term: B::Term,
 
-    pub voted_for: Option<C::NodeId>,
+    pub voted_for: Option<B::NodeId>,
 }
 
-impl<C> PartialOrd for LeaderId<C>
-where C: RaftTypeConfig
+impl<B> PartialOrd for LeaderId<B>
+where B: RaftBaseConfig
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        LeaderIdCompare::<C>::std(self, other)
+        LeaderIdCompare::<B>::std(self, other)
     }
 }
 
-impl<C> fmt::Display for LeaderId<C>
-where C: RaftTypeConfig
+impl<B> fmt::Display for LeaderId<B>
+where B: RaftBaseConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.voted_for.display())
     }
 }
 
-impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig
+impl<B> RaftLeaderId<B> for LeaderId<B>
+where B: RaftBaseConfig
 {
-    type Committed = CommittedLeaderId<C>;
+    type Committed = CommittedLeaderId<B>;
 
-    fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    fn new(term: B::Term, node_id: B::NodeId) -> Self {
         Self {
             term,
             voted_for: Some(node_id),
         }
     }
 
-    fn term(&self) -> C::Term {
+    fn term(&self) -> B::Term {
         self.term
     }
 
-    fn node_id(&self) -> Option<&C::NodeId> {
+    fn node_id(&self) -> Option<&B::NodeId> {
         self.voted_for.as_ref()
     }
 
     fn to_committed(&self) -> Self::Committed {
-        CommittedLeaderId::new(self.term, C::NodeId::default())
+        CommittedLeaderId::new(self.term, B::NodeId::default())
     }
 }
 
@@ -84,17 +84,17 @@ where C: RaftTypeConfig
 #[display("{}", term)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct CommittedLeaderId<C>
-where C: RaftTypeConfig
+pub struct CommittedLeaderId<B>
+where B: RaftBaseConfig
 {
-    pub term: C::Term,
-    p: PhantomData<C>,
+    pub term: B::Term,
+    p: PhantomData<B>,
 }
 
-impl<C> CommittedLeaderId<C>
-where C: RaftTypeConfig
+impl<B> CommittedLeaderId<B>
+where B: RaftBaseConfig
 {
-    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    pub fn new(term: B::Term, node_id: B::NodeId) -> Self {
         let _ = node_id;
         Self { term, p: PhantomData }
     }

@@ -3,12 +3,10 @@
 //! [`NodeId`]: `RaftTypeConfig::NodeId`
 //! [`Entry`]: `RaftTypeConfig::Entry`
 
-pub mod primitive_config;
+pub mod base_config;
 
 pub mod async_runtime;
 pub(crate) mod util;
-
-use std::fmt::Debug;
 
 pub use async_runtime::AsyncRuntime;
 pub use async_runtime::MpscUnbounded;
@@ -17,6 +15,8 @@ pub use util::TypeConfigExt;
 
 use crate::entry::RaftEntry;
 use crate::raft::responder::Responder;
+use crate::type_config::base_config::RaftBaseConfig;
+use crate::type_config::base_config::TypeConfigBase;
 use crate::vote::raft_vote::RaftVote;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
@@ -25,7 +25,6 @@ use crate::AppDataResponse;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
-use crate::OptionalSync;
 
 /// Configuration of types used by the [`Raft`] core engine.
 ///
@@ -39,7 +38,17 @@ use crate::OptionalSync;
 /// as its supertraits as a workaround. To ease the declaration, the macro
 /// `declare_raft_types` is provided, which can be used to declare the type easily.
 ///
-/// Example:
+/// A minimal example could be:
+/// ```ignore
+/// openraft::declare_raft_types!(
+///    pub TypeConfig:
+///        D            = ClientRequest,
+///        R            = ClientResponse,
+///        NodeId       = u64,
+/// );
+/// ```
+///
+/// Full example:
 /// ```ignore
 /// openraft::declare_raft_types!(
 ///    pub TypeConfig:
@@ -53,12 +62,12 @@ use crate::OptionalSync;
 ///        Entry        = openraft::impls::Entry<Self>,
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        AsyncRuntime = openraft::TokioRuntime,
+///        Responder    = openraft::impls::OneshotResponder<Self>,
+///        BaseConfig   = Self,
 /// );
 /// ```
 /// [`Raft`]: crate::Raft
-pub trait RaftTypeConfig:
-    Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
-{
+pub trait RaftTypeConfig: TypeConfigBase {
     /// Application-specific request data passed to the state machine.
     type D: AppData;
 
@@ -82,7 +91,7 @@ pub trait RaftTypeConfig:
     type Term: RaftTerm;
 
     /// A Leader identifier in a cluster.
-    type LeaderId: RaftLeaderId<Self>;
+    type LeaderId: RaftLeaderId<Self::BaseConfig>;
 
     /// Raft vote type.
     ///
@@ -110,6 +119,17 @@ pub trait RaftTypeConfig:
     /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
     /// [`WriteResult`]: `crate::raft::message::ClientWriteResult`
     type Responder: Responder<Self>;
+
+    /// The base configuration type that defines the primitive types.
+    ///
+    /// By default, it is the same as the `RaftTypeConfig` itself.
+    type BaseConfig: RaftBaseConfig<
+        D = Self::D,
+        R = Self::R,
+        NodeId = Self::NodeId,
+        Node = Self::Node,
+        Term = Self::Term,
+    >;
 }
 
 #[allow(dead_code)]
@@ -124,19 +144,23 @@ pub mod alias {
     use crate::async_runtime::MpscUnbounded;
     use crate::async_runtime::Oneshot;
     use crate::raft::responder::Responder;
+    use crate::type_config::base_config::RaftBaseConfig;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
     use crate::EntryPayload;
     use crate::LogId;
     use crate::RaftTypeConfig;
 
-    pub type DOf<C> = <C as RaftTypeConfig>::D;
-    pub type ROf<C> = <C as RaftTypeConfig>::R;
-    pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
-    pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
-    pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
-    pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
-    pub type TermOf<C> = <C as RaftTypeConfig>::Term;
+    pub type BaseConfigOf<C> = <C as RaftTypeConfig>::BaseConfig;
+
+    pub type DOf<B> = <B as RaftBaseConfig>::D;
+    pub type ROf<B> = <B as RaftBaseConfig>::R;
+    pub type AppDataOf<B> = <B as RaftBaseConfig>::D;
+    pub type AppResponseOf<B> = <B as RaftBaseConfig>::R;
+    pub type NodeIdOf<B> = <B as RaftBaseConfig>::NodeId;
+    pub type NodeOf<B> = <B as RaftBaseConfig>::Node;
+    pub type TermOf<B> = <B as RaftBaseConfig>::Term;
+
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
@@ -185,7 +209,7 @@ pub mod alias {
 
     // Usually used types
     pub type LogIdOf<C> = LogId<C>;
-    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<C>>::Committed;
+    pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<BaseConfigOf<C>>>::Committed;
     pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 }

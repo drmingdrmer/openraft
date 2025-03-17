@@ -2,8 +2,8 @@
 
 use std::fmt;
 
+use crate::type_config::base_config::RaftBaseConfig;
 use crate::vote::RaftLeaderId;
-use crate::RaftTypeConfig;
 
 /// ID of a `leader`, allowing multiple leaders per term.
 ///
@@ -13,15 +13,15 @@ use crate::RaftTypeConfig;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LeaderId<C>
-where C: RaftTypeConfig
+pub struct LeaderId<B>
+where B: RaftBaseConfig
 {
-    pub term: C::Term,
-    pub node_id: C::NodeId,
+    pub term: B::Term,
+    pub node_id: B::NodeId,
 }
 
-impl<C> fmt::Display for LeaderId<C>
-where C: RaftTypeConfig
+impl<B> fmt::Display for LeaderId<B>
+where B: RaftBaseConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "T{}-N{}", self.term, self.node_id)
@@ -40,22 +40,22 @@ where C: RaftTypeConfig
 /// information that makes leader-ids a correct total order set, e.g., in standard raft, `voted_for:
 /// Option<node_id>` can be removed from `(term, voted_for)` once it is granted. This is why
 /// standard raft stores just a `term` in log entry.
-pub type CommittedLeaderId<C> = LeaderId<C>;
+pub type CommittedLeaderId<B> = LeaderId<B>;
 
-impl<C> RaftLeaderId<C> for LeaderId<C>
-where C: RaftTypeConfig<LeaderId = Self>
+impl<B> RaftLeaderId<B> for LeaderId<B>
+where B: RaftBaseConfig
 {
     type Committed = Self;
 
-    fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    fn new(term: B::Term, node_id: B::NodeId) -> Self {
         Self { term, node_id }
     }
 
-    fn term(&self) -> C::Term {
+    fn term(&self) -> B::Term {
         self.term
     }
 
-    fn node_id(&self) -> Option<&C::NodeId> {
+    fn node_id(&self) -> Option<&B::NodeId> {
         Some(&self.node_id)
     }
 

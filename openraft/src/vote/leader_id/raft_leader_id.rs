@@ -2,8 +2,8 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use crate::base::OptionalFeatures;
+use crate::type_config::base_config::RaftBaseConfig;
 use crate::vote::leader_id::raft_committed_leader_id::RaftCommittedLeaderId;
-use crate::RaftTypeConfig;
 
 /// A Leader identifier in a OpenRaft cluster.
 ///
@@ -22,9 +22,9 @@ use crate::RaftTypeConfig;
 /// neither can overwrite the other.
 ///
 /// [`Vote`]: crate::vote::Vote
-pub trait RaftLeaderId<C>
+pub trait RaftLeaderId<B>
 where
-    C: RaftTypeConfig,
+    B: RaftBaseConfig,
     Self: OptionalFeatures + PartialOrd + Eq + Clone + Debug + Display + Default + 'static,
 {
     /// The committed version of this leader ID.
@@ -32,13 +32,13 @@ where
     /// A simple implementation of this trait would return `Self` as the committed version.
     type Committed: RaftCommittedLeaderId;
 
-    fn new(term: C::Term, node_id: C::NodeId) -> Self;
+    fn new(term: B::Term, node_id: B::NodeId) -> Self;
 
     /// Get the term number of this leader
-    fn term(&self) -> C::Term;
+    fn term(&self) -> B::Term;
 
     /// Get the node ID of this leader, if one is set
-    fn node_id(&self) -> Option<&C::NodeId>;
+    fn node_id(&self) -> Option<&B::NodeId>;
 
     /// Convert this leader ID to a committed leader ID.
     ///
@@ -49,23 +49,23 @@ where
 /// Extension methods for [`RaftLeaderId`].
 ///
 /// This trait is implemented for all types that implement [`RaftLeaderId`].
-pub trait RaftLeaderIdExt<C>
+pub trait RaftLeaderIdExt<B>
 where
-    C: RaftTypeConfig,
-    Self: RaftLeaderId<C>,
+    B: RaftBaseConfig,
+    Self: RaftLeaderId<B>,
 {
-    fn new_committed(term: C::Term, node_id: C::NodeId) -> Self::Committed {
+    fn new_committed(term: B::Term, node_id: B::NodeId) -> Self::Committed {
         Self::new(term, node_id).to_committed()
     }
 
-    fn to_node_id(&self) -> Option<C::NodeId> {
+    fn to_node_id(&self) -> Option<B::NodeId> {
         self.node_id().cloned()
     }
 }
 
-impl<C, T> RaftLeaderIdExt<C> for T
+impl<B, T> RaftLeaderIdExt<B> for T
 where
-    C: RaftTypeConfig,
-    T: RaftLeaderId<C>,
+    B: RaftBaseConfig,
+    T: RaftLeaderId<B>,
 {
 }
