@@ -46,6 +46,7 @@ where N: Node + Ord
     type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder = crate::impls::OneshotResponder<Self>;
+    type BaseConfig = Self;
 }
 
 /// Builds a log id, for testing purposes.

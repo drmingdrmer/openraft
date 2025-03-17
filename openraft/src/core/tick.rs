@@ -186,6 +186,7 @@ mod tests {
         type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
         type Responder = crate::impls::OneshotResponder<Self>;
+        type BaseConfig = Self;
     }
 
     #[tokio::test]

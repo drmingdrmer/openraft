@@ -122,6 +122,7 @@ use crate::StorageHelper;
 ///        SnapshotData = Cursor<Vec<u8>>,
 ///        Responder    = openraft::impls::OneshotResponder<Self>,
 ///        AsyncRuntime = openraft::TokioRuntime,
+///        BaseConfig   = Self,
 /// );
 /// ```
 ///
@@ -137,6 +138,7 @@ use crate::StorageHelper;
 /// - `SnapshotData`: `Cursor<Vec<u8>>`
 /// - `Responder`:    `::openraft::impls::OneshotResponder<Self>`
 /// - `AsyncRuntime`: `::openraft::impls::TokioRuntime`
+/// - `BaseConfig`:   `Self`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
@@ -186,6 +188,7 @@ macro_rules! declare_raft_types {
                 (SnapshotData , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder    , , $crate::impls::OneshotResponder<Self>        ),
                 (AsyncRuntime , , $crate::impls::TokioRuntime                  ),
+                (BaseConfig   , , Self                                         ),
             );
 
         }
