@@ -113,6 +113,8 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
     }
 }
 
+pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
+
 pub struct NetworkConnection2<T> {
     owner: Network,
     target: NodeId,
@@ -120,32 +122,32 @@ pub struct NetworkConnection2<T> {
     t: PhantomData<T>,
 }
 
-impl<T> RaftNetworkV2<TypeConfig> for NetworkConnection2<T>
-where T: Send + Sync + 'static
+impl<T> RaftNetworkV2<T> for NetworkConnection2<T>
+where T: RaftTypeConfigExt + Send + Sync + 'static
 {
     async fn append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<TypeConfig>,
+        rpc: AppendEntriesRequest<T>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError> {
+    ) -> Result<AppendEntriesResponse<T>, openraft::error::RPCError<T>> {
         todo!()
     }
 
     async fn vote(
         &mut self,
-        rpc: VoteRequest<TypeConfig>,
+        rpc: VoteRequest<T>,
         option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, RPCError> {
+    ) -> Result<VoteResponse<T>, openraft::error::RPCError<T>> {
         todo!()
     }
 
     async fn full_snapshot(
         &mut self,
-        vote: VoteOf<TypeConfig>,
-        snapshot: openraft::Snapshot<TypeConfig>,
+        vote: VoteOf<T>,
+        snapshot: openraft::Snapshot<T>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse, StreamingError> {
+    ) -> Result<openraft::raft::SnapshotResponse<T>, openraft::error::StreamingError<T>> {
         todo!()
     }
 }
