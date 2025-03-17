@@ -115,14 +115,9 @@ impl RaftNetwork<TypeConfig> for NetworkConnection {
 
 pub trait RaftTypeConfigExt: openraft::RaftTypeConfig {}
 
-pub struct NetworkConnection2<T> {
-    owner: Network,
-    target: NodeId,
-    target_node: BasicNode,
-    t: PhantomData<T>,
-}
+pub struct NetworkConnection2 {}
 
-impl<T> RaftNetworkV2<T> for NetworkConnection2<T>
+impl<T> RaftNetworkV2<T> for NetworkConnection2
 where T: RaftTypeConfigExt + Send + Sync + 'static
 {
     async fn append_entries(
