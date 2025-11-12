@@ -5,6 +5,7 @@ pub(crate) mod log_state;
 mod replication_session_id;
 pub(crate) mod request;
 pub(crate) mod response;
+pub(crate) mod snapshot_transmit;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -195,7 +196,7 @@ where
                 searching_end: 0,
                 last_log_id: None,
             },
-            tx_raft_core,
+            tx_raft_core: tx_raft_core,
             rx_event,
             weak_tx_event: tx_event.downgrade(),
             next_action: None,
@@ -672,120 +673,6 @@ where
                 self.next_action = Some(d);
             }
         }
-    }
-
-    #[tracing::instrument(level = "info", skip_all)]
-    async fn stream_snapshot(&mut self) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        tracing::info!("{}", func_name!());
-
-        let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
-            tracing::warn!(error = display(&reason), "failed to get snapshot from state machine");
-            ReplicationClosed::new(reason)
-        })?;
-
-        tracing::info!(
-            "received snapshot: meta:{}",
-            snapshot.as_ref().map(|x| &x.meta).display()
-        );
-
-        let snapshot = match snapshot {
-            None => {
-                let sto_err = StorageError::read_snapshot(None, AnyError::error("snapshot not found"));
-                return Err(ReplicationError::StorageError(sto_err));
-            }
-            Some(x) => x,
-        };
-
-        let mut option = RPCOption::new(self.config.install_snapshot_timeout());
-        option.snapshot_chunk_size = Some(self.config.snapshot_max_chunk_size as usize);
-
-        let (tx_cancel, rx_cancel) = C::oneshot();
-
-        let jh = C::spawn(Self::send_snapshot(
-            self.snapshot_network.clone(),
-            self.session_id.vote(),
-            snapshot,
-            option,
-            rx_cancel,
-            self.weak_tx_event.clone(),
-        ));
-
-        // When self.rx_event is dropped:
-        // 1) ReplicationCore will return from the main loop;
-        // 2) and tx_cancel is dropped;
-        // 3) and the snapshot task will be notified.
-        self.snapshot_state = Some((tx_cancel, jh));
-        Ok(None)
-    }
-
-    async fn send_snapshot(
-        network: Arc<MutexOf<C, N::Network>>,
-        vote: VoteOf<C>,
-        snapshot: Snapshot<C>,
-        option: RPCOption,
-        cancel: OneshotReceiverOf<C, ()>,
-        weak_tx: MpscUnboundedWeakSenderOf<C, Replicate<C>>,
-    ) {
-        let meta = snapshot.meta.clone();
-
-        let mut net = network.lock().await;
-
-        let start_time = C::now();
-
-        let cancel = async move {
-            let _ = cancel.await;
-            ReplicationClosed::new("ReplicationCore is dropped")
-        };
-
-        let res = net.full_snapshot(vote, snapshot, cancel, option).await;
-        if let Err(e) = &res {
-            tracing::warn!(error = display(e), "failed to send snapshot");
-        }
-
-        if let Some(tx_noty) = weak_tx.upgrade() {
-            let data = Data::new_snapshot_callback(start_time, meta, res);
-            let send_res = tx_noty.send(Replicate::new_data(data));
-            if send_res.is_err() {
-                tracing::warn!("weak_tx failed to send snapshot result to ReplicationCore");
-            }
-        } else {
-            tracing::warn!("weak_tx is dropped, no response is sent to ReplicationCore");
-        }
-    }
-
-    async fn handle_snapshot_callback(
-        &mut self,
-        callback: SnapshotCallback<C>,
-    ) -> Result<Option<Data<C>>, ReplicationError<C>> {
-        tracing::debug!(
-            response = display(&callback),
-            matching = display(self.log_state.matching.display()),
-            "handle_snapshot_response"
-        );
-
-        self.snapshot_state = None;
-
-        let SnapshotCallback {
-            start_time,
-            result,
-            snapshot_meta,
-        } = callback;
-
-        let resp = result?;
-
-        // Handle response conditions.
-        let sender_vote = self.session_id.vote();
-        if resp.vote.as_ref_vote() > sender_vote.as_ref_vote() {
-            return Err(ReplicationError::HigherVote(HigherVote {
-                higher: resp.vote,
-                sender_vote,
-            }));
-        }
-
-        self.notify_heartbeat_progress(start_time).await;
-        self.notify_progress(ReplicationResult(Ok(snapshot_meta.last_log_id)), true).await;
-
-        Ok(None)
     }
 
     /// If there are more logs to send, it returns a new `Some(Data::Logs)` to send.

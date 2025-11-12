@@ -15,6 +15,8 @@ pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
 
+pub(crate) mod retryable_error;
+
 mod leader_changed;
 
 use std::collections::BTreeSet;
