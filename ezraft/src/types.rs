@@ -9,6 +9,7 @@ use openraft::vote::leader_id_std::CommittedLeaderId;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::SnapshotMeta;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -131,31 +132,10 @@ where T: EzTypes
     }
 }
 
-/// Snapshot metadata managed by the framework
+/// Snapshot metadata type alias
 ///
-/// The framework creates this when snapshotting and you persist it with the snapshot data.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct EzSnapshotMeta<T>
-where T: EzTypes
-{
-    /// Last log entry included in this snapshot (term, index)
-    pub last_log_id: EzLogId,
-
-    /// Cluster membership at the time of snapshot
-    pub membership: Membership<OpenRaftTypes<T>>,
-}
-
-// Manual Clone implementation to avoid requiring T: Clone
-impl<T> Clone for EzSnapshotMeta<T>
-where T: EzTypes
-{
-    fn clone(&self) -> Self {
-        Self {
-            last_log_id: self.last_log_id,
-            membership: self.membership.clone(),
-        }
-    }
-}
+/// Points to OpenRaft's `SnapshotMeta` for full compatibility.
+pub type EzSnapshotMeta<T> = SnapshotMeta<OpenRaftTypes<T>>;
 
 /// Snapshot data: metadata and raw bytes
 pub type EzSnapshot<T> = (EzSnapshotMeta<T>, Vec<u8>);

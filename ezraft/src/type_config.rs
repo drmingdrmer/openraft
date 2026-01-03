@@ -26,7 +26,7 @@ pub trait EzTypes: Send + Sync + 'static {
     type Request: AppData + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
 
     /// Application response type
-    type Response: AppDataResponse + Send + Sync;
+    type Response: AppDataResponse + Default + Send + Sync;
 }
 
 /// Wrapper type that implements `RaftTypeConfig` for any `T: EzTypes`

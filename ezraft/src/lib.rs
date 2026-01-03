@@ -30,8 +30,8 @@
 //!
 //! #[async_trait]
 //! impl EzStorage<MyAppTypes> for FileStorage {
-//!     async fn load_state(&mut self) -> Result<Option<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>)>, io::Error> {
-//!         // Load meta and snapshot from disk; return None if first run
+//!     async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
+//!         // Load meta (or default) and snapshot from disk
 //!     }
 //!     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
 //!         // Persist state updates to disk
