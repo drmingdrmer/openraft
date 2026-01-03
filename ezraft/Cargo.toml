@@ -1,0 +1,22 @@
+[package]
+name = "ezraft"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+openraft = { path = "../openraft", features = ["serde"] }
+openraft-legacy = { path = "../legacy" }
+actix-web = "4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.39", features = ["full"] }
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
+tracing = "0.1"
+anyhow = "1.0"
+futures = "0.3"
+derive_more = { version = "1.0", features = ["display"] }
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tracing-subscriber = "0.3"
