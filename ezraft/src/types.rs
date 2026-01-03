@@ -80,12 +80,7 @@ where T: EzTypes
     }
 
     fn log_id_parts(&self) -> (&CommittedLeaderId<OpenRaftTypes<T>>, u64) {
-        // Use EzLogId's RaftLogId implementation
-        // EzLogId is (u64, u64) which implements RaftLogId
-        (
-            <EzLogId as RaftLogId<OpenRaftTypes<T>>>::committed_leader_id(&self.log_id),
-            <EzLogId as RaftLogId<OpenRaftTypes<T>>>::index(&self.log_id),
-        )
+        <EzLogId as RaftLogId<OpenRaftTypes<T>>>::log_id_parts(&self.log_id)
     }
 
     fn set_log_id(&mut self, new: LogId<OpenRaftTypes<T>>) {
