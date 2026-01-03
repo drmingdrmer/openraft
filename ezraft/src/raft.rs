@@ -13,10 +13,10 @@ use tokio::sync::Mutex;
 use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
 use crate::storage::StorageAdapter;
-use crate::type_config::EzTypes;
-use crate::type_config::OpenRaftTypes;
 use crate::trait_::EzStateMachine;
 use crate::trait_::EzStorage;
+use crate::type_config::EzTypes;
+use crate::type_config::OpenRaftTypes;
 
 /// Type alias for OpenRaft types (more readable than ORTypes<T>)
 type ORTypes<T> = OpenRaftTypes<T>;
@@ -100,9 +100,7 @@ where
         let (log_store, sm_store) = adapter.split();
 
         // Convert EzConfig to OpenRaft Config
-        let raft_config = config
-            .to_raft_config()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let raft_config = config.to_raft_config().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         let raft_config = Arc::new(raft_config);
 
         // Create network factory
@@ -141,18 +139,14 @@ where
     /// ]).await?;
     /// ```
     pub async fn initialize(&self, members: Vec<(u64, String)>) -> Result<(), io::Error> {
-        use openraft::BasicNode;
         use std::collections::BTreeMap;
 
-        let nodes: BTreeMap<u64, BasicNode> = members
-            .into_iter()
-            .map(|(id, addr)| (id, BasicNode::new(addr)))
-            .collect();
+        use openraft::BasicNode;
 
-        self.raft
-            .initialize(nodes)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let nodes: BTreeMap<u64, BasicNode> =
+            members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
+
+        self.raft.initialize(nodes).await.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         Ok(())
     }
@@ -177,11 +171,8 @@ where
     /// let resp = raft.write(req).await?;
     /// ```
     pub async fn write(&self, req: T::Request) -> Result<T::Response, io::Error> {
-        let resp = self
-            .raft
-            .client_write(req)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp =
+            self.raft.client_write(req).await.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         Ok(resp.data)
     }
@@ -213,17 +204,13 @@ where
     /// # Arguments
     ///
     /// * `members` - List of (node_id, address) tuples for the new membership
-    pub async fn change_membership(
-        &self,
-        members: Vec<(u64, String)>,
-    ) -> Result<(), io::Error> {
-        use openraft::ChangeMembers;
+    pub async fn change_membership(&self, members: Vec<(u64, String)>) -> Result<(), io::Error> {
         use std::collections::BTreeMap;
 
-        let nodes: BTreeMap<u64, BasicNode> = members
-            .into_iter()
-            .map(|(id, addr)| (id, BasicNode::new(addr)))
-            .collect();
+        use openraft::ChangeMembers;
+
+        let nodes: BTreeMap<u64, BasicNode> =
+            members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
 
         let changes = ChangeMembers::AddVoters(nodes);
 
