@@ -45,7 +45,7 @@ pub enum Request {
 }
 
 // Define application response type
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Response {
     pub value: Option<String>,
 }
@@ -87,6 +87,15 @@ impl EzStateMachine<KvTypes> for KvStateMachine {
             }
         }
     }
+
+    async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
+        serde_json::to_vec(&self.data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
+        self.data = serde_json::from_slice(data)?;
+        Ok(())
+    }
 }
 
 // File-based storage implementation
@@ -122,11 +131,11 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<KvTypes> for FileStorage {
-    async fn load_state(&mut self) -> io::Result<Option<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)>> {
-        // Load meta (required for non-first-run)
+    async fn load_state(&mut self) -> io::Result<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)> {
+        // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => EzMeta::default(),
             Err(e) => return Err(e),
         };
 
@@ -141,7 +150,7 @@ impl EzStorage<KvTypes> for FileStorage {
             Err(e) => return Err(e),
         };
 
-        Ok(Some((meta, snapshot)))
+        Ok((meta, snapshot))
     }
 
     async fn save_state(&mut self, update: EzStateUpdate<KvTypes>) -> io::Result<()> {
