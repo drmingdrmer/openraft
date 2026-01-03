@@ -28,8 +28,8 @@ use crate::types::EzStateUpdate;
 ///
 /// #[async_trait]
 /// impl EzStorage<MyAppTypes> for FileStorage {
-///     async fn load_state(&mut self) -> Result<Option<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>)>, io::Error> {
-///         // 1. Load meta from base_dir/meta.json (return None if first run)
+///     async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
+///         // 1. Load meta from base_dir/meta.json (use default if first run)
 ///         // 2. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
 ///         // Log entries are loaded separately via load_log_range()
 ///     }
@@ -55,10 +55,9 @@ where
 {
     /// Load metadata and snapshot on startup
     ///
-    /// Return `Ok(None)` if this is the first run (no existing state).
-    /// Return `Ok(Some((meta, snapshot)))` with persisted metadata and optional snapshot.
+    /// Returns persisted metadata (or default if first run) and optional snapshot.
     /// Log entries are loaded separately via [`load_log_range`].
-    async fn load_state(&mut self) -> Result<Option<(EzMeta<T>, Option<EzSnapshot<T>>)>, io::Error>;
+    async fn load_state(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
 
     /// Persist a state update
     ///
@@ -118,4 +117,16 @@ where T: EzTypes
     /// This is where your business logic goes.
     /// The method is called sequentially for committed log entries.
     async fn apply(&mut self, req: T::Request) -> T::Response;
+
+    /// Build a snapshot of the current state machine state
+    ///
+    /// Serialize your state machine to bytes for persistence.
+    /// This is called periodically to create checkpoints.
+    async fn build_snapshot(&self) -> io::Result<Vec<u8>>;
+
+    /// Install a snapshot to replace the current state machine state
+    ///
+    /// Deserialize and replace your state machine from snapshot bytes.
+    /// This is called when receiving a snapshot from the leader.
+    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()>;
 }
