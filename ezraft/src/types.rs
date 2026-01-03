@@ -73,10 +73,8 @@ impl<T> RaftEntry<OpenRaftTypes<T>> for EzEntry<T>
 where T: EzTypes
 {
     fn new(log_id: LogId<OpenRaftTypes<T>>, payload: EntryPayload<OpenRaftTypes<T>>) -> Self {
-        // CommittedLeaderId is repr(transparent) around u64, so we can deref twice
-        let ez_log_id = (**log_id.committed_leader_id(), log_id.index);
         Self {
-            log_id: ez_log_id,
+            log_id: log_id.to_type(),
             payload,
         }
     }
@@ -91,8 +89,7 @@ where T: EzTypes
     }
 
     fn set_log_id(&mut self, new: LogId<OpenRaftTypes<T>>) {
-        // CommittedLeaderId is repr(transparent) around u64
-        self.log_id = (**new.committed_leader_id(), new.index);
+        self.log_id = new.to_type();
     }
 }
 
