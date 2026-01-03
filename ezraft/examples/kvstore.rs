@@ -21,9 +21,9 @@ use std::path::PathBuf;
 use clap::Parser;
 use ezraft::EzConfig;
 use ezraft::EzEntry;
-use ezraft::EzFullState;
 use ezraft::EzMeta;
 use ezraft::EzRaft;
+use ezraft::EzSnapshot;
 use ezraft::EzSnapshotMeta;
 use ezraft::EzStateMachine;
 use ezraft::EzStateUpdate;
@@ -129,7 +129,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<KvStoreTypes> for FileStorage {
-    async fn load_state(&mut self) -> io::Result<Option<EzFullState<KvStoreTypes>>> {
+    async fn load_state(&mut self) -> io::Result<Option<(EzMeta<KvStoreTypes>, Option<EzSnapshot<KvStoreTypes>>)>> {
         // Load meta
         let meta_data = match fs::read(&self.meta_path()).await {
             Ok(data) => data,
@@ -137,54 +137,17 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         };
         let meta: EzMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
 
-        // Load all log entries
-        let mut logs = vec![];
-        let logs_dir = self.logs_dir();
-        let mut entries = match fs::read_dir(&logs_dir).await {
-            Ok(e) => e,
-            Err(_) => {
-                return Ok(Some(EzFullState {
-                    meta,
-                    logs,
-                    snapshot: None,
-                }))
-            }
-        };
-
-        while let Some(entry) = entries.next_entry().await? {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("log-") {
-                let index: u64 = name[4..].parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                let data = fs::read(entry.path()).await?;
-
-                // Deserialize struct containing both term and payload
-                #[derive(serde::Deserialize)]
-                struct StoredEntry {
-                    term: u64,
-                    payload: openraft::EntryPayload<ezraft::OpenRaftTypes<KvStoreTypes>>,
-                }
-                let stored: StoredEntry = serde_json::from_slice(&data)?;
-
-                // Create EzEntry
-                logs.push(ezraft::EzEntry {
-                    log_id: (stored.term, index),
-                    payload: stored.payload,
-                });
-            }
-        }
-        logs.sort_by_key(|entry| entry.log_id);
-
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
             Ok(meta_data) => {
-                let meta: EzSnapshotMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
+                let snap_meta: EzSnapshotMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
-                Some((meta, data))
+                Some((snap_meta, data))
             }
             Err(_) => None,
         };
 
-        Ok(Some(EzFullState { meta, logs, snapshot }))
+        Ok(Some((meta, snapshot)))
     }
 
     async fn save_state(&mut self, update: EzStateUpdate<KvStoreTypes>) -> io::Result<()> {
