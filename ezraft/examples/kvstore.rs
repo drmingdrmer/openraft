@@ -123,12 +123,12 @@ impl FileStorage {
 #[async_trait::async_trait]
 impl EzStorage<KvTypes> for FileStorage {
     async fn load_state(&mut self) -> io::Result<Option<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)>> {
-        // Load meta
-        let meta_data = match fs::read(&self.meta_path()).await {
-            Ok(data) => data,
-            Err(_) => return Ok(None), // First run
+        // Load meta (required for non-first-run)
+        let meta = match fs::read(&self.meta_path()).await {
+            Ok(data) => serde_json::from_slice(&data)?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
         };
-        let meta: EzMeta<KvTypes> = serde_json::from_slice(&meta_data)?;
 
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
@@ -137,7 +137,8 @@ impl EzStorage<KvTypes> for FileStorage {
                 let data = fs::read(&self.snapshot_data_path()).await?;
                 Some((snap_meta, data))
             }
-            Err(_) => None,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
         };
 
         Ok(Some((meta, snapshot)))
