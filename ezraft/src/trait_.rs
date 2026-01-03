@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::type_config::EzTypes;
+use crate::types::EzEntry;
 use crate::types::EzFullState;
 use crate::types::EzStateUpdate;
 
@@ -66,6 +67,20 @@ where
     /// Each call represents one atomic operation that should be durably persisted.
     /// The framework calls this method when state changes.
     async fn save_state(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
+
+    /// Load log entries within a specific index range
+    ///
+    /// Returns log entries where `start <= entry.index < end`.
+    /// Called during replication to read specific entries without loading all logs.
+    ///
+    /// # Arguments
+    /// * `start` - Start index (inclusive)
+    /// * `end` - End index (exclusive)
+    ///
+    /// # Returns
+    /// Log entries in the range, sorted by index. Empty vec if range is empty or
+    /// no entries exist in range.
+    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
 
 /// State machine trait for business logic
@@ -98,8 +113,7 @@ where
 /// ```
 #[async_trait]
 pub trait EzStateMachine<T>: Send + Sync + 'static
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Apply a request to the state machine
     ///

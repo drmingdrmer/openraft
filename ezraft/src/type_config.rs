@@ -112,4 +112,3 @@ pub type EzMembershipOf<T> = Membership<OpenRaftTypes<T>>;
 
 /// Type alias for SnapshotData with OpenRaftTypes<T>
 pub type EzSnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
-

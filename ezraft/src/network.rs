@@ -9,6 +9,7 @@ use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
+use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::error::Unreachable;
 use openraft::network::RPCOption;
@@ -20,7 +21,6 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
-use openraft::error::RaftError;
 use openraft::RaftTypeConfig;
 use openraft_legacy::network_v1::Adapter;
 use openraft_legacy::network_v1::RaftNetwork as RaftNetworkV1;
@@ -67,8 +67,7 @@ where
 
 /// HTTP network client for a single Raft node
 pub struct Network<C>
-where
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     addr: String,
     client: Client,
@@ -76,15 +75,10 @@ where
 }
 
 impl<C> Network<C>
-where
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     /// Send an HTTP POST request to a target node
-    async fn request<Req, Resp, Err>(
-        &mut self,
-        uri: impl Display,
-        req: Req,
-    ) -> Result<Result<Resp, Err>, RPCError<C>>
+    async fn request<Req, Resp, Err>(&mut self, uri: impl Display, req: Req) -> Result<Result<Resp, Err>, RPCError<C>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -92,19 +86,13 @@ where
     {
         let url = format!("http://{}/{}", self.addr, uri);
 
-        let resp = self
-            .client
-            .post(url.clone())
-            .json(&req)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_connect() {
-                    RPCError::Unreachable(Unreachable::new(&e))
-                } else {
-                    RPCError::Network(NetworkError::new(&e))
-                }
-            })?;
+        let resp = self.client.post(url.clone()).json(&req).send().await.map_err(|e| {
+            if e.is_connect() {
+                RPCError::Unreachable(Unreachable::new(&e))
+            } else {
+                RPCError::Network(NetworkError::new(&e))
+            }
+        })?;
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| NetworkError::new(&e))?;
 
@@ -115,18 +103,14 @@ where
 /// Implement RaftNetwork (v1 API) for HTTP transport
 #[allow(clippy::blocks_in_conditions)]
 impl<C> RaftNetworkV1<C> for Network<C>
-where
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self
-            .request::<_, _, Infallible>("raft/append", req)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("raft/append", req).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
@@ -134,10 +118,7 @@ where
         &mut self,
         req: InstallSnapshotRequest<C>,
         _option: RPCOption,
-    ) -> Result<
-        InstallSnapshotResponse<C>,
-        RPCError<C, RaftError<C, InstallSnapshotError>>,
-    > {
+    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, RaftError<C, InstallSnapshotError>>> {
         let res = self.request("raft/snapshot", req).await.map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
@@ -153,10 +134,7 @@ where
         req: VoteRequest<C>,
         _option: RPCOption,
     ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self
-            .request::<_, _, Infallible>("raft/vote", req)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("raft/vote", req).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }

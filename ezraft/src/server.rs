@@ -62,9 +62,7 @@ where
     let resp = data
         .append_entries(req.into_inner())
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("append_entries failed: {}", e))
-        })?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("append_entries failed: {}", e)))?;
 
     Ok(web::Json(resp))
 }
@@ -82,9 +80,7 @@ where
     let resp = data
         .vote(req.into_inner())
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("vote failed: {}", e))
-        })?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("vote failed: {}", e)))?;
 
     Ok(web::Json(resp))
 }
@@ -99,21 +95,16 @@ where
     S: crate::trait_::EzStorage<T>,
     M: crate::trait_::EzStateMachine<T>,
 {
-    use openraft::BasicNode;
     use std::collections::BTreeMap;
 
-    let members: BTreeMap<u64, BasicNode> = req
-        .into_inner()
-        .members
-        .into_iter()
-        .map(|(id, addr)| (id, BasicNode::new(addr)))
-        .collect();
+    use openraft::BasicNode;
+
+    let members: BTreeMap<u64, BasicNode> =
+        req.into_inner().members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
 
     data.initialize(members)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("initialize failed: {}", e))
-        })?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("initialize failed: {}", e)))?;
 
     Ok(web::Json(serde_json::json!({ "status": "ok" })))
 }
@@ -134,9 +125,7 @@ where
     let node = BasicNode::new(req.addr);
     data.add_learner(req.node_id, node, true)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e))
-        })?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e)))?;
 
     Ok(web::Json(serde_json::json!({ "status": "ok" })))
 }
@@ -151,27 +140,19 @@ where
     S: crate::trait_::EzStorage<T>,
     M: crate::trait_::EzStateMachine<T>,
 {
-    use openraft::BasicNode;
-    use openraft::ChangeMembers;
     use std::collections::BTreeMap;
 
-    let members: BTreeMap<u64, BasicNode> = req
-        .into_inner()
-        .members
-        .into_iter()
-        .map(|(id, addr)| (id, BasicNode::new(addr)))
-        .collect();
+    use openraft::BasicNode;
+    use openraft::ChangeMembers;
+
+    let members: BTreeMap<u64, BasicNode> =
+        req.into_inner().members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
 
     let changes = ChangeMembers::AddVoters(members);
 
     data.change_membership(changes, false)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!(
-                "change_membership failed: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("change_membership failed: {}", e)))?;
 
     Ok(web::Json(serde_json::json!({ "status": "ok" })))
 }
@@ -207,4 +188,3 @@ struct AddLearnerRequest {
 struct ChangeMembershipRequest {
     members: Vec<(u64, String)>,
 }
-
