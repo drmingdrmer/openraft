@@ -34,21 +34,14 @@ use serde::Serialize;
 use tokio::fs;
 
 // Define application request types
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, derive_more::Display)]
 pub enum Request {
+    #[display("Set({key})")]
     Set { key: String, value: String },
+    #[display("Get({key})")]
     Get { key: String },
+    #[display("Delete({key})")]
     Delete { key: String },
-}
-
-impl std::fmt::Display for Request {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Request::Set { key, .. } => write!(f, "Set({})", key),
-            Request::Get { key } => write!(f, "Get({})", key),
-            Request::Delete { key } => write!(f, "Delete({})", key),
-        }
-    }
 }
 
 // Define application response type
@@ -59,25 +52,25 @@ pub struct Response {
 
 // Define type configuration
 #[derive(serde::Serialize, serde::Deserialize)]
-struct KvStoreTypes;
-impl EzTypes for KvStoreTypes {
+struct KvTypes;
+impl EzTypes for KvTypes {
     type Request = Request;
     type Response = Response;
 }
 
 // In-memory state machine
-struct KvStore {
+struct KvStateMachine {
     data: BTreeMap<String, String>,
 }
 
-impl KvStore {
+impl KvStateMachine {
     fn new() -> Self {
         Self { data: BTreeMap::new() }
     }
 }
 
 #[async_trait::async_trait]
-impl EzStateMachine<KvStoreTypes> for KvStore {
+impl EzStateMachine<KvTypes> for KvStateMachine {
     async fn apply(&mut self, req: Request) -> Response {
         match req {
             Request::Set { key, value } => {
@@ -128,19 +121,19 @@ impl FileStorage {
 }
 
 #[async_trait::async_trait]
-impl EzStorage<KvStoreTypes> for FileStorage {
-    async fn load_state(&mut self) -> io::Result<Option<(EzMeta<KvStoreTypes>, Option<EzSnapshot<KvStoreTypes>>)>> {
+impl EzStorage<KvTypes> for FileStorage {
+    async fn load_state(&mut self) -> io::Result<Option<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)>> {
         // Load meta
         let meta_data = match fs::read(&self.meta_path()).await {
             Ok(data) => data,
             Err(_) => return Ok(None), // First run
         };
-        let meta: EzMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
+        let meta: EzMeta<KvTypes> = serde_json::from_slice(&meta_data)?;
 
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
             Ok(meta_data) => {
-                let snap_meta: EzSnapshotMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
+                let snap_meta: EzSnapshotMeta<KvTypes> = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
                 Some((snap_meta, data))
             }
@@ -150,31 +143,15 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         Ok(Some((meta, snapshot)))
     }
 
-    async fn save_state(&mut self, update: EzStateUpdate<KvStoreTypes>) -> io::Result<()> {
+    async fn save_state(&mut self, update: EzStateUpdate<KvTypes>) -> io::Result<()> {
         match update {
             EzStateUpdate::WriteMeta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
             }
             EzStateUpdate::WriteLog(entry) => {
-                // Ensure logs directory exists
                 fs::create_dir_all(&self.logs_dir()).await?;
-
-                // Extract log_id and payload from EzEntry
-                let (term, index) = entry.log_id;
-
-                // Serialize struct containing both term and payload
-                #[derive(serde::Serialize)]
-                struct StoredEntry<'a> {
-                    term: u64,
-                    payload: &'a openraft::EntryPayload<ezraft::OpenRaftTypes<KvStoreTypes>>,
-                }
-                let stored = StoredEntry {
-                    term,
-                    payload: &entry.payload,
-                };
-                let data = serde_json::to_vec(&stored)?;
-                let path = self.log_path(index);
-                fs::write(path, data).await?;
+                let (_, index) = entry.log_id;
+                fs::write(self.log_path(index), serde_json::to_vec(&entry)?).await?;
             }
             EzStateUpdate::WriteSnapshot(meta, data) => {
                 fs::write(&self.snapshot_meta_path(), serde_json::to_vec(&meta)?).await?;
@@ -184,28 +161,16 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         Ok(())
     }
 
-    async fn load_log_range(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvStoreTypes>>> {
+    async fn load_log_range(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvTypes>>> {
         let mut logs = Vec::new();
 
         for index in start..end {
-            let path = self.log_path(index);
-            let data = match fs::read(&path).await {
+            let data = match fs::read(&self.log_path(index)).await {
                 Ok(d) => d,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(e),
             };
-
-            #[derive(serde::Deserialize)]
-            struct StoredEntry {
-                term: u64,
-                payload: openraft::EntryPayload<ezraft::OpenRaftTypes<KvStoreTypes>>,
-            }
-            let stored: StoredEntry = serde_json::from_slice(&data)?;
-
-            logs.push(EzEntry {
-                log_id: (stored.term, index),
-                payload: stored.payload,
-            });
+            logs.push(serde_json::from_slice(&data)?);
         }
 
         Ok(logs)
@@ -235,11 +200,11 @@ async fn main() -> io::Result<()> {
     fs::create_dir_all(&base_dir).await?;
 
     // Create state machine and storage
-    let store = KvStore::new();
+    let store = KvStateMachine::new();
     let storage = FileStorage::new(base_dir);
 
     // Create EzRaft instance
-    let raft = EzRaft::<KvStoreTypes, _, _>::new(node_id, addr.clone(), store, storage, EzConfig::default()).await?;
+    let raft = EzRaft::<KvTypes, _, _>::new(node_id, addr.clone(), store, storage, EzConfig::default()).await?;
 
     // Initialize if first node
     if node_id == 1 {
