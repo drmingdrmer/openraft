@@ -1,0 +1,82 @@
+//! EzRaft - A beginner-friendly Raft framework built on openraft
+//!
+//! EzRaft simplifies distributed consensus by handling all Raft complexity internally.
+//! Users only provide:
+//! - Business logic via [`EzStateMachine`]
+//! - Storage persistence via [`EzStorage`]
+//!
+//! # Quick Start
+//!
+//! ```ignore
+//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzFullState, EzStateUpdate, EzTypes};
+//! use serde::{Serialize, Deserialize};
+//!
+//! // 1. Define your request/response types
+//! #[derive(Serialize, Deserialize, Debug, Clone)]
+//! pub enum Request { Set { key: String, value: String } }
+//!
+//! #[derive(Serialize, Deserialize, Debug, Clone)]
+//! pub struct Response { pub value: Option<String> }
+//!
+//! // 2. Implement EzTypes trait
+//! struct MyAppTypes;
+//! impl EzTypes for MyAppTypes {
+//!     type Request = Request;
+//!     type Response = Response;
+//! }
+//!
+//! // 3. Implement storage persistence (2 methods)
+//! struct FileStorage { base_dir: PathBuf }
+//!
+//! #[async_trait]
+//! impl EzStorage<MyAppTypes> for FileStorage {
+//!     async fn load_state(&mut self) -> Result<Option<EzFullState<MyAppTypes>>, io::Error> {
+//!         // Load meta, logs, and snapshot from disk
+//!         // Return None if first run
+//!     }
+//!
+//!     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
+//!         // Persist state updates to disk
+//!     }
+//! }
+//!
+//! // 4. Implement state machine (1 method)
+//! struct MyStore { data: BTreeMap<String, String> }
+//!
+//! #[async_trait]
+//! impl EzStateMachine<MyAppTypes> for MyStore {
+//!     async fn apply(&mut self, req: Request) -> Response {
+//!         // Apply business logic
+//!     }
+//! }
+//!
+//! // 5. Use it
+//! # #[tokio::main]
+//! # async fn main() -> Result<()> {
+//! let store = MyStore { data: BTreeMap::new() };
+//! let storage = FileStorage { base_dir: "./data".into() };
+//!
+//! let raft = EzRaft::<MyAppTypes, _, _>::new(1, "127.0.0.1:8080".into(), store, storage, EzConfig::default()).await?;
+//! raft.initialize(vec![(1, "127.0.0.1:8080".into())]).await?;
+//! raft.serve().await?;
+//! # Ok(())
+//! # }
+//! ```
+
+pub mod config;
+pub mod network;
+pub mod raft;
+pub mod server;
+pub mod storage;
+pub mod trait_;
+pub mod type_config;
+pub mod types;
+
+// Re-export public API
+pub use config::EzConfig;
+pub use raft::EzRaft;
+pub use trait_::{EzStorage, EzStateMachine};
+pub use types::{EzEntry, EzLogId, EzMeta, EzSnapshotMeta, EzFullState, EzStateUpdate};
+pub use type_config::{EzTypes, OpenRaftTypes, EzVote, EzEntryOf, EzLogIdOf, EzMembershipOf, EzSnapshotDataOf};
+pub use openraft::RaftTypeConfig;
+
