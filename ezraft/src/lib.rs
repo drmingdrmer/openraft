@@ -8,7 +8,7 @@
 //! # Quick Start
 //!
 //! ```ignore
-//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzFullState, EzStateUpdate, EzTypes};
+//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, EzStateUpdate, EzTypes};
 //! use serde::{Serialize, Deserialize};
 //!
 //! // 1. Define your request/response types
@@ -25,18 +25,19 @@
 //!     type Response = Response;
 //! }
 //!
-//! // 3. Implement storage persistence (2 methods)
+//! // 3. Implement storage persistence (3 methods)
 //! struct FileStorage { base_dir: PathBuf }
 //!
 //! #[async_trait]
 //! impl EzStorage<MyAppTypes> for FileStorage {
-//!     async fn load_state(&mut self) -> Result<Option<EzFullState<MyAppTypes>>, io::Error> {
-//!         // Load meta, logs, and snapshot from disk
-//!         // Return None if first run
+//!     async fn load_state(&mut self) -> Result<Option<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>)>, io::Error> {
+//!         // Load meta and snapshot from disk; return None if first run
 //!     }
-//!
 //!     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
 //!         // Persist state updates to disk
+//!     }
+//!     async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
+//!         // Load log entries in range [start, end)
 //!     }
 //! }
 //!
@@ -51,16 +52,12 @@
 //! }
 //!
 //! // 5. Use it
-//! # #[tokio::main]
-//! # async fn main() -> Result<()> {
 //! let store = MyStore { data: BTreeMap::new() };
 //! let storage = FileStorage { base_dir: "./data".into() };
 //!
 //! let raft = EzRaft::<MyAppTypes, _, _>::new(1, "127.0.0.1:8080".into(), store, storage, EzConfig::default()).await?;
 //! raft.initialize(vec![(1, "127.0.0.1:8080".into())]).await?;
 //! raft.serve().await?;
-//! # Ok(())
-//! # }
 //! ```
 
 pub mod config;
@@ -86,8 +83,8 @@ pub use type_config::EzTypes;
 pub use type_config::EzVote;
 pub use type_config::OpenRaftTypes;
 pub use types::EzEntry;
-pub use types::EzFullState;
 pub use types::EzLogId;
 pub use types::EzMeta;
+pub use types::EzSnapshot;
 pub use types::EzSnapshotMeta;
 pub use types::EzStateUpdate;
