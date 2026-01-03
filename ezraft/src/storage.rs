@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use openraft::log_id::LogIndexOptionExt;
+use openraft::log_id::RaftLogId;
 use openraft::storage::ApplyResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
@@ -168,12 +169,12 @@ where
 
     async fn truncate_after(&mut self, last_log_id: Option<LogId<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
         self.save_meta(|m| {
-            m.last_log_id = last_log_id.map(|id| (**id.committed_leader_id(), id.index));
+            m.last_log_id = last_log_id.map(|id| id.to_type());
         }).await
     }
 
     async fn purge(&mut self, log_id: LogId<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
-        self.save_meta(|m| m.last_purged = Some((log_id.leader_id.term, log_id.index))).await
+        self.save_meta(|m| m.last_purged = Some(log_id.to_type())).await
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
@@ -321,9 +322,8 @@ where
     ) -> Result<(), std::io::Error> {
         // Convert OpenRaft snapshot metadata to EzSnapshotMeta
         let last_log_id = meta.last_log_id.unwrap();
-        let committed = last_log_id.committed_leader_id();
         let ez_meta = EzSnapshotMeta {
-            last_log_id: (committed.term, last_log_id.index),
+            last_log_id: last_log_id.to_type(),
             membership: meta.last_membership.clone().membership().clone(),
         };
 
