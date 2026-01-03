@@ -15,6 +15,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use openraft::log_id::LogIndexOptionExt;
 use openraft::storage::ApplyResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
@@ -22,6 +23,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
 use openraft::LogId;
+use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -31,10 +33,11 @@ use openraft::SnapshotMeta;
 use openraft::StoredMembership;
 use tokio::sync::Mutex;
 
-use crate::trait_::{EzStorage, EzStateMachine};
-use crate::types::*;
+use crate::trait_::EzStateMachine;
+use crate::trait_::EzStorage;
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
+use crate::types::*;
 
 /// Type alias for snapshot data
 type SnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
@@ -200,48 +203,37 @@ where
         &mut self,
         range: RB,
     ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error> {
-        // Get bounds for filtering: entries must be > last_purged and <= last_log_id
-        let (min_index, max_index) = {
+        // Available log range: [lo, hi)
+        let (lo, hi) = {
             let state = self.storage_state.lock().await;
-            let min = state.cached_meta.last_purged.map(|(_, i)| i);
-            let max = state.cached_meta.last_log_id.map(|(_, i)| i);
-            (min, max)
-        };
-
-        // Load logs from user storage
-        let logs = {
-            let mut state = self.storage_state.lock().await;
-            match state.storage.load_state().await? {
-                Some(state) => state.logs,
-                None => return Ok(Vec::new()),
-            }
+            let lo = state.cached_meta.last_purged.next_index();
+            let hi = state.cached_meta.last_log_id.next_index();
+            (lo, hi)
         };
 
         let start = match range.start_bound() {
-            std::ops::Bound::Included(&x) => x as usize,
-            std::ops::Bound::Excluded(&x) => (x + 1) as usize,
+            std::ops::Bound::Included(&x) => x,
+            std::ops::Bound::Excluded(&x) => x + 1,
             std::ops::Bound::Unbounded => 0,
         };
 
         let end = match range.end_bound() {
-            std::ops::Bound::Included(&x) => (x + 1) as usize,
-            std::ops::Bound::Excluded(&x) => x as usize,
-            std::ops::Bound::Unbounded => logs.len(),
+            std::ops::Bound::Included(&x) => x + 1,
+            std::ops::Bound::Excluded(&x) => x,
+            std::ops::Bound::Unbounded => hi,
         };
 
-        // Filter entries based on purged and last log id bounds
-        let min_allowed = min_index.map_or(0, |i| (i + 1) as usize);  // entries > purged
-        let max_allowed = max_index.map_or(usize::MAX, |i| (i + 1) as usize);  // entries <= last
+        // Clamp to available range
+        let start = std::cmp::max(start, lo);
+        let end = std::cmp::min(end, hi);
 
-        let filtered_start = std::cmp::max(start, min_allowed);
-        let filtered_end = std::cmp::min(end, max_allowed);
+        if start >= end {
+            return Ok(Vec::new());
+        }
 
-        // Return the EzEntry instances directly - they are already the correct Entry type
-        Ok(logs
-            .into_iter()
-            .skip(filtered_start)
-            .take(filtered_end.saturating_sub(filtered_start))
-            .collect())
+        // Load only the requested range from user storage
+        let mut state = self.storage_state.lock().await;
+        state.storage.load_log_range(start, end).await
     }
 }
 
@@ -290,8 +282,7 @@ where
     }
 
     async fn apply<Strm>(&mut self, entries: Strm) -> Result<(), std::io::Error>
-    where
-        Strm: futures::Stream<
+    where Strm: futures::Stream<
                 Item = Result<
                     (
                         <OpenRaftTypes<T> as RaftTypeConfig>::Entry,
@@ -300,8 +291,7 @@ where
                     std::io::Error,
                 >,
             > + Send
-            + Unpin,
-    {
+            + Unpin {
         let mut state = self.user_state.lock().await;
 
         let mut entries = entries;

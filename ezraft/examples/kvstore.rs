@@ -14,12 +14,23 @@
 //! cargo run --example kvstore -- --node-id 3 --addr 127.0.0.1:8082
 //! ```
 
-use clap::Parser;
-use ezraft::{EzConfig, EzFullState, EzMeta, EzRaft, EzSnapshotMeta, EzStateUpdate, EzStateMachine, EzStorage, EzTypes};
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
+
+use clap::Parser;
+use ezraft::EzConfig;
+use ezraft::EzEntry;
+use ezraft::EzFullState;
+use ezraft::EzMeta;
+use ezraft::EzRaft;
+use ezraft::EzSnapshotMeta;
+use ezraft::EzStateMachine;
+use ezraft::EzStateUpdate;
+use ezraft::EzStorage;
+use ezraft::EzTypes;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::fs;
 
 // Define application request types
@@ -131,15 +142,19 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         let logs_dir = self.logs_dir();
         let mut entries = match fs::read_dir(&logs_dir).await {
             Ok(e) => e,
-            Err(_) => return Ok(Some(EzFullState { meta, logs, snapshot: None })),
+            Err(_) => {
+                return Ok(Some(EzFullState {
+                    meta,
+                    logs,
+                    snapshot: None,
+                }))
+            }
         };
 
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with("log-") {
-                let index: u64 = name[4..]
-                    .parse()
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                let index: u64 = name[4..].parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 let data = fs::read(entry.path()).await?;
 
                 // Deserialize struct containing both term and payload
@@ -162,8 +177,7 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
             Ok(meta_data) => {
-                let meta: EzSnapshotMeta<KvStoreTypes> =
-                    serde_json::from_slice(&meta_data)?;
+                let meta: EzSnapshotMeta<KvStoreTypes> = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
                 Some((meta, data))
             }
@@ -206,6 +220,33 @@ impl EzStorage<KvStoreTypes> for FileStorage {
         }
         Ok(())
     }
+
+    async fn load_log_range(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvStoreTypes>>> {
+        let mut logs = Vec::new();
+
+        for index in start..end {
+            let path = self.log_path(index);
+            let data = match fs::read(&path).await {
+                Ok(d) => d,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e),
+            };
+
+            #[derive(serde::Deserialize)]
+            struct StoredEntry {
+                term: u64,
+                payload: openraft::EntryPayload<ezraft::OpenRaftTypes<KvStoreTypes>>,
+            }
+            let stored: StoredEntry = serde_json::from_slice(&data)?;
+
+            logs.push(EzEntry {
+                log_id: (stored.term, index),
+                payload: stored.payload,
+            });
+        }
+
+        Ok(logs)
+    }
 }
 
 /// Command-line arguments for the KV store
@@ -235,14 +276,7 @@ async fn main() -> io::Result<()> {
     let storage = FileStorage::new(base_dir);
 
     // Create EzRaft instance
-    let raft = EzRaft::<KvStoreTypes, _, _>::new(
-        node_id,
-        addr.clone(),
-        store,
-        storage,
-        EzConfig::default(),
-    )
-    .await?;
+    let raft = EzRaft::<KvStoreTypes, _, _>::new(node_id, addr.clone(), store, storage, EzConfig::default()).await?;
 
     // Initialize if first node
     if node_id == 1 {
