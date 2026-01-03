@@ -74,9 +74,20 @@ pub mod types;
 
 // Re-export public API
 pub use config::EzConfig;
-pub use raft::EzRaft;
-pub use trait_::{EzStorage, EzStateMachine};
-pub use types::{EzEntry, EzLogId, EzMeta, EzSnapshotMeta, EzFullState, EzStateUpdate};
-pub use type_config::{EzTypes, OpenRaftTypes, EzVote, EzEntryOf, EzLogIdOf, EzMembershipOf, EzSnapshotDataOf};
 pub use openraft::RaftTypeConfig;
-
+pub use raft::EzRaft;
+pub use trait_::EzStateMachine;
+pub use trait_::EzStorage;
+pub use type_config::EzEntryOf;
+pub use type_config::EzLogIdOf;
+pub use type_config::EzMembershipOf;
+pub use type_config::EzSnapshotDataOf;
+pub use type_config::EzTypes;
+pub use type_config::EzVote;
+pub use type_config::OpenRaftTypes;
+pub use types::EzEntry;
+pub use types::EzFullState;
+pub use types::EzLogId;
+pub use types::EzMeta;
+pub use types::EzSnapshotMeta;
+pub use types::EzStateUpdate;

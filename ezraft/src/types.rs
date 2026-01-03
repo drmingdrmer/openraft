@@ -28,8 +28,7 @@ pub type EzLogId = (u64, u64);
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(bound = "")]
 pub struct EzEntry<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Log ID (term, index)
     pub log_id: EzLogId,
@@ -40,8 +39,7 @@ where
 
 // Manually implement Debug to avoid T: Debug bound
 impl<T> std::fmt::Debug for EzEntry<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EzEntry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
@@ -50,8 +48,7 @@ where
 
 // Manually implement Display
 impl<T> std::fmt::Display for EzEntry<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -64,8 +61,7 @@ where
 
 // Implement RaftPayload trait
 impl<T> RaftPayload<OpenRaftTypes<T>> for EzEntry<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn get_membership(&self) -> Option<Membership<OpenRaftTypes<T>>> {
         self.payload.get_membership()
@@ -74,8 +70,7 @@ where
 
 // Implement openraft::RaftEntry trait so EzEntry works with OpenRaft
 impl<T> RaftEntry<OpenRaftTypes<T>> for EzEntry<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn new(log_id: LogId<OpenRaftTypes<T>>, payload: EntryPayload<OpenRaftTypes<T>>) -> Self {
         // CommittedLeaderId is repr(transparent) around u64, so we can deref twice
@@ -107,8 +102,7 @@ where
 /// You don't need to understand the Raft details - just serialize and store it.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct EzMeta<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Current vote (term and node_id voted for)
     pub vote: Option<EzVote<T>>,
@@ -122,8 +116,7 @@ where
 
 // Manual Clone implementation to avoid requiring T: Clone
 impl<T> Clone for EzMeta<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn clone(&self) -> Self {
         Self {
@@ -135,8 +128,7 @@ where
 }
 
 impl<T> Default for EzMeta<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn default() -> Self {
         Self {
@@ -152,8 +144,7 @@ where
 /// The framework creates this when snapshotting and you persist it with the snapshot data.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct EzSnapshotMeta<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Last log entry included in this snapshot (term, index)
     pub last_log_id: EzLogId,
@@ -164,8 +155,7 @@ where
 
 // Manual Clone implementation to avoid requiring T: Clone
 impl<T> Clone for EzSnapshotMeta<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     fn clone(&self) -> Self {
         Self {
@@ -179,8 +169,7 @@ where
 ///
 /// Returned by [`EzStorage::load_state`] to restore all persisted Raft state.
 pub struct EzFullState<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Raft metadata
     pub meta: EzMeta<T>,
@@ -199,8 +188,7 @@ where
 /// The framework calls [`EzStorage::save_state`] with these updates.
 #[derive(Debug, derive_more::Display)]
 pub enum EzStateUpdate<T>
-where
-    T: EzTypes,
+where T: EzTypes
 {
     /// Update Raft metadata (term, vote, log positions)
     #[display("WriteMeta")]
