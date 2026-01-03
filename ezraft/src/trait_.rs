@@ -12,7 +12,8 @@ use serde::Serialize;
 
 use crate::type_config::EzTypes;
 use crate::types::EzEntry;
-use crate::types::EzFullState;
+use crate::types::EzMeta;
+use crate::types::EzSnapshot;
 use crate::types::EzStateUpdate;
 
 /// Storage persistence trait
@@ -27,26 +28,22 @@ use crate::types::EzStateUpdate;
 ///
 /// #[async_trait]
 /// impl EzStorage<MyAppTypes> for FileStorage {
-///     async fn load_state(&mut self) -> Result<Option<EzFullState<MyAppTypes>>, io::Error> {
-///         // 1. Load meta from base_dir/meta.json
-///         // 2. Load log entries from base_dir/log-{term}-{index}
-///         // 3. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
-///         // Return None if this is the first run (no existing state)
+///     async fn load_state(&mut self) -> Result<Option<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>)>, io::Error> {
+///         // 1. Load meta from base_dir/meta.json (return None if first run)
+///         // 2. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
+///         // Log entries are loaded separately via load_log_range()
 ///     }
 ///
 ///     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
 ///         match update {
-///             EzStateUpdate::WriteMeta(meta) => {
-///                 // Serialize and write meta to disk
-///             }
-///             EzStateUpdate::WriteLog { log_id, payload } => {
-///                 // Serialize payload and write to log-{term}-{index}
-///                 // Payload can be Normal (user request), Blank, or Membership
-///             }
-///             EzStateUpdate::WriteSnapshot(meta, data) => {
-///                 // Write meta to snapshot.meta and data to snapshot.data
-///             }
+///             EzStateUpdate::WriteMeta(meta) => { /* write meta */ }
+///             EzStateUpdate::WriteLog(entry) => { /* write log entry */ }
+///             EzStateUpdate::WriteSnapshot(meta, data) => { /* write snapshot */ }
 ///         }
+///     }
+///
+///     async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
+///         // Load log entries in range [start, end)
 ///     }
 /// }
 /// ```
@@ -56,11 +53,12 @@ where
     T: EzTypes,
     T::Request: Serialize + DeserializeOwned,
 {
-    /// Load complete state on startup
+    /// Load metadata and snapshot on startup
     ///
     /// Return `Ok(None)` if this is the first run (no existing state).
-    /// Return `Ok(Some(state))` with all previously persisted state.
-    async fn load_state(&mut self) -> Result<Option<EzFullState<T>>, io::Error>;
+    /// Return `Ok(Some((meta, snapshot)))` with persisted metadata and optional snapshot.
+    /// Log entries are loaded separately via [`load_log_range`].
+    async fn load_state(&mut self) -> Result<Option<(EzMeta<T>, Option<EzSnapshot<T>>)>, io::Error>;
 
     /// Persist a state update
     ///

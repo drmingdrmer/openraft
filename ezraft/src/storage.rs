@@ -23,7 +23,6 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
 use openraft::LogId;
-use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -78,7 +77,7 @@ where
     pub async fn new(mut user_storage: S, user_state: M) -> Result<Self, std::io::Error> {
         // Load initial metadata
         let cached_meta = match user_storage.load_state().await? {
-            Some(loaded) => loaded.meta,
+            Some((meta, _)) => meta,
             None => EzMeta::<T>::default(),
         };
 
@@ -206,8 +205,8 @@ where
         // Available log range: [lo, hi)
         let (lo, hi) = {
             let state = self.storage_state.lock().await;
-            let lo = state.cached_meta.last_purged.next_index();
-            let hi = state.cached_meta.last_log_id.next_index();
+            let lo = state.cached_meta.last_purged.map(|(_, i)| i).next_index();
+            let hi = state.cached_meta.last_log_id.map(|(_, i)| i).next_index();
             (lo, hi)
         };
 
@@ -255,21 +254,14 @@ where
 
             // Load membership from storage or return default if none exists
             let membership = match state.storage.load_state().await? {
-                Some(s) => {
-                    if let Some((ref snapshot_meta, _)) = s.snapshot {
-                        let (term, index) = snapshot_meta.last_log_id;
-                        StoredMembership::new(
-                            Some(LogId::new_term_index(term, index)),
-                            snapshot_meta.membership.clone(),
-                        )
-                    } else {
-                        StoredMembership::new(
-                            Some(LogId::new_term_index(0, 0)),
-                            Membership::<OpenRaftTypes<T>>::default(),
-                        )
-                    }
+                Some((_, Some((ref snapshot_meta, _)))) => {
+                    let (term, index) = snapshot_meta.last_log_id;
+                    StoredMembership::new(
+                        Some(LogId::new_term_index(term, index)),
+                        snapshot_meta.membership.clone(),
+                    )
                 }
-                None => StoredMembership::new(
+                _ => StoredMembership::new(
                     Some(LogId::new_term_index(0, 0)),
                     Membership::<OpenRaftTypes<T>>::default(),
                 ),
@@ -345,12 +337,12 @@ where
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<OpenRaftTypes<T>>>, std::io::Error> {
-        let state = {
+        let snapshot = {
             let mut state = self.storage_state.lock().await;
-            state.storage.load_state().await?
+            state.storage.load_state().await?.and_then(|(_, snap)| snap)
         };
 
-        match state.and_then(|s| s.snapshot) {
+        match snapshot {
             Some((ez_meta, data)) => {
                 let (term, index) = ez_meta.last_log_id;
                 let last_log_id = LogId::new_term_index(term, index);

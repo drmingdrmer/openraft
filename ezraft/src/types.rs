@@ -165,22 +165,8 @@ where T: EzTypes
     }
 }
 
-/// Complete state loaded on startup
-///
-/// Returned by [`EzStorage::load_state`] to restore all persisted Raft state.
-pub struct EzFullState<T>
-where T: EzTypes
-{
-    /// Raft metadata
-    pub meta: EzMeta<T>,
-
-    /// All log entries
-    /// Sorted by index
-    pub logs: Vec<EzEntry<T>>,
-
-    /// Optional snapshot (metadata, data)
-    pub snapshot: Option<(EzSnapshotMeta<T>, Vec<u8>)>,
-}
+/// Snapshot data: metadata and raw bytes
+pub type EzSnapshot<T> = (EzSnapshotMeta<T>, Vec<u8>);
 
 /// State update operation to persist
 ///
