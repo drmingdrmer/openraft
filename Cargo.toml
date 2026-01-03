@@ -69,6 +69,7 @@ members = [
     "macros",
     "tests",
     "stores/memstore",
+    "ezraft",
 ]
 exclude = [
     "benchmarks/minimal",

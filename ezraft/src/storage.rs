@@ -1,0 +1,423 @@
+//! Internal storage adapter
+//!
+//! This module bridges the user's [`EzStorage`] and [`EzStateMachine`] traits
+//! to OpenRaft's [`RaftLogStorage`] and [`RaftStateMachine`] traits.
+//!
+//! Users don't interact with this module directly - it's used internally by [`EzRaft`].
+
+use std::fmt::Debug;
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::marker::PhantomData;
+use std::ops::RangeBounds;
+use std::sync::Arc;
+
+use futures::StreamExt;
+use openraft::storage::ApplyResponder;
+use openraft::storage::IOFlushed;
+use openraft::storage::LogState;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftStateMachine;
+use openraft::EntryPayload;
+use openraft::LogId;
+use openraft::Membership;
+use openraft::RaftLogReader;
+use openraft::RaftSnapshotBuilder;
+use openraft::RaftTypeConfig;
+use openraft::Snapshot;
+use openraft::SnapshotMeta;
+use openraft::StoredMembership;
+use tokio::sync::Mutex;
+
+use crate::trait_::{EzStorage, EzStateMachine};
+use crate::types::*;
+use crate::type_config::EzTypes;
+use crate::type_config::OpenRaftTypes;
+
+/// Type alias for snapshot data
+type SnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
+
+/// Internal storage state protected by single mutex
+pub struct StorageState<S, T>
+where
+    S: EzStorage<T>,
+    T: EzTypes,
+{
+    pub storage: S,
+    pub cached_meta: EzMeta<T>,
+}
+
+/// Internal storage adapter
+///
+/// Bridges user's `EzStorage` and `EzStateMachine` to OpenRaft's storage traits.
+///
+/// Only metadata is cached in memory - logs are read from user storage on demand.
+pub struct StorageAdapter<T, S, M>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    storage_state: Arc<Mutex<StorageState<S, T>>>,
+    user_state: Arc<Mutex<M>>,
+    _phantom: PhantomData<T>,
+}
+
+impl<T, S, M> StorageAdapter<T, S, M>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    /// Create a new storage adapter and load initial metadata
+    pub async fn new(mut user_storage: S, user_state: M) -> Result<Self, std::io::Error> {
+        // Load initial metadata
+        let cached_meta = match user_storage.load_state().await? {
+            Some(loaded) => loaded.meta,
+            None => EzMeta::<T>::default(),
+        };
+
+        let storage_state = StorageState {
+            storage: user_storage,
+            cached_meta,
+        };
+
+        Ok(Self {
+            storage_state: Arc::new(Mutex::new(storage_state)),
+            user_state: Arc::new(Mutex::new(user_state)),
+            _phantom: PhantomData,
+        })
+    }
+
+    /// Get reference to user storage state (storage + metadata)
+    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<S, T>>> {
+        &self.storage_state
+    }
+
+    /// Get reference to user state machine
+    pub fn user_state(&self) -> &Arc<Mutex<M>> {
+        &self.user_state
+    }
+
+    /// Split into log storage and state machine storage
+    pub fn split(self) -> (Arc<Self>, Arc<Self>) {
+        let arc = Arc::new(self);
+        (arc.clone(), arc)
+    }
+}
+
+// Implement RaftLogStorage for Arc<StorageAdapter>
+impl<T, S, M> RaftLogStorage<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    type LogReader = Self;
+
+    async fn get_log_state(&mut self) -> Result<LogState<OpenRaftTypes<T>>, std::io::Error> {
+        let state = self.storage_state.lock().await;
+        let last = state.cached_meta.last_log_id.map(|(t, i)| LogId::new_term_index(t, i));
+        let last_purged = state.cached_meta.last_purged.map(|(t, i)| LogId::new_term_index(t, i));
+
+        Ok(LogState {
+            last_log_id: last,
+            last_purged_log_id: last_purged,
+        })
+    }
+
+    async fn save_vote(&mut self, vote: &<OpenRaftTypes<T> as RaftTypeConfig>::Vote) -> Result<(), std::io::Error> {
+        let mut state = self.storage_state.lock().await;
+        state.cached_meta.vote = Some(*vote);
+        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+        state.storage.save_state(update).await?;
+        Ok(())
+    }
+
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<OpenRaftTypes<T>>) -> Result<(), std::io::Error>
+    where
+        I: IntoIterator<Item = <OpenRaftTypes<T> as RaftTypeConfig>::Entry> + Send,
+        I::IntoIter: Send,
+    {
+        let mut last_log_id = None;
+
+        // Save all log entries
+        for entry in entries {
+            last_log_id = Some(entry.log_id);
+            let update = EzStateUpdate::WriteLog(entry);
+            let mut state = self.storage_state.lock().await;
+            state.storage.save_state(update).await?;
+        }
+
+        // Update metadata once with the last entry's log_id
+        if let Some(log_id) = last_log_id {
+            let mut state = self.storage_state.lock().await;
+            state.cached_meta.last_log_id = Some(log_id);
+            let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+            state.storage.save_state(update).await?;
+        }
+
+        callback.io_completed(Ok(()));
+        Ok(())
+    }
+
+    async fn truncate_after(&mut self, last_log_id: Option<LogId<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
+        let mut state = self.storage_state.lock().await;
+        state.cached_meta.last_log_id = last_log_id.map(|log_id| (**log_id.committed_leader_id(), log_id.index));
+        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+        state.storage.save_state(update).await?;
+        Ok(())
+    }
+
+    async fn purge(&mut self, log_id: LogId<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
+        let mut state = self.storage_state.lock().await;
+        state.cached_meta.last_purged = Some((log_id.leader_id.term, log_id.index));
+        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+        state.storage.save_state(update).await?;
+        Ok(())
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
+    }
+}
+
+// Implement RaftLogReader for Arc<StorageAdapter>
+impl<T, S, M> RaftLogReader<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    async fn read_vote(&mut self) -> Result<Option<<OpenRaftTypes<T> as RaftTypeConfig>::Vote>, std::io::Error> {
+        let state = self.storage_state.lock().await;
+        Ok(state.cached_meta.vote)
+    }
+
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
+        &mut self,
+        range: RB,
+    ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error> {
+        // Get bounds for filtering: entries must be > last_purged and <= last_log_id
+        let (min_index, max_index) = {
+            let state = self.storage_state.lock().await;
+            let min = state.cached_meta.last_purged.map(|(_, i)| i);
+            let max = state.cached_meta.last_log_id.map(|(_, i)| i);
+            (min, max)
+        };
+
+        // Load logs from user storage
+        let logs = {
+            let mut state = self.storage_state.lock().await;
+            match state.storage.load_state().await? {
+                Some(state) => state.logs,
+                None => return Ok(Vec::new()),
+            }
+        };
+
+        let start = match range.start_bound() {
+            std::ops::Bound::Included(&x) => x as usize,
+            std::ops::Bound::Excluded(&x) => (x + 1) as usize,
+            std::ops::Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            std::ops::Bound::Included(&x) => (x + 1) as usize,
+            std::ops::Bound::Excluded(&x) => x as usize,
+            std::ops::Bound::Unbounded => logs.len(),
+        };
+
+        // Filter entries based on purged and last log id bounds
+        let min_allowed = min_index.map_or(0, |i| (i + 1) as usize);  // entries > purged
+        let max_allowed = max_index.map_or(usize::MAX, |i| (i + 1) as usize);  // entries <= last
+
+        let filtered_start = std::cmp::max(start, min_allowed);
+        let filtered_end = std::cmp::min(end, max_allowed);
+
+        // Return the EzEntry instances directly - they are already the correct Entry type
+        Ok(logs
+            .into_iter()
+            .skip(filtered_start)
+            .take(filtered_end.saturating_sub(filtered_start))
+            .collect())
+    }
+}
+
+// Implement RaftStateMachine for Arc<StorageAdapter>
+impl<T, S, M> RaftStateMachine<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    type SnapshotBuilder = Self;
+
+    async fn applied_state(
+        &mut self,
+    ) -> Result<(Option<LogId<OpenRaftTypes<T>>>, StoredMembership<OpenRaftTypes<T>>), std::io::Error> {
+        let (last, membership) = {
+            let mut state = self.storage_state.lock().await;
+            let last = state.cached_meta.last_log_id.map(|(t, i)| LogId::new_term_index(t, i));
+
+            // Load membership from storage or return default if none exists
+            let membership = match state.storage.load_state().await? {
+                Some(s) => {
+                    if let Some((ref snapshot_meta, _)) = s.snapshot {
+                        let (term, index) = snapshot_meta.last_log_id;
+                        StoredMembership::new(
+                            Some(LogId::new_term_index(term, index)),
+                            snapshot_meta.membership.clone(),
+                        )
+                    } else {
+                        StoredMembership::new(
+                            Some(LogId::new_term_index(0, 0)),
+                            Membership::<OpenRaftTypes<T>>::default(),
+                        )
+                    }
+                }
+                None => StoredMembership::new(
+                    Some(LogId::new_term_index(0, 0)),
+                    Membership::<OpenRaftTypes<T>>::default(),
+                ),
+            };
+
+            (last, membership)
+        };
+
+        Ok((last, membership))
+    }
+
+    async fn apply<Strm>(&mut self, entries: Strm) -> Result<(), std::io::Error>
+    where
+        Strm: futures::Stream<
+                Item = Result<
+                    (
+                        <OpenRaftTypes<T> as RaftTypeConfig>::Entry,
+                        Option<ApplyResponder<OpenRaftTypes<T>>>,
+                    ),
+                    std::io::Error,
+                >,
+            > + Send
+            + Unpin,
+    {
+        let mut state = self.user_state.lock().await;
+
+        let mut entries = entries;
+        while let Some(res) = entries.next().await {
+            let (entry, responder) = res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+            if let EntryPayload::Normal(req) = entry.payload {
+                let resp = state.apply(req).await;
+                if let Some(responder) = responder {
+                    responder.send(resp);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+        self.clone()
+    }
+
+    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<T>, std::io::Error> {
+        Ok(Cursor::new(Vec::new()))
+    }
+
+    async fn install_snapshot(
+        &mut self,
+        meta: &SnapshotMeta<OpenRaftTypes<T>>,
+        snapshot: SnapshotDataOf<T>,
+    ) -> Result<(), std::io::Error> {
+        // Convert OpenRaft snapshot metadata to EzSnapshotMeta
+        let last_log_id = meta.last_log_id.unwrap();
+        let committed = last_log_id.committed_leader_id();
+        let ez_meta = EzSnapshotMeta {
+            last_log_id: (committed.term, last_log_id.index),
+            membership: meta.last_membership.clone().membership().clone(),
+        };
+
+        // Extract snapshot data
+        let mut cursor = snapshot;
+        cursor.seek(SeekFrom::Start(0))?;
+        let mut data = Vec::new();
+        cursor.read_to_end(&mut data)?;
+
+        let mut state = self.storage_state.lock().await;
+        state.cached_meta.last_log_id = Some(ez_meta.last_log_id);
+        let update = EzStateUpdate::WriteSnapshot(ez_meta, data);
+        state.storage.save_state(update).await?;
+
+        Ok(())
+    }
+
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<OpenRaftTypes<T>>>, std::io::Error> {
+        let state = {
+            let mut state = self.storage_state.lock().await;
+            state.storage.load_state().await?
+        };
+
+        match state.and_then(|s| s.snapshot) {
+            Some((ez_meta, data)) => {
+                let (term, index) = ez_meta.last_log_id;
+                let last_log_id = LogId::new_term_index(term, index);
+
+                let snapshot_meta = SnapshotMeta {
+                    last_log_id: Some(last_log_id),
+                    last_membership: StoredMembership::new(Some(last_log_id), ez_meta.membership),
+                    snapshot_id: format!("{}-{}", term, index),
+                };
+
+                Ok(Some(Snapshot {
+                    meta: snapshot_meta,
+                    snapshot: Cursor::new(data),
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+// Implement RaftSnapshotBuilder for Arc<StorageAdapter>
+impl<T, S, M> RaftSnapshotBuilder<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    async fn build_snapshot(&mut self) -> Result<Snapshot<OpenRaftTypes<T>>, std::io::Error> {
+        // Get current state
+        let (last_log_id, membership) = {
+            let state = self.storage_state.lock().await;
+            (
+                state.cached_meta.last_log_id.unwrap_or((0, 0)),
+                Membership::<OpenRaftTypes<T>>::default(),
+            )
+        };
+
+        // Serialize state machine state to snapshot data
+        let snapshot_data = {
+            // For now, we use empty snapshot data since we don't have a way to serialize
+            // the user's state machine. Users who need snapshots should implement
+            // snapshotting in their state machine.
+            Vec::new()
+        };
+
+        let (term, index) = last_log_id;
+        let log_id = LogId::new_term_index(term, index);
+
+        let snapshot_meta = SnapshotMeta {
+            last_log_id: Some(log_id),
+            last_membership: StoredMembership::new(Some(log_id), membership),
+            snapshot_id: format!("{}-{}", term, index),
+        };
+
+        Ok(Snapshot {
+            meta: snapshot_meta,
+            snapshot: Cursor::new(snapshot_data),
+        })
+    }
+}
