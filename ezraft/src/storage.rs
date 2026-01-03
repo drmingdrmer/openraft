@@ -103,6 +103,14 @@ where
         &self.user_state
     }
 
+    /// Update metadata and persist to storage
+    async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
+        let mut state = self.storage_state.lock().await;
+        f(&mut state.cached_meta);
+        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+        state.storage.save_state(update).await
+    }
+
     /// Split into log storage and state machine storage
     pub fn split(self) -> (Arc<Self>, Arc<Self>) {
         let arc = Arc::new(self);
@@ -131,11 +139,7 @@ where
     }
 
     async fn save_vote(&mut self, vote: &<OpenRaftTypes<T> as RaftTypeConfig>::Vote) -> Result<(), std::io::Error> {
-        let mut state = self.storage_state.lock().await;
-        state.cached_meta.vote = Some(*vote);
-        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
-        state.storage.save_state(update).await?;
-        Ok(())
+        self.save_meta(|m| m.vote = Some(*vote)).await
     }
 
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<OpenRaftTypes<T>>) -> Result<(), std::io::Error>
@@ -155,10 +159,7 @@ where
 
         // Update metadata once with the last entry's log_id
         if let Some(log_id) = last_log_id {
-            let mut state = self.storage_state.lock().await;
-            state.cached_meta.last_log_id = Some(log_id);
-            let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
-            state.storage.save_state(update).await?;
+            self.save_meta(|m| m.last_log_id = Some(log_id)).await?;
         }
 
         callback.io_completed(Ok(()));
@@ -166,19 +167,13 @@ where
     }
 
     async fn truncate_after(&mut self, last_log_id: Option<LogId<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
-        let mut state = self.storage_state.lock().await;
-        state.cached_meta.last_log_id = last_log_id.map(|log_id| (**log_id.committed_leader_id(), log_id.index));
-        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
-        state.storage.save_state(update).await?;
-        Ok(())
+        self.save_meta(|m| {
+            m.last_log_id = last_log_id.map(|id| (**id.committed_leader_id(), id.index));
+        }).await
     }
 
     async fn purge(&mut self, log_id: LogId<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
-        let mut state = self.storage_state.lock().await;
-        state.cached_meta.last_purged = Some((log_id.leader_id.term, log_id.index));
-        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
-        state.storage.save_state(update).await?;
-        Ok(())
+        self.save_meta(|m| m.last_purged = Some((log_id.leader_id.term, log_id.index))).await
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
@@ -248,6 +243,16 @@ where
     async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogId<OpenRaftTypes<T>>>, StoredMembership<OpenRaftTypes<T>>), std::io::Error> {
+        // TODO: return `last_applied` instead of `last_log_id`
+        //
+        // Currently returns `last_log_id` (last entry in log storage), but should return
+        // `last_applied` (last entry applied to state machine). These differ when log
+        // has entries not yet applied.
+        //
+        // To fix:
+        // 1. Add `last_applied: Option<EzLogId>` field to `EzMeta`
+        // 2. Update `last_applied` in `apply()` after applying each entry
+        // 3. Return `last_applied` here instead of `last_log_id`
         let (last, membership) = {
             let mut state = self.storage_state.lock().await;
             let last = state.cached_meta.last_log_id.map(|(t, i)| LogId::new_term_index(t, i));
