@@ -10,7 +10,6 @@ use std::io::Cursor;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
@@ -82,7 +81,6 @@ where
 {
     pub storage_state: Arc<Mutex<StorageState<T, S>>>,
     pub sm_state: Arc<Mutex<StateMachineState<T, M>>>,
-    _phantom: PhantomData<T>,
 }
 
 impl<T, S, M> StorageAdapter<T, S, M>
@@ -116,7 +114,6 @@ where
         Ok(Self {
             storage_state: Arc::new(Mutex::new(storage_state)),
             sm_state: Arc::new(Mutex::new(sm_state)),
-            _phantom: PhantomData,
         })
     }
 
