@@ -36,13 +36,13 @@ where
         App::new()
             .app_data(raft_data.clone())
             // Raft internal RPC
-            .route("/raft/append", web::post().to(append::<T, S, M>))
-            .route("/raft/vote", web::post().to(vote::<T, S, M>))
+            .route("/raft/append", web::post().to(append::<T>))
+            .route("/raft/vote", web::post().to(vote::<T>))
             // Admin API
-            .route("/api/init", web::post().to(initialize::<T, S, M>))
-            .route("/api/add_learner", web::post().to(add_learner::<T, S, M>))
-            .route("/api/change_membership", web::post().to(change_membership::<T, S, M>))
-            .route("/api/metrics", web::get().to(metrics::<T, S, M>))
+            .route("/api/init", web::post().to(initialize::<T>))
+            .route("/api/add_learner", web::post().to(add_learner::<T>))
+            .route("/api/change_membership", web::post().to(change_membership::<T>))
+            .route("/api/metrics", web::get().to(metrics::<T>))
     })
     .bind(&addr)?;
 
@@ -50,14 +50,12 @@ where
 }
 
 /// Raft append entries RPC handler
-async fn append<T, S, M>(
+async fn append<T>(
     req: web::Json<raft::AppendEntriesRequest<C<T>>>,
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<raft::AppendEntriesResponse<C<T>>>, actix_web::Error>
 where
     T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
 {
     let resp = data
         .append_entries(req.into_inner())
@@ -68,14 +66,12 @@ where
 }
 
 /// Raft vote RPC handler
-async fn vote<T, S, M>(
+async fn vote<T>(
     req: web::Json<raft::VoteRequest<C<T>>>,
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<raft::VoteResponse<C<T>>>, actix_web::Error>
 where
     T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
 {
     let resp = data
         .vote(req.into_inner())
@@ -86,14 +82,12 @@ where
 }
 
 /// Initialize cluster API handler
-async fn initialize<T, S, M>(
+async fn initialize<T>(
     req: web::Json<InitializeRequest>,
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<serde_json::Value>, actix_web::Error>
 where
     T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
 {
     use std::collections::BTreeMap;
 
@@ -110,14 +104,12 @@ where
 }
 
 /// Add learner API handler
-async fn add_learner<T, S, M>(
+async fn add_learner<T>(
     req: web::Json<AddLearnerRequest>,
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<serde_json::Value>, actix_web::Error>
 where
     T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
 {
     use openraft::BasicNode;
 
@@ -131,14 +123,12 @@ where
 }
 
 /// Change membership API handler
-async fn change_membership<T, S, M>(
+async fn change_membership<T>(
     req: web::Json<ChangeMembershipRequest>,
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<serde_json::Value>, actix_web::Error>
 where
     T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
 {
     use std::collections::BTreeMap;
 
@@ -158,14 +148,10 @@ where
 }
 
 /// Metrics API handler
-async fn metrics<T, S, M>(
+async fn metrics<T>(
     data: Data<Arc<openraft::Raft<C<T>>>>,
 ) -> Result<web::Json<openraft::RaftMetrics<C<T>>>, actix_web::Error>
-where
-    T: EzTypes,
-    S: crate::trait_::EzStorage<T>,
-    M: crate::trait_::EzStateMachine<T>,
-{
+where T: EzTypes {
     let metrics = data.metrics().borrow_watched().clone();
     Ok(web::Json(metrics))
 }
