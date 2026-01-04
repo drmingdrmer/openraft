@@ -21,64 +21,69 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::BasicNode;
-use openraft::RaftTypeConfig;
 use openraft_legacy::network_v1::Adapter;
 use openraft_legacy::network_v1::RaftNetwork as RaftNetworkV1;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncWrite;
+
+use crate::type_config::EzTypes;
+use crate::type_config::OpenRaftTypes;
+
+/// Type alias for OpenRaft types
+type C<T> = OpenRaftTypes<T>;
 
 /// HTTP network factory
 ///
 /// Creates HTTP clients to communicate with other Raft nodes.
 /// Implements OpenRaft's `RaftNetworkFactory` trait.
-pub struct EzNetworkFactory<C>(std::marker::PhantomData<C>);
+pub struct EzNetworkFactory<T: EzTypes>(std::marker::PhantomData<T>);
 
-impl<C> Default for EzNetworkFactory<C> {
+impl<T: EzTypes> Default for EzNetworkFactory<T> {
     fn default() -> Self {
         Self(std::marker::PhantomData)
     }
 }
 
-impl<C> EzNetworkFactory<C> {
+impl<T: EzTypes> EzNetworkFactory<T> {
     /// Create a new network factory
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<C> RaftNetworkFactory<C> for EzNetworkFactory<C>
-where
-    C: RaftTypeConfig<Node = BasicNode> + 'static,
-    C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
-{
-    type Network = Adapter<C, Network<C>>;
+impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory<T> {
+    type Network = Adapter<C<T>, Network<T>>;
 
-    async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {
+    async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
         let client = Client::builder().no_proxy().build().unwrap();
 
-        Network { addr, client, target }.into_v2()
+        Network {
+            addr,
+            client,
+            target,
+            _phantom: std::marker::PhantomData,
+        }
+        .into_v2()
     }
 }
 
 /// HTTP network client for a single Raft node
-pub struct Network<C>
-where C: RaftTypeConfig
-{
+pub struct Network<T: EzTypes> {
     addr: String,
     client: Client,
-    target: C::NodeId,
+    target: u64,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<C> Network<C>
-where C: RaftTypeConfig
-{
+impl<T: EzTypes> Network<T> {
     /// Send an HTTP POST request to a target node
-    async fn request<Req, Resp, Err>(&mut self, uri: impl Display, req: Req) -> Result<Result<Resp, Err>, RPCError<C>>
+    async fn request<Req, Resp, Err>(
+        &mut self,
+        uri: impl Display,
+        req: Req,
+    ) -> Result<Result<Resp, Err>, RPCError<C<T>>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -102,28 +107,26 @@ where C: RaftTypeConfig
 
 /// Implement RaftNetwork (v1 API) for HTTP transport
 #[allow(clippy::blocks_in_conditions)]
-impl<C> RaftNetworkV1<C> for Network<C>
-where C: RaftTypeConfig
-{
+impl<T: EzTypes> RaftNetworkV1<C<T>> for Network<T> {
     async fn append_entries(
         &mut self,
-        req: AppendEntriesRequest<C>,
+        req: AppendEntriesRequest<C<T>>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
+    ) -> Result<AppendEntriesResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
         let res = self.request::<_, _, Infallible>("raft/append", req).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
     async fn install_snapshot(
         &mut self,
-        req: InstallSnapshotRequest<C>,
+        req: InstallSnapshotRequest<C<T>>,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, RaftError<C, InstallSnapshotError>>> {
+    ) -> Result<InstallSnapshotResponse<C<T>>, RPCError<C<T>, RaftError<C<T>, InstallSnapshotError>>> {
         let res = self.request("raft/snapshot", req).await.map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
             Err(e) => Err(RPCError::RemoteError(RemoteError::new(
-                self.target.clone(),
+                self.target,
                 RaftError::APIError(e),
             ))),
         }
@@ -131,9 +134,9 @@ where C: RaftTypeConfig
 
     async fn vote(
         &mut self,
-        req: VoteRequest<C>,
+        req: VoteRequest<C<T>>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
+    ) -> Result<VoteResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
         let res = self.request::<_, _, Infallible>("raft/vote", req).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
