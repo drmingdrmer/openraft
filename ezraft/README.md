@@ -38,35 +38,35 @@ pub enum Request { Set { key: String, value: String } }
 pub struct Response { pub value: Option<String> }
 
 // 2. Implement EzTypes trait
-struct MyAppTypes;
-impl EzTypes for MyAppTypes {
+struct AppTypes;
+impl EzTypes for AppTypes {
     type Request = Request;
     type Response = Response;
 }
 
 // 3. Implement storage persistence (3 methods)
-struct FileStorage { base_dir: PathBuf }
+struct AppStorage { base_dir: PathBuf }
 
 #[async_trait]
-impl EzStorage<MyAppTypes> for FileStorage {
-    async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
+impl EzStorage<AppTypes> for AppStorage {
+    async fn load_state(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
         // Load meta (or default) and optional snapshot from disk
     }
 
-    async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
+    async fn save_state(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
         // Persist state updates to disk
     }
 
-    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
+    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
         // Load log entries in range [start, end)
     }
 }
 
 // 4. Implement state machine (3 methods)
-struct MyStore { data: BTreeMap<String, String> }
+struct AppStateMachine { data: BTreeMap<String, String> }
 
 #[async_trait]
-impl EzStateMachine<MyAppTypes> for MyStore {
+impl EzStateMachine<AppTypes> for AppStateMachine {
     async fn apply(&mut self, req: Request) -> Response {
         match req {
             Request::Set { key, value } => {
@@ -88,13 +88,13 @@ impl EzStateMachine<MyAppTypes> for MyStore {
 // 5. Use it
 #[tokio::main]
 async fn main() -> Result<()> {
-    let store = MyStore { data: BTreeMap::new() };
-    let storage = FileStorage { base_dir: "./data".into() };
+    let state_machine = AppStateMachine { data: BTreeMap::new() };
+    let storage = AppStorage { base_dir: "./data".into() };
 
-    let raft = EzRaft::<MyAppTypes, _, _>::new(
+    let raft = EzRaft::<AppTypes, _, _>::new(
         1,
         "127.0.0.1:8080".into(),
-        store,
+        state_machine,
         storage,
         EzConfig::default()
     ).await?;
