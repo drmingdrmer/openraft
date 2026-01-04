@@ -37,54 +37,43 @@ type C<T> = OpenRaftTypes<T>;
 ///
 /// Creates HTTP clients to communicate with other Raft nodes.
 /// Implements OpenRaft's `RaftNetworkFactory` trait.
-pub struct EzNetworkFactory<T: EzTypes>(std::marker::PhantomData<T>);
+#[derive(Default)]
+pub struct EzNetworkFactory;
 
-impl<T: EzTypes> Default for EzNetworkFactory<T> {
-    fn default() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T: EzTypes> EzNetworkFactory<T> {
+impl EzNetworkFactory {
     /// Create a new network factory
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 
-impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory<T> {
-    type Network = Adapter<C<T>, Network<T>>;
+impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory {
+    type Network = Adapter<C<T>, Network>;
 
     async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
         let client = Client::builder().no_proxy().build().unwrap();
 
-        Network {
-            addr,
-            client,
-            target,
-            _phantom: std::marker::PhantomData,
-        }
-        .into_v2()
+        Network { addr, client, target }.into_v2()
     }
 }
 
 /// HTTP network client for a single Raft node
-pub struct Network<T: EzTypes> {
+pub struct Network {
     addr: String,
     client: Client,
     target: u64,
-    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: EzTypes> Network<T> {
+impl Network {
     /// Send an HTTP POST request to a target node
-    async fn request<Req, Resp, Err>(
+    async fn request<Req, Resp, Err, Cfg>(
         &mut self,
         uri: impl Display,
         req: Req,
-    ) -> Result<Result<Resp, Err>, RPCError<C<T>>>
+    ) -> Result<Result<Resp, Err>, RPCError<Cfg>>
     where
+        Cfg: openraft::RaftTypeConfig,
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error + Serialize + DeserializeOwned,
@@ -107,13 +96,16 @@ impl<T: EzTypes> Network<T> {
 
 /// Implement RaftNetwork (v1 API) for HTTP transport
 #[allow(clippy::blocks_in_conditions)]
-impl<T: EzTypes> RaftNetworkV1<C<T>> for Network<T> {
+impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C<T>>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self.request::<_, _, Infallible>("raft/append", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, Infallible, C<T>>("raft/append", req)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
@@ -122,13 +114,13 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network<T> {
         req: InstallSnapshotRequest<C<T>>,
         _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<C<T>>, RPCError<C<T>, RaftError<C<T>, InstallSnapshotError>>> {
-        let res = self.request("raft/snapshot", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, _, C<T>>("raft/snapshot", req)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
-            Err(e) => Err(RPCError::RemoteError(RemoteError::new(
-                self.target,
-                RaftError::APIError(e),
-            ))),
+            Err(e) => Err(RPCError::RemoteError(RemoteError::new(self.target, RaftError::APIError(e)))),
         }
     }
 
@@ -137,7 +129,10 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network<T> {
         req: VoteRequest<C<T>>,
         _option: RPCOption,
     ) -> Result<VoteResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self.request::<_, _, Infallible>("raft/vote", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, Infallible, C<T>>("raft/vote", req)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }
