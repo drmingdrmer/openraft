@@ -11,8 +11,6 @@ use openraft::impls::OneshotResponder;
 use openraft::AppData;
 use openraft::AppDataResponse;
 use openraft::BasicNode;
-use openraft::LogId;
-use openraft::Membership;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
 use serde::Deserialize;
@@ -93,22 +91,5 @@ impl<T: EzTypes> RaftTypeConfig for OpenRaftTypes<T> {
     type ErrorSource = openraft::AnyError;
 }
 
-/// Type alias for OpenRaft Raft with OpenRaftTypes<T>
-///
-/// This is the underlying OpenRaft Raft instance used internally by EzRaft.
-pub type EzOpenRaft<T> = openraft::Raft<OpenRaftTypes<T>>;
-
 /// Type alias for Vote with OpenRaftTypes<T>
 pub type EzVote<T> = Vote<OpenRaftTypes<T>>;
-
-/// Type alias for LogId with OpenRaftTypes<T>
-pub type EzLogIdOf<T> = LogId<OpenRaftTypes<T>>;
-
-/// Type alias for EzEntry with OpenRaftTypes<T>
-pub type EzEntryOf<T> = crate::types::EzEntry<T>;
-
-/// Type alias for Membership with OpenRaftTypes<T>
-pub type EzMembershipOf<T> = Membership<OpenRaftTypes<T>>;
-
-/// Type alias for SnapshotData with OpenRaftTypes<T>
-pub type EzSnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
