@@ -154,10 +154,11 @@ where
 
 ```rust
 pub struct EzConfig {
-    pub heartbeat_interval_ms: u64,  // Default: 500
-    pub election_timeout_ms: u64,    // Default: 1500
+    pub heartbeat_interval: Duration,  // Default: 500ms
 }
 ```
+
+Election timeout is automatically calculated as 3-6x the heartbeat interval.
 
 Most users can use `EzConfig::default()`.
 
