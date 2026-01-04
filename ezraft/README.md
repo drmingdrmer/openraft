@@ -11,15 +11,15 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 - **Built-in networking**: HTTP layer included, no user code needed
 - **Type-safe**: Works directly with your types, not byte vectors
 
+## Status
+
+**Experimental.** EzRaft is primarily an API design laboratory for exploring intuitive interface patterns. The APIs may change until the crate stabilizes. Production applications are not the primary audience.
+
 ## Goals
 
-EzRaft serves a dual purpose: lowering the barrier to entry and exploring better API designs.
+**API design exploration.** EzRaft turns abstract ideas about "intuitive APIs" into concrete code. By testing different patterns—parameter organization, naming conventions, simplicity vs extensibility trade-offs—we discover what truly matches user intuition. These insights will guide future OpenRaft improvements.
 
-**Fast prototyping for beginners.** For users with simple requirements who just want to build a prototype, EzRaft saves time. You don't need to understand Raft internals or study OpenRaft's architecture. Just implement a few methods and you have a working distributed system. The goal is to shrink the path from idea to working prototype as much as possible.
-
-**API design laboratory.** EzRaft is also an experiment in interface design. By turning abstract ideas about "intuitive APIs" into concrete code, we can see directly which patterns work best: Which parameter organization feels natural? Which naming reduces cognitive load? How do we balance simplicity with extensibility? The insights gained here will guide future improvements to OpenRaft itself.
-
-**Low-cost experimentation.** Like a designer sketching multiple drafts, EzRaft lets us try bolder API approaches without risking OpenRaft's stability. We can test patterns that differ significantly from OpenRaft's current style, gather feedback from real usage, and identify which designs truly match user intuition. This "scout" role helps the core project evolve with less risk.
+**Fast prototyping.** As a secondary benefit, EzRaft lets beginners build working prototypes without understanding Raft internals or OpenRaft's architecture.
 
 ## Quick Start
 
