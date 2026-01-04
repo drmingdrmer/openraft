@@ -219,7 +219,7 @@ async fn main() -> io::Result<()> {
     let storage = FileStorage::new(base_dir).await?;
 
     // Create EzRaft instance (auto-joins or initializes based on seed)
-    let raft = EzRaft::<Types, _>::new(&addr, state_machine, storage, EzConfig::default(), seed).await?;
+    let raft = EzRaft::<Types>::new(&addr, state_machine, storage, EzConfig::default(), seed).await?;
 
     println!("Node {} listening on {}", raft.node_id(), addr);
 
