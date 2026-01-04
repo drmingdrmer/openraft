@@ -51,6 +51,22 @@ where
     raft: Raft<ORTypes<T>>,
 }
 
+impl<T, S, M> Clone for EzRaft<T, S, M>
+where
+    T: EzTypes,
+    S: EzStorage<T>,
+    M: EzStateMachine<T>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            node_id: self.node_id,
+            addr: self.addr.clone(),
+            storage: self.storage.clone(),
+            raft: self.raft.clone(),
+        }
+    }
+}
+
 impl<T, S, M> EzRaft<T, S, M>
 where
     T: EzTypes,
@@ -127,13 +143,13 @@ where
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
-        // Auto-initialize if first node
-        if seed_addr.is_none() {
+        // Auto-initialize if first node (node_id == 0 means truly first node)
+        // On restart, node_id is loaded from storage, so this only runs on first run of first node
+        if node_id == 0 {
             use std::collections::BTreeMap;
-            let mut nodes = BTreeMap::new();
-            nodes.insert(node_id, BasicNode::new(http_addr.clone()));
+            let nodes = BTreeMap::from_iter([(node_id, BasicNode::new(http_addr.clone()))]);
             // Ignore error if already initialized (restart case)
-            let _ = raft.initialize(nodes).await;
+            raft.initialize(nodes).await.ok();
         }
 
         Ok(Self {
@@ -142,37 +158,6 @@ where
             storage: adapter,
             raft,
         })
-    }
-
-    /// Initialize the Raft cluster
-    ///
-    /// This should be called once when setting up a new cluster.
-    /// It registers the initial members of the cluster.
-    ///
-    /// # Arguments
-    ///
-    /// * `members` - List of (node_id, address) tuples for all cluster members
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// raft.initialize(vec![
-    ///     (1, "127.0.0.1:8080".into()),
-    ///     (2, "127.0.0.1:8081".into()),
-    ///     (3, "127.0.0.1:8082".into()),
-    /// ]).await?;
-    /// ```
-    pub async fn initialize(&self, members: Vec<(u64, String)>) -> Result<(), io::Error> {
-        use std::collections::BTreeMap;
-
-        use openraft::BasicNode;
-
-        let nodes: BTreeMap<u64, BasicNode> =
-            members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
-
-        self.raft.initialize(nodes).await.map_err(|e| io::Error::other(e.to_string()))?;
-
-        Ok(())
     }
 
     /// Write a request to the Raft log
@@ -258,12 +243,11 @@ where
     ///
     /// This starts the HTTP server that handles:
     /// - Internal Raft RPC (append entries, vote, install snapshot)
-    /// - Admin API (initialize, add learner, change membership, metrics)
-    /// - Application API (write, read)
+    /// - Admin API (join, add learner, change membership, metrics)
     ///
     /// This method blocks until the server is stopped.
     pub async fn serve(&self) -> Result<(), io::Error> {
-        crate::server::run(self).await
+        crate::server::run(self.clone()).await
     }
 
     /// Get the node ID
