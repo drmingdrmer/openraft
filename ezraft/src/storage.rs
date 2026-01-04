@@ -53,13 +53,11 @@ where
 
 /// Internal state machine wrapper that tracks Raft metadata
 /// alongside the user's business logic state machine
-pub struct StateMachineState<T, M>
-where
-    T: EzTypes,
-    M: EzStateMachine<T>,
+pub struct StateMachineState<T>
+where T: EzTypes
 {
     /// User's state machine for business logic
-    pub user_sm: M,
+    pub user_sm: Box<dyn EzStateMachine<T>>,
 
     /// Last log ID applied to the state machine
     pub last_applied: Option<LogId<OpenRaftTypes<T>>>,
@@ -73,24 +71,25 @@ where
 /// Bridges user's `EzStorage` and `EzStateMachine` to OpenRaft's storage traits.
 ///
 /// Only metadata is cached in memory - logs are read from user storage on demand.
-pub struct StorageAdapter<T, S, M>
+pub struct StorageAdapter<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     pub storage_state: Arc<Mutex<StorageState<T, S>>>,
-    pub sm_state: Arc<Mutex<StateMachineState<T, M>>>,
+    pub sm_state: Arc<Mutex<StateMachineState<T>>>,
 }
 
-impl<T, S, M> StorageAdapter<T, S, M>
+impl<T, S> StorageAdapter<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     /// Create a new storage adapter and load initial metadata
-    pub async fn new(mut user_storage: S, user_sm: M) -> Result<Self, std::io::Error> {
+    pub async fn new(
+        mut user_storage: S,
+        user_sm: impl EzStateMachine<T> + 'static,
+    ) -> Result<Self, std::io::Error> {
         // Load initial metadata and snapshot
         let (cached_meta, snapshot) = user_storage.restore().await?;
 
@@ -106,7 +105,7 @@ where
         };
 
         let sm_state = StateMachineState {
-            user_sm,
+            user_sm: Box::new(user_sm),
             last_applied,
             membership: last_membership,
         };
@@ -132,11 +131,10 @@ where
 }
 
 // Implement RaftLogStorage for Arc<StorageAdapter>
-impl<T, S, M> RaftLogStorage<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+impl<T, S> RaftLogStorage<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S>>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     type LogReader = Self;
 
@@ -196,11 +194,10 @@ where
 }
 
 // Implement RaftLogReader for Arc<StorageAdapter>
-impl<T, S, M> RaftLogReader<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+impl<T, S> RaftLogReader<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S>>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     async fn read_vote(&mut self) -> Result<Option<<OpenRaftTypes<T> as RaftTypeConfig>::Vote>, std::io::Error> {
         let state = self.storage_state.lock().await;
@@ -246,11 +243,10 @@ where
 }
 
 // Implement RaftStateMachine for Arc<StorageAdapter>
-impl<T, S, M> RaftStateMachine<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+impl<T, S> RaftStateMachine<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S>>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     type SnapshotBuilder = Self;
 
@@ -349,11 +345,10 @@ where
 }
 
 // Implement RaftSnapshotBuilder for Arc<StorageAdapter>
-impl<T, S, M> RaftSnapshotBuilder<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S, M>>
+impl<T, S> RaftSnapshotBuilder<OpenRaftTypes<T>> for Arc<StorageAdapter<T, S>>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     async fn build_snapshot(&mut self) -> Result<Snapshot<OpenRaftTypes<T>>, std::io::Error> {
         // Get current state machine state and build snapshot data

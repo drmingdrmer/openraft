@@ -31,12 +31,10 @@ type ORTypes<T> = OpenRaftTypes<T>;
 ///
 /// - `T`: Type configuration (implements `EzTypes`)
 /// - `S`: User's storage implementation (implements `EzStorage<T>`)
-/// - `M`: User's state machine implementation (implements `EzStateMachine<T>`)
-pub struct EzRaft<T, S, M>
+pub struct EzRaft<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     /// Node ID
     node_id: u64,
@@ -45,17 +43,16 @@ where
     addr: String,
 
     /// Storage adapter (bridges user storage/state machine to OpenRaft)
-    storage: Arc<StorageAdapter<T, S, M>>,
+    storage: Arc<StorageAdapter<T, S>>,
 
     /// Internal OpenRaft instance
     raft: Raft<ORTypes<T>>,
 }
 
-impl<T, S, M> Clone for EzRaft<T, S, M>
+impl<T, S> Clone for EzRaft<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -67,11 +64,10 @@ where
     }
 }
 
-impl<T, S, M> EzRaft<T, S, M>
+impl<T, S> EzRaft<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
     /// Create a new EzRaft instance
     ///
@@ -102,7 +98,7 @@ where
     /// ```
     pub async fn new(
         http_addr: impl ToString,
-        state_machine: M,
+        state_machine: impl EzStateMachine<T> + 'static,
         storage: S,
         config: EzConfig,
         seed_addr: Option<String>,
@@ -259,7 +255,7 @@ where
     ///
     /// This provides access to the underlying storage and state machine.
     /// Use `storage.storage_state` and `storage.sm_state` to access them.
-    pub fn storage(&self) -> &Arc<StorageAdapter<T, S, M>> {
+    pub fn storage(&self) -> &Arc<StorageAdapter<T, S>> {
         &self.storage
     }
 }
