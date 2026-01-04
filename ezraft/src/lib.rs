@@ -8,7 +8,7 @@
 //! # Quick Start
 //!
 //! ```ignore
-//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, EzStateUpdate, EzTypes};
+//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, Persist, EzTypes};
 //! use serde::{Serialize, Deserialize};
 //!
 //! // 1. Define your request/response types
@@ -33,7 +33,7 @@
 //!     async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
 //!         // Restore meta (or default) and snapshot from disk
 //!     }
-//!     async fn persist(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
+//!     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
 //!         // Persist state update to disk
 //!     }
 //!     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
@@ -83,4 +83,4 @@ pub use types::EzLogId;
 pub use types::EzMeta;
 pub use types::EzSnapshot;
 pub use types::EzSnapshotMeta;
-pub use types::EzStateUpdate;
+pub use types::Persist;
