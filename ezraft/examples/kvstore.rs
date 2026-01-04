@@ -131,7 +131,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<Types> for FileStorage {
-    async fn restore(&mut self) -> io::Result<(EzMeta<Types>, Option<EzSnapshot<Types>>)> {
+    async fn load(&mut self) -> io::Result<(EzMeta<Types>, Option<EzSnapshot<Types>>)> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
@@ -215,6 +215,7 @@ async fn main() -> io::Result<()> {
 
     // Create state machine and storage (use addr for directory name)
     let base_dir = PathBuf::from(format!("./data/{}", addr.replace(':', "-")));
+
     let state_machine = KvStateMachine::default();
     let storage = FileStorage::new(base_dir).await?;
 
