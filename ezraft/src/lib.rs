@@ -55,8 +55,10 @@
 //! let state_machine = AppStateMachine { data: BTreeMap::new() };
 //! let storage = AppStorage { base_dir: "./data".into() };
 //!
-//! let raft = EzRaft::<AppTypes, _, _>::new(1, "127.0.0.1:8080".into(), state_machine, storage, EzConfig::default()).await?;
-//! raft.initialize(vec![(1, "127.0.0.1:8080".into())]).await?;
+//! // First node (creates cluster)
+//! let raft = EzRaft::<AppTypes, _>::new("127.0.0.1:8080", state_machine, storage, EzConfig::default(), None).await?;
+//! // Or join existing cluster via seed node
+//! // let raft = EzRaft::<AppTypes, _>::new("127.0.0.1:8081", sm, storage, config, Some("127.0.0.1:8080".into())).await?;
 //! raft.serve().await?;
 //! ```
 

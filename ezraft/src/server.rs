@@ -13,7 +13,6 @@ use openraft::ChangeMembers;
 use serde::Deserialize;
 
 use crate::raft::EzRaft;
-use crate::trait_::EzStateMachine;
 use crate::trait_::EzStorage;
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
@@ -22,22 +21,20 @@ use crate::type_config::OpenRaftTypes;
 type C<T> = OpenRaftTypes<T>;
 
 /// HTTP server wrapper for EzRaft
-pub struct EzServer<T, S, M>
+pub struct EzServer<T, S>
 where
     T: EzTypes,
     S: EzStorage<T>,
-    M: EzStateMachine<T>,
 {
-    raft: EzRaft<T, S, M>,
+    raft: EzRaft<T, S>,
 }
 
-impl<T, S, M> EzServer<T, S, M>
+impl<T, S> EzServer<T, S>
 where
     T: EzTypes,
     S: EzStorage<T> + 'static,
-    M: EzStateMachine<T> + 'static,
 {
-    pub fn new(raft: EzRaft<T, S, M>) -> Self {
+    pub fn new(raft: EzRaft<T, S>) -> Self {
         Self { raft }
     }
 
@@ -155,11 +152,10 @@ where
 }
 
 /// Run the HTTP server (convenience function)
-pub(crate) async fn run<T, S, M>(raft: EzRaft<T, S, M>) -> std::io::Result<()>
+pub(crate) async fn run<T, S>(raft: EzRaft<T, S>) -> std::io::Result<()>
 where
     T: EzTypes,
     S: EzStorage<T> + 'static,
-    M: EzStateMachine<T> + 'static,
 {
     EzServer::new(raft).run().await
 }
