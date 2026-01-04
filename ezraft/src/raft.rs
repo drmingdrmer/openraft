@@ -14,6 +14,7 @@ use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
 use crate::storage::StateMachineState;
 use crate::storage::StorageAdapter;
+use crate::storage::StorageState;
 use crate::trait_::EzStateMachine;
 use crate::trait_::EzStorage;
 use crate::type_config::EzTypes;
@@ -46,7 +47,7 @@ where
     addr: String,
 
     /// User's storage state (storage + metadata, protected by single mutex)
-    storage_state: Arc<Mutex<crate::storage::StorageState<S, T>>>,
+    storage_state: Arc<Mutex<StorageState<T, S>>>,
 
     /// State machine state (user's state machine + Raft metadata)
     sm_state: Arc<Mutex<StateMachineState<T, M>>>,
@@ -271,7 +272,7 @@ where
     /// Get a reference to the storage state (storage + cached metadata)
     ///
     /// This provides access to the underlying storage implementation and metadata.
-    pub fn storage_state(&self) -> &Arc<Mutex<crate::storage::StorageState<S, T>>> {
+    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<T, S>>> {
         &self.storage_state
     }
 }
