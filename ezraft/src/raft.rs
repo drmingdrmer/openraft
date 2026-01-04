@@ -8,6 +8,7 @@ use std::sync::Arc;
 use openraft::async_runtime::WatchReceiver;
 use openraft::BasicNode;
 use openraft::Raft;
+use serde::Serialize;
 
 use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
@@ -59,37 +60,59 @@ where
     /// Create a new EzRaft instance
     ///
     /// This initializes the internal Raft instance with the user's storage and state machine.
+    /// The node automatically joins a cluster or initializes as the first node.
     ///
     /// # Arguments
     ///
-    /// * `node_id` - Unique identifier for this node
     /// * `http_addr` - Address to bind HTTP server (e.g., "127.0.0.1:8080")
-    /// * `user_state` - User's state machine implementation
-    /// * `user_storage` - User's storage implementation
+    /// * `state_machine` - User's state machine implementation
+    /// * `storage` - User's storage implementation
     /// * `config` - EzRaft configuration (use `EzConfig::default()` for sensible defaults)
+    /// * `seed_addr` - Optional seed node address to join existing cluster
+    ///
+    /// # Behavior
+    ///
+    /// - If `seed_addr` is `None`: Initialize as single-node cluster with node_id = 0
+    /// - If `seed_addr` is `Some`: Join existing cluster via seed node
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let raft = MyEzRaft::new(
-    ///     1,
-    ///     "127.0.0.1:8080".into(),
-    ///     my_state_machine,
-    ///     my_storage,
-    ///     EzConfig::default(),
-    /// ).await?;
+    /// // First node (creates new cluster)
+    /// let raft = EzRaft::new("127.0.0.1:8080", sm, storage, config, None).await?;
+    ///
+    /// // Joining node (joins existing cluster)
+    /// let raft = EzRaft::new("127.0.0.1:8081", sm, storage, config, Some("127.0.0.1:8080".into())).await?;
     /// ```
     pub async fn new(
-        node_id: u64,
         http_addr: impl ToString,
         state_machine: M,
         storage: S,
         config: EzConfig,
+        seed_addr: Option<String>,
     ) -> Result<Self, io::Error> {
+        let http_addr = http_addr.to_string();
+
         // Create storage adapter that bridges user traits to OpenRaft
         let adapter = StorageAdapter::new(storage, state_machine).await?;
-
         let adapter = Arc::new(adapter);
+
+        // Determine node_id
+        let node_id = if let Some(id) = adapter.node_id().await {
+            // Use persisted node_id (restart case)
+            id
+        } else if let Some(seed) = &seed_addr {
+            // Join existing cluster via seed node
+            let id = request_join(seed, &http_addr).await?;
+            adapter.save_meta(|m| m.node_id = Some(id)).await?;
+            id
+        } else {
+            // First node in cluster
+            let id = 0;
+            adapter.save_meta(|m| m.node_id = Some(id)).await?;
+            id
+        };
+
         let (log_store, sm_store) = (adapter.clone(), adapter.clone());
 
         // Convert EzConfig to OpenRaft Config
@@ -104,9 +127,18 @@ where
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
+        // Auto-initialize if first node
+        if seed_addr.is_none() {
+            use std::collections::BTreeMap;
+            let mut nodes = BTreeMap::new();
+            nodes.insert(node_id, BasicNode::new(http_addr.clone()));
+            // Ignore error if already initialized (restart case)
+            let _ = raft.initialize(nodes).await;
+        }
+
         Ok(Self {
             node_id,
-            addr: http_addr.to_string(),
+            addr: http_addr,
             storage: adapter,
             raft,
         })
@@ -257,5 +289,56 @@ where
     /// Use `storage.storage_state` and `storage.sm_state` to access them.
     pub fn storage(&self) -> &Arc<StorageAdapter<T, S, M>> {
         &self.storage
+    }
+}
+
+/// Request to join a cluster
+#[derive(Debug, Serialize)]
+struct JoinRequest {
+    addr: String,
+}
+
+/// Join response: Ok(node_id) or Err(leader_addr)
+type JoinResponse = Result<u64, Option<String>>;
+
+/// Request to join a cluster via seed node
+///
+/// Retries with leader if seed is not the leader.
+async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .map_err(|e| io::Error::other(e.to_string()))?;
+
+    let mut target_addr = seed_addr.to_string();
+
+    loop {
+        let url = format!("http://{}/api/join", target_addr);
+        let req = JoinRequest { addr: my_addr.to_string() };
+
+        let resp = client
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| io::Error::other(format!("join request failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(io::Error::other(format!(
+                "join request failed with status: {}",
+                resp.status()
+            )));
+        }
+
+        let join_resp: JoinResponse = resp
+            .json()
+            .await
+            .map_err(|e| io::Error::other(format!("failed to parse join response: {}", e)))?;
+
+        match join_resp {
+            Ok(node_id) => return Ok(node_id),
+            Err(Some(leader)) => target_addr = leader,
+            Err(None) => return Err(io::Error::other("no leader available")),
+        }
     }
 }

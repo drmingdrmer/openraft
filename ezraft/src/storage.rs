@@ -121,11 +121,16 @@ where
     }
 
     /// Update metadata and persist to storage
-    async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
+    pub async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
         let mut state = self.storage_state.lock().await;
         f(&mut state.cached_meta);
         let update = Persist::Meta(state.cached_meta.clone());
         state.storage.persist(update).await
+    }
+
+    /// Get the current node_id from cached metadata
+    pub async fn node_id(&self) -> Option<u64> {
+        self.storage_state.lock().await.cached_meta.node_id
     }
 }
 
