@@ -37,7 +37,7 @@ use crate::types::Persist;
 ///     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
 ///         match op {
 ///             Persist::Meta(meta) => { /* write meta */ }
-///             Persist::Log(entry) => { /* write log entry */ }
+///             Persist::LogEntry(entry) => { /* write log entry */ }
 ///             Persist::Snapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
 ///         }
 ///     }

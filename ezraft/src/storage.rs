@@ -179,7 +179,7 @@ where
         // Save all log entries
         for entry in entries {
             last_log_id = Some(entry.log_id);
-            let update = Persist::Log(entry);
+            let update = Persist::LogEntry(entry);
             let mut state = self.storage_state.lock().await;
             state.storage.persist(update).await?;
         }
