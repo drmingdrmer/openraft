@@ -49,16 +49,16 @@ struct AppStorage { base_dir: PathBuf }
 
 #[async_trait]
 impl EzStorage<AppTypes> for AppStorage {
-    async fn load_state(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
-        // Load meta (or default) and optional snapshot from disk
+    async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+        // Restore meta (or default) and optional snapshot from disk
     }
 
-    async fn save_state(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
-        // Persist state updates to disk
+    async fn persist(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
+        // Persist state update to disk
     }
 
-    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
-        // Load log entries in range [start, end)
+    async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
+        // Read log entries in range [start, end)
     }
 }
 
@@ -118,9 +118,9 @@ pub trait EzStorage<T>: Send + Sync + 'static
 where
     T: EzTypes,
 {
-    async fn load_state(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
-    async fn save_state(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
-    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
+    async fn restore(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
+    async fn persist(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
+    async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
 ```
 
