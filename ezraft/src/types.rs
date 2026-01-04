@@ -156,8 +156,8 @@ where T: EzTypes
     Meta(EzMeta<T>),
 
     /// Write a log entry
-    #[display("Log")]
-    Log(EzEntry<T>),
+    #[display("LogEntry")]
+    LogEntry(EzEntry<T>),
 
     /// Write a complete snapshot
     #[display("Snapshot")]
