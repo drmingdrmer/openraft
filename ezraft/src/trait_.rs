@@ -38,7 +38,7 @@ use crate::types::EzStateUpdate;
 ///         match update {
 ///             EzStateUpdate::WriteMeta(meta) => { /* write meta */ }
 ///             EzStateUpdate::WriteLog(entry) => { /* write log entry */ }
-///             EzStateUpdate::WriteSnapshot(meta, data) => { /* write snapshot */ }
+///             EzStateUpdate::WriteSnapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
 ///         }
 ///     }
 ///

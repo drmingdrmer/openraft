@@ -16,6 +16,10 @@
 
 use std::collections::BTreeMap;
 use std::io;
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -144,7 +148,10 @@ impl EzStorage<KvTypes> for FileStorage {
             Ok(meta_data) => {
                 let snap_meta: EzSnapshotMeta<KvTypes> = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
-                Some((snap_meta, data))
+                Some(EzSnapshot {
+                    meta: snap_meta,
+                    snapshot: Cursor::new(data),
+                })
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
             Err(e) => return Err(e),
@@ -163,8 +170,13 @@ impl EzStorage<KvTypes> for FileStorage {
                 let (_, index) = entry.log_id;
                 fs::write(self.log_path(index), serde_json::to_vec(&entry)?).await?;
             }
-            EzStateUpdate::WriteSnapshot(meta, data) => {
-                fs::write(&self.snapshot_meta_path(), serde_json::to_vec(&meta)?).await?;
+            EzStateUpdate::WriteSnapshot(snapshot) => {
+                fs::write(&self.snapshot_meta_path(), serde_json::to_vec(&snapshot.meta)?).await?;
+                // Extract data from cursor
+                let mut cursor = snapshot.snapshot;
+                cursor.seek(SeekFrom::Start(0))?;
+                let mut data = Vec::new();
+                cursor.read_to_end(&mut data)?;
                 fs::write(&self.snapshot_data_path(), data).await?;
             }
         }
