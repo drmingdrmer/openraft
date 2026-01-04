@@ -15,6 +15,8 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 
 **Experimental.** EzRaft is primarily an API design laboratory for exploring intuitive interface patterns. The APIs may change until the crate stabilizes. Production applications are not the primary audience.
 
+**Next phase: Stable API.** Once the design exploration matures, EzRaft will provide a stable API with well-considered abstractions—exposing what users need while hiding unnecessary complexity.
+
 ## Goals
 
 **API design exploration.** EzRaft turns abstract ideas about "intuitive APIs" into concrete code. By testing different patterns—parameter organization, naming conventions, simplicity vs extensibility trade-offs—we discover what truly matches user intuition. These insights will guide future OpenRaft improvements.
