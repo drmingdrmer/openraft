@@ -98,6 +98,9 @@ where T: EzTypes
 pub struct EzMeta<T>
 where T: EzTypes
 {
+    /// This node's ID (assigned when joining cluster)
+    pub node_id: Option<u64>,
+
     /// Current vote (term and node_id voted for)
     pub vote: Option<EzVote<T>>,
 
@@ -114,6 +117,7 @@ where T: EzTypes
 {
     fn clone(&self) -> Self {
         Self {
+            node_id: self.node_id,
             vote: self.vote,
             last_log_id: self.last_log_id,
             last_purged: self.last_purged,
@@ -126,6 +130,7 @@ where T: EzTypes
 {
     fn default() -> Self {
         Self {
+            node_id: None,
             vote: None,
             last_log_id: None,
             last_purged: None,
