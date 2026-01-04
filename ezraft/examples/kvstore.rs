@@ -4,14 +4,14 @@
 //! Run multiple instances to form a cluster:
 //!
 //! ```bash
-//! # Terminal 1
-//! cargo run --example kvstore -- --node-id 1 --addr 127.0.0.1:8080
+//! # Terminal 1 (first node - creates cluster)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8080
 //!
-//! # Terminal 2
-//! cargo run --example kvstore -- --node-id 2 --addr 127.0.0.1:8081
+//! # Terminal 2 (joins via seed node)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8081 --seed 127.0.0.1:8080
 //!
-//! # Terminal 3
-//! cargo run --example kvstore -- --node-id 3 --addr 127.0.0.1:8082
+//! # Terminal 3 (joins via seed node)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8082 --seed 127.0.0.1:8080
 //! ```
 
 use std::collections::BTreeMap;
@@ -102,8 +102,9 @@ struct FileStorage {
 }
 
 impl FileStorage {
-    fn new(base_dir: PathBuf) -> Self {
-        Self { base_dir }
+    async fn new(base_dir: PathBuf) -> io::Result<Self> {
+        fs::create_dir_all(&base_dir).await?;
+        Ok(Self { base_dir })
     }
 
     fn meta_path(&self) -> PathBuf {
@@ -196,39 +197,30 @@ impl EzStorage<Types> for FileStorage {
 /// Command-line arguments for the KV store
 #[derive(clap::Parser)]
 struct Args {
-    /// Node ID (unique identifier for this Raft node)
-    #[arg(long, default_value_t = 1)]
-    node_id: u64,
-
     /// HTTP bind address (e.g., "127.0.0.1:8080")
     #[arg(long, default_value = "127.0.0.1:8080")]
     addr: String,
+
+    /// Seed node address to join existing cluster
+    #[arg(long)]
+    seed: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let args = Args::parse();
-    let node_id = args.node_id;
     let addr = args.addr;
+    let seed = args.seed;
 
-    // Create data directory for this node
-    let base_dir = PathBuf::from(format!("./data/node-{}", node_id));
-    fs::create_dir_all(&base_dir).await?;
-
-    // Create state machine and storage
+    // Create state machine and storage (use addr for directory name)
+    let base_dir = PathBuf::from(format!("./data/{}", addr.replace(':', "-")));
     let state_machine = KvStateMachine::default();
-    let storage = FileStorage::new(base_dir);
+    let storage = FileStorage::new(base_dir).await?;
 
-    // Create EzRaft instance
-    let raft = EzRaft::<Types, _, _>::new(node_id, &addr, state_machine, storage, EzConfig::default()).await?;
+    // Create EzRaft instance (auto-joins or initializes based on seed)
+    let raft = EzRaft::<Types, _, _>::new(&addr, state_machine, storage, EzConfig::default(), seed).await?;
 
-    // Initialize if first node
-    if node_id == 1 {
-        raft.initialize(vec![(1, addr.clone())]).await?;
-        println!("Node 1 initialized as single-node cluster");
-    }
-
-    println!("Node {} listening on {}", node_id, addr);
+    println!("Node {} listening on {}", raft.node_id(), addr);
 
     // Start HTTP server
     raft.serve().await?;

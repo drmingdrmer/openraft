@@ -40,6 +40,7 @@ where
             .route("/raft/vote", web::post().to(vote::<T>))
             // Admin API
             .route("/api/init", web::post().to(initialize::<T>))
+            .route("/api/join", web::post().to(join::<T>))
             .route("/api/add_learner", web::post().to(add_learner::<T>))
             .route("/api/change_membership", web::post().to(change_membership::<T>))
             .route("/api/metrics", web::get().to(metrics::<T>))
@@ -156,6 +157,51 @@ where T: EzTypes {
     Ok(web::Json(metrics))
 }
 
+/// Join cluster API handler
+///
+/// A new node calls this endpoint to join an existing cluster.
+/// The leader assigns a unique node ID based on the log index.
+async fn join<T>(
+    req: web::Json<JoinRequest>,
+    data: Data<Arc<openraft::Raft<C<T>>>>,
+) -> Result<web::Json<JoinResponse>, actix_web::Error>
+where
+    T: EzTypes,
+{
+    use openraft::BasicNode;
+
+    let metrics = data.metrics().borrow_watched().clone();
+
+    // Check if we're the leader
+    if metrics.current_leader != Some(metrics.id) {
+        // Not the leader - find leader address and return it
+        let leader_addr = metrics.current_leader.and_then(|leader_id| {
+            metrics
+                .membership_config
+                .membership()
+                .get_node(&leader_id)
+                .map(|n| n.addr.clone())
+        });
+        return Ok(web::Json(Err(leader_addr)));
+    }
+
+    // We are the leader - write a blank entry to get a unique log index
+    let write_result = data
+        .write_blank()
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("join write failed: {}", e)))?;
+
+    let node_id = write_result.log_id.index;
+
+    // Add the new node as a learner
+    let node = BasicNode::new(req.addr.clone());
+    data.add_learner(node_id, node, true)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e)))?;
+
+    Ok(web::Json(Ok(node_id)))
+}
+
 /// Initialize request
 #[derive(Debug, Deserialize)]
 struct InitializeRequest {
@@ -174,3 +220,13 @@ struct AddLearnerRequest {
 struct ChangeMembershipRequest {
     members: Vec<(u64, String)>,
 }
+
+/// Join cluster request
+#[derive(Debug, Deserialize)]
+struct JoinRequest {
+    /// New node's HTTP address
+    addr: String,
+}
+
+/// Join cluster response: Ok(node_id) or Err(leader_addr)
+type JoinResponse = Result<u64, Option<String>>;
