@@ -80,8 +80,8 @@ where
     S: EzStorage<T>,
     M: EzStateMachine<T>,
 {
-    storage_state: Arc<Mutex<StorageState<T, S>>>,
-    sm_state: Arc<Mutex<StateMachineState<T, M>>>,
+    pub storage_state: Arc<Mutex<StorageState<T, S>>>,
+    pub sm_state: Arc<Mutex<StateMachineState<T, M>>>,
     _phantom: PhantomData<T>,
 }
 
@@ -120,28 +120,12 @@ where
         })
     }
 
-    /// Get reference to user storage state (storage + metadata)
-    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<T, S>>> {
-        &self.storage_state
-    }
-
-    /// Get reference to state machine state
-    pub fn sm_state(&self) -> &Arc<Mutex<StateMachineState<T, M>>> {
-        &self.sm_state
-    }
-
     /// Update metadata and persist to storage
     async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
         let mut state = self.storage_state.lock().await;
         f(&mut state.cached_meta);
         let update = Persist::Meta(state.cached_meta.clone());
         state.storage.persist(update).await
-    }
-
-    /// Split into log storage and state machine storage
-    pub fn split(self) -> (Arc<Self>, Arc<Self>) {
-        let arc = Arc::new(self);
-        (arc.clone(), arc)
     }
 }
 

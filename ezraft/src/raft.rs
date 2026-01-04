@@ -8,13 +8,10 @@ use std::sync::Arc;
 use openraft::async_runtime::WatchReceiver;
 use openraft::BasicNode;
 use openraft::Raft;
-use tokio::sync::Mutex;
 
 use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
-use crate::storage::StateMachineState;
 use crate::storage::StorageAdapter;
-use crate::storage::StorageState;
 use crate::trait_::EzStateMachine;
 use crate::trait_::EzStorage;
 use crate::type_config::EzTypes;
@@ -46,11 +43,8 @@ where
     /// HTTP bind address
     addr: String,
 
-    /// User's storage state (storage + metadata, protected by single mutex)
-    storage_state: Arc<Mutex<StorageState<T, S>>>,
-
-    /// State machine state (user's state machine + Raft metadata)
-    sm_state: Arc<Mutex<StateMachineState<T, M>>>,
+    /// Storage adapter (bridges user storage/state machine to OpenRaft)
+    storage: Arc<StorageAdapter<T, S, M>>,
 
     /// Internal OpenRaft instance
     raft: Raft<ORTypes<T>>,
@@ -95,11 +89,8 @@ where
         // Create storage adapter that bridges user traits to OpenRaft
         let adapter = StorageAdapter::new(user_storage, user_state).await?;
 
-        // Keep references to user storage/state before splitting
-        let storage = adapter.storage_state().clone();
-        let sm_state = adapter.sm_state().clone();
-
-        let (log_store, sm_store) = adapter.split();
+        let adapter = Arc::new(adapter);
+        let (log_store, sm_store) = (adapter.clone(), adapter.clone());
 
         // Convert EzConfig to OpenRaft Config
         let raft_config = config.to_raft_config().map_err(|e| io::Error::other(e.to_string()))?;
@@ -116,8 +107,7 @@ where
         Ok(Self {
             node_id,
             addr: http_addr,
-            storage_state: storage,
-            sm_state,
+            storage: adapter,
             raft,
         })
     }
@@ -261,18 +251,11 @@ where
         &self.raft
     }
 
-    /// Get a reference to the state machine state
+    /// Get a reference to the storage adapter
     ///
-    /// This provides access to the user's state machine and Raft metadata (last_applied,
-    /// membership). Use `.lock().await.user_sm` to access the user's state machine directly.
-    pub fn sm_state(&self) -> &Arc<Mutex<StateMachineState<T, M>>> {
-        &self.sm_state
-    }
-
-    /// Get a reference to the storage state (storage + cached metadata)
-    ///
-    /// This provides access to the underlying storage implementation and metadata.
-    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<T, S>>> {
-        &self.storage_state
+    /// This provides access to the underlying storage and state machine.
+    /// Use `storage.storage_state` and `storage.sm_state` to access them.
+    pub fn storage(&self) -> &Arc<StorageAdapter<T, S, M>> {
+        &self.storage
     }
 }
