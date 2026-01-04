@@ -94,7 +94,7 @@ where
     /// Create a new storage adapter and load initial metadata
     pub async fn new(mut user_storage: S, user_sm: M) -> Result<Self, std::io::Error> {
         // Load initial metadata and snapshot
-        let (cached_meta, snapshot) = user_storage.load_state().await?;
+        let (cached_meta, snapshot) = user_storage.restore().await?;
 
         // Initialize state machine state from snapshot or defaults
         let (last_applied, last_membership) = match &snapshot {
@@ -135,7 +135,7 @@ where
         let mut state = self.storage_state.lock().await;
         f(&mut state.cached_meta);
         let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
-        state.storage.save_state(update).await
+        state.storage.persist(update).await
     }
 
     /// Split into log storage and state machine storage
@@ -181,7 +181,7 @@ where
             last_log_id = Some(entry.log_id);
             let update = EzStateUpdate::WriteLog(entry);
             let mut state = self.storage_state.lock().await;
-            state.storage.save_state(update).await?;
+            state.storage.persist(update).await?;
         }
 
         // Update metadata once with the last entry's log_id
@@ -255,7 +255,7 @@ where
 
         // Load only the requested range from user storage
         let mut state = self.storage_state.lock().await;
-        state.storage.load_log_range(start, end).await
+        state.storage.read_logs(start, end).await
     }
 }
 
@@ -342,7 +342,7 @@ where
                 snapshot: Cursor::new(data.clone()),
             };
             let update = EzStateUpdate::WriteSnapshot(snapshot);
-            state.storage.save_state(update).await?;
+            state.storage.persist(update).await?;
         }
 
         // Update state machine state and restore user state from snapshot
@@ -358,7 +358,7 @@ where
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<OpenRaftTypes<T>>>, std::io::Error> {
         let mut state = self.storage_state.lock().await;
-        Ok(state.storage.load_state().await?.1)
+        Ok(state.storage.restore().await?.1)
     }
 }
 

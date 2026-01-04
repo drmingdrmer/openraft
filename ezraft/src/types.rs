@@ -92,7 +92,7 @@ where T: EzTypes
 
 /// Raft metadata managed by the framework
 ///
-/// The framework updates this structure and you persist it via [`EzStorage::save_state`].
+/// The framework updates this structure and you persist it via [`EzStorage::persist`].
 /// You don't need to understand the Raft details - just serialize and store it.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct EzMeta<T>
@@ -146,7 +146,7 @@ pub type EzSnapshot<T> = Snapshot<OpenRaftTypes<T>>;
 /// State update operation to persist
 ///
 /// Each variant represents one atomic operation that should be persisted to disk.
-/// The framework calls [`EzStorage::save_state`] with these updates.
+/// The framework calls [`EzStorage::persist`] with these updates.
 #[derive(Debug, derive_more::Display)]
 pub enum EzStateUpdate<T>
 where T: EzTypes
