@@ -101,7 +101,7 @@ where
         let (log_store, sm_store) = adapter.split();
 
         // Convert EzConfig to OpenRaft Config
-        let raft_config = config.to_raft_config().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let raft_config = config.to_raft_config().map_err(|e| io::Error::other(e.to_string()))?;
         let raft_config = Arc::new(raft_config);
 
         // Create network factory
@@ -110,7 +110,7 @@ where
         // Create OpenRaft instance
         let raft = Raft::new(node_id, raft_config, network, log_store, sm_store)
             .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(Self {
             node_id,
@@ -147,7 +147,7 @@ where
         let nodes: BTreeMap<u64, BasicNode> =
             members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
 
-        self.raft.initialize(nodes).await.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        self.raft.initialize(nodes).await.map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }
@@ -172,8 +172,7 @@ where
     /// let resp = raft.write(req).await?;
     /// ```
     pub async fn write(&self, req: T::Request) -> Result<T::Response, io::Error> {
-        let resp =
-            self.raft.client_write(req).await.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = self.raft.client_write(req).await.map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(resp.data)
     }
@@ -189,10 +188,7 @@ where
     /// * `addr` - Address of the new learner node
     pub async fn add_learner(&self, node_id: u64, addr: String) -> Result<(), io::Error> {
         let node = BasicNode::new(addr);
-        self.raft
-            .add_learner(node_id, node, true)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        self.raft.add_learner(node_id, node, true).await.map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }
@@ -215,10 +211,7 @@ where
 
         let changes = ChangeMembers::AddVoters(nodes);
 
-        self.raft
-            .change_membership(changes, false)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        self.raft.change_membership(changes, false).await.map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }
@@ -269,8 +262,8 @@ where
 
     /// Get a reference to the state machine state
     ///
-    /// This provides access to the user's state machine and Raft metadata (last_applied, membership).
-    /// Use `.lock().await.user_sm` to access the user's state machine directly.
+    /// This provides access to the user's state machine and Raft metadata (last_applied,
+    /// membership). Use `.lock().await.user_sm` to access the user's state machine directly.
     pub fn sm_state(&self) -> &Arc<Mutex<StateMachineState<T, M>>> {
         &self.sm_state
     }

@@ -290,7 +290,7 @@ where
 
         let mut entries = entries;
         while let Some(res) = entries.next().await {
-            let (entry, responder) = res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let (entry, responder) = res.map_err(std::io::Error::other)?;
 
             // Update last_applied for every entry
             let (term, index) = entry.log_id;
