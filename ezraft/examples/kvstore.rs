@@ -159,7 +159,7 @@ impl EzStorage<KvTypes> for FileStorage {
             Persist::Meta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
             }
-            Persist::Log(entry) => {
+            Persist::LogEntry(entry) => {
                 fs::create_dir_all(&self.logs_dir()).await?;
                 let (_, index) = entry.log_id;
                 fs::write(self.log_path(index), serde_json::to_vec(&entry)?).await?;
