@@ -6,7 +6,7 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 
 [Raft](https://raft.github.io/) is a consensus algorithm for distributed systems. EzRaft simplifies building Raft-based applications by:
 
-- **Minimal user API**: 3 methods total (2 storage + 1 state machine) vs 21+ in OpenRaft
+- **Minimal user API**: 6 methods total (3 storage + 3 state machine) vs 21+ in OpenRaft
 - **Smart defaults**: 10/12 Raft types pre-configured, users specify only Request/Response
 - **Built-in networking**: HTTP layer included, no user code needed
 - **Type-safe**: Works directly with your types, not byte vectors
@@ -26,7 +26,7 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 ## Quick Start
 
 ```rust
-use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzFullState, EzStateUpdate, EzTypes};
+use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, EzEntry, EzStateUpdate, EzTypes};
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeMap;
 
@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request { Set { key: String, value: String } }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Response { pub value: Option<String> }
 
 // 2. Implement EzTypes trait
@@ -44,22 +44,25 @@ impl EzTypes for MyAppTypes {
     type Response = Response;
 }
 
-// 3. Implement storage persistence (2 methods)
+// 3. Implement storage persistence (3 methods)
 struct FileStorage { base_dir: PathBuf }
 
 #[async_trait]
 impl EzStorage<MyAppTypes> for FileStorage {
-    async fn load_state(&mut self) -> Result<Option<EzFullState<MyAppTypes>>, io::Error> {
-        // Load meta, logs, and snapshot from disk
-        // Return None if first run
+    async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
+        // Load meta (or default) and optional snapshot from disk
     }
 
     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
         // Persist state updates to disk
     }
+
+    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
+        // Load log entries in range [start, end)
+    }
 }
 
-// 4. Implement state machine (1 method)
+// 4. Implement state machine (3 methods)
 struct MyStore { data: BTreeMap<String, String> }
 
 #[async_trait]
@@ -71,6 +74,14 @@ impl EzStateMachine<MyAppTypes> for MyStore {
                 Response { value: None }
             }
         }
+    }
+
+    async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
+        // Serialize state machine to bytes
+    }
+
+    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
+        // Restore state machine from bytes
     }
 }
 
@@ -107,8 +118,9 @@ pub trait EzStorage<T>: Send + Sync + 'static
 where
     T: EzTypes,
 {
-    async fn load_state(&mut self) -> Result<Option<EzFullState<T>>, io::Error>;
+    async fn load_state(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
     async fn save_state(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
+    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
 ```
 
@@ -127,12 +139,14 @@ where
     T: EzTypes,
 {
     async fn apply(&mut self, req: T::Request) -> T::Response;
+    async fn build_snapshot(&self) -> io::Result<Vec<u8>>;
+    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()>;
 }
 ```
 
-**Framework handles**: Sequential application, error responses
+**Framework handles**: Sequential application, snapshot scheduling
 
-**You handle**: Business logic
+**You handle**: Business logic, state serialization
 
 ## Configuration
 
@@ -160,7 +174,7 @@ EzRaft includes built-in HTTP endpoints:
 | Aspect | OpenRaft | EzRaft |
 |--------|----------|--------|
 | Required traits | 7+ (RaftLogStorage, RaftStateMachine, etc.) | 2 (EzStorage, EzStateMachine) |
-| Required methods | 21+ | 3 |
+| Required methods | 21+ | 6 |
 | User-defined types | 12 (all generic parameters) | 2 (Request, Response) |
 | Network code | User implements (~100 lines) | Built-in (0 lines) |
 | Example complexity | ~300 lines | ~50 lines |
