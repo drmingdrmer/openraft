@@ -14,7 +14,7 @@ use crate::type_config::EzTypes;
 use crate::types::EzEntry;
 use crate::types::EzMeta;
 use crate::types::EzSnapshot;
-use crate::types::EzStateUpdate;
+use crate::types::Persist;
 
 /// Storage persistence trait
 ///
@@ -34,11 +34,11 @@ use crate::types::EzStateUpdate;
 ///         // Log entries are read separately via read_logs()
 ///     }
 ///
-///     async fn persist(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
-///         match update {
-///             EzStateUpdate::WriteMeta(meta) => { /* write meta */ }
-///             EzStateUpdate::WriteLog(entry) => { /* write log entry */ }
-///             EzStateUpdate::WriteSnapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
+///     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
+///         match op {
+///             Persist::Meta(meta) => { /* write meta */ }
+///             Persist::Log(entry) => { /* write log entry */ }
+///             Persist::Snapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
 ///         }
 ///     }
 ///
@@ -63,7 +63,7 @@ where
     ///
     /// Each call represents one atomic operation that should be durably persisted.
     /// The framework calls this method when state changes.
-    async fn persist(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
+    async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
 
     /// Read log entries within a specific index range
     ///

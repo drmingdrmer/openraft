@@ -30,9 +30,9 @@ use ezraft::EzRaft;
 use ezraft::EzSnapshot;
 use ezraft::EzSnapshotMeta;
 use ezraft::EzStateMachine;
-use ezraft::EzStateUpdate;
 use ezraft::EzStorage;
 use ezraft::EzTypes;
+use ezraft::Persist;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::fs;
@@ -154,17 +154,17 @@ impl EzStorage<KvTypes> for FileStorage {
         Ok((meta, snapshot))
     }
 
-    async fn persist(&mut self, update: EzStateUpdate<KvTypes>) -> io::Result<()> {
-        match update {
-            EzStateUpdate::WriteMeta(meta) => {
+    async fn persist(&mut self, op: Persist<KvTypes>) -> io::Result<()> {
+        match op {
+            Persist::Meta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
             }
-            EzStateUpdate::WriteLog(entry) => {
+            Persist::Log(entry) => {
                 fs::create_dir_all(&self.logs_dir()).await?;
                 let (_, index) = entry.log_id;
                 fs::write(self.log_path(index), serde_json::to_vec(&entry)?).await?;
             }
-            EzStateUpdate::WriteSnapshot(snapshot) => {
+            Persist::Snapshot(snapshot) => {
                 fs::write(&self.snapshot_meta_path(), serde_json::to_vec(&snapshot.meta)?).await?;
                 // Extract data from cursor
                 let mut cursor = snapshot.snapshot;
