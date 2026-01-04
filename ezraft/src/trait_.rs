@@ -27,14 +27,14 @@ use crate::types::EzStateUpdate;
 /// struct FileStorage { base_dir: PathBuf }
 ///
 /// #[async_trait]
-/// impl EzStorage<MyAppTypes> for FileStorage {
-///     async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
-///         // 1. Load meta from base_dir/meta.json (use default if first run)
-///         // 2. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
-///         // Log entries are loaded separately via load_log_range()
+/// impl EzStorage<AppTypes> for FileStorage {
+///     async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+///         // 1. Restore meta from base_dir/meta.json (use default if first run)
+///         // 2. Optionally restore snapshot from base_dir/snapshot.meta + snapshot.data
+///         // Log entries are read separately via read_logs()
 ///     }
 ///
-///     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
+///     async fn persist(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
 ///         match update {
 ///             EzStateUpdate::WriteMeta(meta) => { /* write meta */ }
 ///             EzStateUpdate::WriteLog(entry) => { /* write log entry */ }
@@ -42,8 +42,8 @@ use crate::types::EzStateUpdate;
 ///         }
 ///     }
 ///
-///     async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
-///         // Load log entries in range [start, end)
+///     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
+///         // Read log entries in range [start, end)
 ///     }
 /// }
 /// ```
@@ -53,19 +53,19 @@ where
     T: EzTypes,
     T::Request: Serialize + DeserializeOwned,
 {
-    /// Load metadata and snapshot on startup
+    /// Restore metadata and snapshot on startup
     ///
     /// Returns persisted metadata (or default if first run) and optional snapshot.
-    /// Log entries are loaded separately via [`load_log_range`].
-    async fn load_state(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
+    /// Log entries are read separately via [`read_logs`].
+    async fn restore(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
 
     /// Persist a state update
     ///
     /// Each call represents one atomic operation that should be durably persisted.
     /// The framework calls this method when state changes.
-    async fn save_state(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
+    async fn persist(&mut self, update: EzStateUpdate<T>) -> Result<(), io::Error>;
 
-    /// Load log entries within a specific index range
+    /// Read log entries within a specific index range
     ///
     /// Returns log entries where `start <= entry.index < end`.
     /// Called during replication to read specific entries without loading all logs.
@@ -77,7 +77,7 @@ where
     /// # Returns
     /// Log entries in the range, sorted by index. Empty vec if range is empty or
     /// no entries exist in range.
-    async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
+    async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
 
 /// State machine trait for business logic

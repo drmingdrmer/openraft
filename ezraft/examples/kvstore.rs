@@ -135,7 +135,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<KvTypes> for FileStorage {
-    async fn load_state(&mut self) -> io::Result<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)> {
+    async fn restore(&mut self) -> io::Result<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
@@ -160,7 +160,7 @@ impl EzStorage<KvTypes> for FileStorage {
         Ok((meta, snapshot))
     }
 
-    async fn save_state(&mut self, update: EzStateUpdate<KvTypes>) -> io::Result<()> {
+    async fn persist(&mut self, update: EzStateUpdate<KvTypes>) -> io::Result<()> {
         match update {
             EzStateUpdate::WriteMeta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
@@ -183,7 +183,7 @@ impl EzStorage<KvTypes> for FileStorage {
         Ok(())
     }
 
-    async fn load_log_range(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvTypes>>> {
+    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvTypes>>> {
         let mut logs = Vec::new();
 
         for index in start..end {

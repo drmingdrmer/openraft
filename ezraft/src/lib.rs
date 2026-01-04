@@ -19,43 +19,43 @@
 //! pub struct Response { pub value: Option<String> }
 //!
 //! // 2. Implement EzTypes trait
-//! struct MyAppTypes;
-//! impl EzTypes for MyAppTypes {
+//! struct AppTypes;
+//! impl EzTypes for AppTypes {
 //!     type Request = Request;
 //!     type Response = Response;
 //! }
 //!
 //! // 3. Implement storage persistence (3 methods)
-//! struct FileStorage { base_dir: PathBuf }
+//! struct AppStorage { base_dir: PathBuf }
 //!
 //! #[async_trait]
-//! impl EzStorage<MyAppTypes> for FileStorage {
-//!     async fn load_state(&mut self) -> Result<(EzMeta<MyAppTypes>, Option<EzSnapshot<MyAppTypes>>), io::Error> {
-//!         // Load meta (or default) and snapshot from disk
+//! impl EzStorage<AppTypes> for AppStorage {
+//!     async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+//!         // Restore meta (or default) and snapshot from disk
 //!     }
-//!     async fn save_state(&mut self, update: EzStateUpdate<MyAppTypes>) -> Result<(), io::Error> {
-//!         // Persist state updates to disk
+//!     async fn persist(&mut self, update: EzStateUpdate<AppTypes>) -> Result<(), io::Error> {
+//!         // Persist state update to disk
 //!     }
-//!     async fn load_log_range(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<MyAppTypes>>, io::Error> {
-//!         // Load log entries in range [start, end)
+//!     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
+//!         // Read log entries in range [start, end)
 //!     }
 //! }
 //!
-//! // 4. Implement state machine (1 method)
-//! struct MyStore { data: BTreeMap<String, String> }
+//! // 4. Implement state machine (3 methods)
+//! struct AppStateMachine { data: BTreeMap<String, String> }
 //!
 //! #[async_trait]
-//! impl EzStateMachine<MyAppTypes> for MyStore {
+//! impl EzStateMachine<AppTypes> for AppStateMachine {
 //!     async fn apply(&mut self, req: Request) -> Response {
 //!         // Apply business logic
 //!     }
 //! }
 //!
 //! // 5. Use it
-//! let store = MyStore { data: BTreeMap::new() };
-//! let storage = FileStorage { base_dir: "./data".into() };
+//! let state_machine = AppStateMachine { data: BTreeMap::new() };
+//! let storage = AppStorage { base_dir: "./data".into() };
 //!
-//! let raft = EzRaft::<MyAppTypes, _, _>::new(1, "127.0.0.1:8080".into(), store, storage, EzConfig::default()).await?;
+//! let raft = EzRaft::<AppTypes, _, _>::new(1, "127.0.0.1:8080".into(), state_machine, storage, EzConfig::default()).await?;
 //! raft.initialize(vec![(1, "127.0.0.1:8080".into())]).await?;
 //! raft.serve().await?;
 //! ```
