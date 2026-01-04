@@ -203,24 +203,12 @@ where
 
     /// Change the cluster membership
     ///
-    /// This replaces the current membership configuration with a new one.
-    /// Use this to add or remove voting members from the cluster.
-    ///
-    /// # Arguments
-    ///
-    /// * `members` - List of (node_id, address) tuples for the new membership
-    pub async fn change_membership(&self, members: Vec<(u64, String)>) -> Result<(), io::Error> {
-        use std::collections::BTreeMap;
-
-        use openraft::ChangeMembers;
-
-        let nodes: BTreeMap<u64, BasicNode> =
-            members.into_iter().map(|(id, addr)| (id, BasicNode::new(addr))).collect();
-
-        let changes = ChangeMembers::AddVoters(nodes);
-
-        self.raft.change_membership(changes, false).await.map_err(|e| io::Error::other(e.to_string()))?;
-
+    /// This modifies the cluster membership using OpenRaft's `ChangeMembers`.
+    pub async fn change_membership(
+        &self,
+        change: openraft::ChangeMembers<ORTypes<T>>,
+    ) -> Result<(), io::Error> {
+        self.raft.change_membership(change, false).await.map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
 
