@@ -55,7 +55,6 @@ pub struct Response {
 }
 
 // Define type configuration
-#[derive(serde::Serialize, serde::Deserialize)]
 struct KvTypes;
 impl EzTypes for KvTypes {
     type Request = Request;
@@ -63,14 +62,9 @@ impl EzTypes for KvTypes {
 }
 
 // In-memory state machine
+#[derive(Default)]
 struct KvStateMachine {
     data: BTreeMap<String, String>,
-}
-
-impl KvStateMachine {
-    fn new() -> Self {
-        Self { data: BTreeMap::new() }
-    }
 }
 
 #[async_trait::async_trait]
@@ -222,7 +216,7 @@ async fn main() -> io::Result<()> {
     fs::create_dir_all(&base_dir).await?;
 
     // Create state machine and storage
-    let store = KvStateMachine::new();
+    let store = KvStateMachine::default();
     let storage = FileStorage::new(base_dir);
 
     // Create EzRaft instance

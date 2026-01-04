@@ -59,8 +59,8 @@ impl<T: EzTypes> PartialEq for OpenRaftTypes<T> {
 impl<T: EzTypes> Eq for OpenRaftTypes<T> {}
 
 impl<T: EzTypes> PartialOrd for OpenRaftTypes<T> {
-    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
-        Some(std::cmp::Ordering::Equal)
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
