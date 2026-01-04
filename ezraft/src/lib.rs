@@ -30,8 +30,8 @@
 //!
 //! #[async_trait]
 //! impl EzStorage<AppTypes> for AppStorage {
-//!     async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
-//!         // Restore meta (or default) and snapshot from disk
+//!     async fn load(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+//!         // Load meta (or default) and snapshot from disk
 //!     }
 //!     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
 //!         // Persist state update to disk

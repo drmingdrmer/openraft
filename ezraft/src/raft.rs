@@ -247,7 +247,7 @@ where T: EzTypes
     /// Get a reference to the storage adapter
     ///
     /// This provides access to the underlying storage and state machine.
-    /// Use `storage.storage_state` and `storage.sm_state` to access them.
+    /// Use `storage.storage` and `storage.sm_state` to access them.
     pub fn storage(&self) -> &Arc<StorageAdapter<T>> {
         &self.storage
     }
