@@ -43,10 +43,10 @@ use crate::types::*;
 type SnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
 
 /// Internal storage state protected by single mutex
-pub struct StorageState<S, T>
+pub struct StorageState<T, S>
 where
-    S: EzStorage<T>,
     T: EzTypes,
+    S: EzStorage<T>,
 {
     pub storage: S,
     pub cached_meta: EzMeta<T>,
@@ -80,7 +80,7 @@ where
     S: EzStorage<T>,
     M: EzStateMachine<T>,
 {
-    storage_state: Arc<Mutex<StorageState<S, T>>>,
+    storage_state: Arc<Mutex<StorageState<T, S>>>,
     sm_state: Arc<Mutex<StateMachineState<T, M>>>,
     _phantom: PhantomData<T>,
 }
@@ -121,7 +121,7 @@ where
     }
 
     /// Get reference to user storage state (storage + metadata)
-    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<S, T>>> {
+    pub fn storage_state(&self) -> &Arc<Mutex<StorageState<T, S>>> {
         &self.storage_state
     }
 
