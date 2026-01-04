@@ -9,6 +9,7 @@ use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
 use openraft::raft;
+use openraft::ChangeMembers;
 use serde::Deserialize;
 
 use crate::raft::EzRaft;
@@ -87,7 +88,7 @@ where
 
 /// Change membership API handler
 async fn change_membership<T, S, M>(
-    req: web::Json<ChangeMembershipRequest>,
+    req: web::Json<ChangeMembers<C<T>>>,
     data: Data<EzRaft<T, S, M>>,
 ) -> Result<web::Json<serde_json::Value>, actix_web::Error>
 where
@@ -95,7 +96,7 @@ where
     S: EzStorage<T>,
     M: EzStateMachine<T>,
 {
-    data.change_membership(req.into_inner().members)
+    data.change_membership(req.into_inner())
         .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("change_membership failed: {}", e)))?;
 
@@ -158,12 +159,6 @@ where
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e)))?;
 
     Ok(web::Json(Ok(node_id)))
-}
-
-/// Change membership request
-#[derive(Debug, Deserialize)]
-struct ChangeMembershipRequest {
-    members: Vec<(u64, String)>,
 }
 
 /// Join cluster request
