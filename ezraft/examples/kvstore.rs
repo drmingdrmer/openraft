@@ -55,8 +55,8 @@ pub struct Response {
 }
 
 // Define type configuration
-struct KvTypes;
-impl EzTypes for KvTypes {
+struct Types;
+impl EzTypes for Types {
     type Request = Request;
     type Response = Response;
 }
@@ -68,7 +68,7 @@ struct KvStateMachine {
 }
 
 #[async_trait::async_trait]
-impl EzStateMachine<KvTypes> for KvStateMachine {
+impl EzStateMachine<Types> for KvStateMachine {
     async fn apply(&mut self, req: Request) -> Response {
         match req {
             Request::Set { key, value } => {
@@ -128,8 +128,8 @@ impl FileStorage {
 }
 
 #[async_trait::async_trait]
-impl EzStorage<KvTypes> for FileStorage {
-    async fn restore(&mut self) -> io::Result<(EzMeta<KvTypes>, Option<EzSnapshot<KvTypes>>)> {
+impl EzStorage<Types> for FileStorage {
+    async fn restore(&mut self) -> io::Result<(EzMeta<Types>, Option<EzSnapshot<Types>>)> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
@@ -140,7 +140,7 @@ impl EzStorage<KvTypes> for FileStorage {
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
             Ok(meta_data) => {
-                let snap_meta: EzSnapshotMeta<KvTypes> = serde_json::from_slice(&meta_data)?;
+                let snap_meta: EzSnapshotMeta<Types> = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
                 Some(EzSnapshot {
                     meta: snap_meta,
@@ -154,7 +154,7 @@ impl EzStorage<KvTypes> for FileStorage {
         Ok((meta, snapshot))
     }
 
-    async fn persist(&mut self, op: Persist<KvTypes>) -> io::Result<()> {
+    async fn persist(&mut self, op: Persist<Types>) -> io::Result<()> {
         match op {
             Persist::Meta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
@@ -177,7 +177,7 @@ impl EzStorage<KvTypes> for FileStorage {
         Ok(())
     }
 
-    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvTypes>>> {
+    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<Types>>> {
         let mut logs = Vec::new();
 
         for index in start..end {
@@ -216,11 +216,11 @@ async fn main() -> io::Result<()> {
     fs::create_dir_all(&base_dir).await?;
 
     // Create state machine and storage
-    let store = KvStateMachine::default();
+    let state_machine = KvStateMachine::default();
     let storage = FileStorage::new(base_dir);
 
     // Create EzRaft instance
-    let raft = EzRaft::<KvTypes, _, _>::new(node_id, addr.clone(), store, storage, EzConfig::default()).await?;
+    let raft = EzRaft::<Types, _, _>::new(node_id, &addr, state_machine, storage, EzConfig::default()).await?;
 
     // Initialize if first node
     if node_id == 1 {

@@ -81,13 +81,13 @@ where
     /// ```
     pub async fn new(
         node_id: u64,
-        http_addr: String,
-        user_state: M,
-        user_storage: S,
+        http_addr: impl ToString,
+        state_machine: M,
+        storage: S,
         config: EzConfig,
     ) -> Result<Self, io::Error> {
         // Create storage adapter that bridges user traits to OpenRaft
-        let adapter = StorageAdapter::new(user_storage, user_state).await?;
+        let adapter = StorageAdapter::new(storage, state_machine).await?;
 
         let adapter = Arc::new(adapter);
         let (log_store, sm_store) = (adapter.clone(), adapter.clone());
@@ -106,7 +106,7 @@ where
 
         Ok(Self {
             node_id,
-            addr: http_addr,
+            addr: http_addr.to_string(),
             storage: adapter,
             raft,
         })
