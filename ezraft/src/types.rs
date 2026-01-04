@@ -143,23 +143,23 @@ pub type EzSnapshotMeta<T> = SnapshotMeta<OpenRaftTypes<T>>;
 /// Points to OpenRaft's `Snapshot` for full compatibility.
 pub type EzSnapshot<T> = Snapshot<OpenRaftTypes<T>>;
 
-/// State update operation to persist
+/// Persistence operation
 ///
 /// Each variant represents one atomic operation that should be persisted to disk.
-/// The framework calls [`EzStorage::persist`] with these updates.
+/// The framework calls [`EzStorage::persist`] with these operations.
 #[derive(Debug, derive_more::Display)]
-pub enum EzStateUpdate<T>
+pub enum Persist<T>
 where T: EzTypes
 {
     /// Update Raft metadata (term, vote, log positions)
-    #[display("WriteMeta")]
-    WriteMeta(EzMeta<T>),
+    #[display("Meta")]
+    Meta(EzMeta<T>),
 
     /// Write a log entry
-    #[display("WriteLog")]
-    WriteLog(EzEntry<T>),
+    #[display("Log")]
+    Log(EzEntry<T>),
 
     /// Write a complete snapshot
-    #[display("WriteSnapshot")]
-    WriteSnapshot(EzSnapshot<T>),
+    #[display("Snapshot")]
+    Snapshot(EzSnapshot<T>),
 }
