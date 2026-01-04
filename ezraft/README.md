@@ -49,8 +49,8 @@ struct AppStorage { base_dir: PathBuf }
 
 #[async_trait]
 impl EzStorage<AppTypes> for AppStorage {
-    async fn restore(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
-        // Restore meta (or default) and optional snapshot from disk
+    async fn load(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+        // Load meta (or default) and optional snapshot from disk
     }
 
     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
@@ -91,15 +91,16 @@ async fn main() -> Result<()> {
     let state_machine = AppStateMachine { data: BTreeMap::new() };
     let storage = AppStorage { base_dir: "./data".into() };
 
-    let raft = EzRaft::<AppTypes, _, _>::new(
-        1,
-        "127.0.0.1:8080".into(),
+    // First node (creates cluster)
+    let raft = EzRaft::<AppTypes>::new(
+        "127.0.0.1:8080",
         state_machine,
         storage,
-        EzConfig::default()
+        EzConfig::default(),
+        None,  // No seed = first node
     ).await?;
 
-    raft.initialize(vec![(1, "127.0.0.1:8080".into())]).await?;
+    // Or join existing cluster: Some("127.0.0.1:8080".into())
     raft.serve().await?;
 }
 ```
@@ -118,7 +119,7 @@ pub trait EzStorage<T>: Send + Sync + 'static
 where
     T: EzTypes,
 {
-    async fn restore(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
+    async fn load(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
     async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
