@@ -9,6 +9,7 @@ use openraft::vote::leader_id_std::CommittedLeaderId;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::Snapshot;
 use openraft::SnapshotMeta;
 use serde::Deserialize;
 use serde::Serialize;
@@ -137,8 +138,10 @@ where T: EzTypes
 /// Points to OpenRaft's `SnapshotMeta` for full compatibility.
 pub type EzSnapshotMeta<T> = SnapshotMeta<OpenRaftTypes<T>>;
 
-/// Snapshot data: metadata and raw bytes
-pub type EzSnapshot<T> = (EzSnapshotMeta<T>, Vec<u8>);
+/// Snapshot type alias
+///
+/// Points to OpenRaft's `Snapshot` for full compatibility.
+pub type EzSnapshot<T> = Snapshot<OpenRaftTypes<T>>;
 
 /// State update operation to persist
 ///
@@ -158,5 +161,5 @@ where T: EzTypes
 
     /// Write a complete snapshot
     #[display("WriteSnapshot")]
-    WriteSnapshot(EzSnapshotMeta<T>, Vec<u8>),
+    WriteSnapshot(EzSnapshot<T>),
 }

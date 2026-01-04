@@ -97,8 +97,8 @@ where
         let (cached_meta, snapshot) = user_storage.load_state().await?;
 
         // Initialize state machine state from snapshot or defaults
-        let (last_applied, last_membership) = match snapshot {
-            Some((ref snap_meta, _)) => (snap_meta.last_log_id, snap_meta.last_membership.clone()),
+        let (last_applied, last_membership) = match &snapshot {
+            Some(snap) => (snap.meta.last_log_id, snap.meta.last_membership.clone()),
             None => (None, StoredMembership::new(None, Membership::default())),
         };
 
@@ -337,7 +337,11 @@ where
         {
             let mut state = self.storage_state.lock().await;
             state.cached_meta.last_log_id = snapshot_meta.last_log_id.map(|id| id.to_type());
-            let update = EzStateUpdate::WriteSnapshot(snapshot_meta.clone(), data.clone());
+            let snapshot = Snapshot {
+                meta: snapshot_meta.clone(),
+                snapshot: Cursor::new(data.clone()),
+            };
+            let update = EzStateUpdate::WriteSnapshot(snapshot);
             state.storage.save_state(update).await?;
         }
 
@@ -353,18 +357,8 @@ where
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<OpenRaftTypes<T>>>, std::io::Error> {
-        let snapshot = {
-            let mut state = self.storage_state.lock().await;
-            state.storage.load_state().await?.1
-        };
-
-        match snapshot {
-            Some((snapshot_meta, data)) => Ok(Some(Snapshot {
-                meta: snapshot_meta,
-                snapshot: Cursor::new(data),
-            })),
-            None => Ok(None),
-        }
+        let mut state = self.storage_state.lock().await;
+        Ok(state.storage.load_state().await?.1)
     }
 }
 
