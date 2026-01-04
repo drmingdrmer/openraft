@@ -56,9 +56,9 @@
 //! let storage = AppStorage { base_dir: "./data".into() };
 //!
 //! // First node (creates cluster)
-//! let raft = EzRaft::<AppTypes, _>::new("127.0.0.1:8080", state_machine, storage, EzConfig::default(), None).await?;
+//! let raft = EzRaft::<AppTypes>::new("127.0.0.1:8080", state_machine, storage, EzConfig::default(), None).await?;
 //! // Or join existing cluster via seed node
-//! // let raft = EzRaft::<AppTypes, _>::new("127.0.0.1:8081", sm, storage, config, Some("127.0.0.1:8080".into())).await?;
+//! // let raft = EzRaft::<AppTypes>::new("127.0.0.1:8081", sm, storage, config, Some("127.0.0.1:8080".into())).await?;
 //! raft.serve().await?;
 //! ```
 
