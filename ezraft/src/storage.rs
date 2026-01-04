@@ -134,7 +134,7 @@ where
     async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
         let mut state = self.storage_state.lock().await;
         f(&mut state.cached_meta);
-        let update = EzStateUpdate::WriteMeta(state.cached_meta.clone());
+        let update = Persist::Meta(state.cached_meta.clone());
         state.storage.persist(update).await
     }
 
@@ -179,7 +179,7 @@ where
         // Save all log entries
         for entry in entries {
             last_log_id = Some(entry.log_id);
-            let update = EzStateUpdate::WriteLog(entry);
+            let update = Persist::Log(entry);
             let mut state = self.storage_state.lock().await;
             state.storage.persist(update).await?;
         }
@@ -341,7 +341,7 @@ where
                 meta: snapshot_meta.clone(),
                 snapshot: Cursor::new(data.clone()),
             };
-            let update = EzStateUpdate::WriteSnapshot(snapshot);
+            let update = Persist::Snapshot(snapshot);
             state.storage.persist(update).await?;
         }
 
