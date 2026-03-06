@@ -27,5 +27,5 @@ where C: RaftComposites
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C::Prim>>;
 }

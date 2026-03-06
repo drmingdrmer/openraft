@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use openraft_macros::since;
 use peel_off::Peel;
 
-use crate::RaftComposites;
+use crate::RaftPrimitives;
 use crate::StorageError;
 use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
@@ -36,34 +36,34 @@ use crate::try_as_ref::TryAsRef;
 /// [`LinearizableReadError`]: crate::errors::LinearizableReadError
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub enum RaftError<C, E = Infallible>
-where C: RaftComposites
+pub enum RaftError<P, E = Infallible>
+where P: RaftPrimitives
 {
     /// API-specific error returned by Raft API methods.
     #[error(transparent)]
     APIError(E),
 
     /// Fatal error indicating the Raft node has stopped.
-    // Reset serde trait bound for C but not for E
+    // Reset serde trait bound for P but not for E
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<P>),
 }
 
-impl<C> RaftError<C, Infallible>
-where C: RaftComposites
+impl<P> RaftError<P, Infallible>
+where P: RaftPrimitives
 {
     /// Convert to a [`Fatal`] error if its `APIError` variant is [`Infallible`],
     /// otherwise panic.
     #[since(version = "0.10.0")]
-    pub fn unwrap_fatal(self) -> Fatal<C> {
+    pub fn unwrap_fatal(self) -> Fatal<P> {
         self.into_fatal().unwrap()
     }
 }
 
-impl<C, E> RaftError<C, E>
+impl<P, E> RaftError<P, E>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Debug,
 {
     /// Return a reference to Self::APIError.
@@ -83,7 +83,7 @@ where
     }
 
     /// Return a reference to Self::Fatal.
-    pub fn fatal(&self) -> Option<&Fatal<C>> {
+    pub fn fatal(&self) -> Option<&Fatal<P>> {
         match self {
             RaftError::APIError(_) => None,
             RaftError::Fatal(f) => Some(f),
@@ -91,7 +91,7 @@ where
     }
 
     /// Try to convert self to Fatal error.
-    pub fn into_fatal(self) -> Option<Fatal<C>> {
+    pub fn into_fatal(self) -> Option<Fatal<P>> {
         match self {
             RaftError::APIError(_) => None,
             RaftError::Fatal(f) => Some(f),
@@ -99,8 +99,8 @@ where
     }
 
     /// Return a reference to ForwardToLeader if Self::APIError contains it.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C::Prim>>
-    where E: TryAsRef<ForwardToLeader<C::Prim>> {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<P>>
+    where E: TryAsRef<ForwardToLeader<P>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_as_ref(),
             RaftError::Fatal(_) => None,
@@ -108,8 +108,8 @@ where
     }
 
     /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
-    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C::Prim>>
-    where E: TryInto<ForwardToLeader<C::Prim>> {
+    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<P>>
+    where E: TryInto<ForwardToLeader<P>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_into().ok(),
             RaftError::Fatal(_) => None,
@@ -117,34 +117,34 @@ where
     }
 }
 
-impl<C, E> TryAsRef<ForwardToLeader<C::Prim>> for RaftError<C, E>
+impl<P, E> TryAsRef<ForwardToLeader<P>> for RaftError<P, E>
 where
-    C: RaftComposites,
-    E: Debug + TryAsRef<ForwardToLeader<C::Prim>>,
+    P: RaftPrimitives,
+    E: Debug + TryAsRef<ForwardToLeader<P>>,
 {
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C::Prim>> {
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<P>> {
         self.forward_to_leader()
     }
 }
 
-impl<C, E> From<StorageError<C>> for RaftError<C, E>
-where C: RaftComposites
+impl<P, E> From<StorageError<P>> for RaftError<P, E>
+where P: RaftPrimitives
 {
-    fn from(se: StorageError<C>) -> Self {
+    fn from(se: StorageError<P>) -> Self {
         RaftError::Fatal(Fatal::from(se))
     }
 }
 
 /// Peel off `Fatal`, leaving the API error `E` as the residual.
-impl<C, E> Peel for RaftError<C, E>
+impl<P, E> Peel for RaftError<P, E>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Debug,
 {
-    type Peeled = Fatal<C>;
+    type Peeled = Fatal<P>;
     type Residual = E;
 
-    fn peel(self) -> Result<E, Fatal<C>> {
+    fn peel(self) -> Result<E, Fatal<P>> {
         match self {
             RaftError::APIError(e) => Ok(e),
             RaftError::Fatal(f) => Err(f),

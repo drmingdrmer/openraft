@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::StorageError;
 use crate::core::ApplyResult;
 use crate::display_ext::DisplayOptionExt;
@@ -11,26 +11,26 @@ use crate::storage::SnapshotMeta;
 
 /// The Ok part of a state machine command result.
 #[derive(Debug)]
-pub(crate) enum Response<C>
-where C: RaftTypeConfig
+pub(crate) enum Response<P>
+where P: RaftPrimitives
 {
     /// Snapshot building completed or was deferred.
     ///
     /// - `Some(meta)`: Snapshot was successfully built with the given metadata.
     /// - `None`: State machine deferred snapshot creation via `try_create_snapshot_builder()`.
-    BuildSnapshotDone(Option<SnapshotMeta<C>>),
+    BuildSnapshotDone(Option<SnapshotMeta<P>>),
 
     /// When finishing installing a snapshot.
     ///
     /// It does not return any value to RaftCore.
-    InstallSnapshot((LogIOId<C>, Option<SnapshotMeta<C>>)),
+    InstallSnapshot((LogIOId<P>, Option<SnapshotMeta<P>>)),
 
     /// Send back applied result to RaftCore.
-    Apply(ApplyResult<C>),
+    Apply(ApplyResult<P>),
 }
 
-impl<C> fmt::Display for Response<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for Response<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -49,24 +49,24 @@ where C: RaftTypeConfig
 
 /// Container of result of a command.
 #[derive(Debug)]
-pub(crate) struct CommandResult<C>
-where C: RaftTypeConfig
+pub(crate) struct CommandResult<P>
+where P: RaftPrimitives
 {
-    pub(crate) result: Result<Response<C>, StorageError<C>>,
+    pub(crate) result: Result<Response<P>, StorageError<P>>,
 }
 
-impl<C> fmt::Display for CommandResult<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for CommandResult<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "sm::Result({})", self.result.display())
     }
 }
 
-impl<C> CommandResult<C>
-where C: RaftTypeConfig
+impl<P> CommandResult<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(result: Result<Response<C>, StorageError<C>>) -> Self {
+    pub(crate) fn new(result: Result<Response<P>, StorageError<P>>) -> Self {
         Self { result }
     }
 }

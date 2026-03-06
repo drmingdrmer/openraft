@@ -1,32 +1,32 @@
-use crate::RaftComposites;
+use crate::RaftPrimitives;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
 use crate::errors::RaftError;
 
-/// Convert a `Result<_, Fatal<C>>` to a `Result<T, RaftError<C, E>>`
+/// Convert a `Result<_, Fatal<P>>` to a `Result<T, RaftError<P, E>>`
 ///
 /// This trait is used to convert `Results` from the new nested format(`Result<Result<_,E>,Fatal>`)
 /// to a format that is compatible with the older API version(`Result<_, RaftError<E>>`).
 /// - In the older Result style, both application Error and Fatal Error are wrapped in the one
 ///   [`RaftError`] type.
 /// - In the new Result style, application Error and Fatal Error are wrapped in the two different
-///   types(`Result<_,E>` and `Fatal<C>`).
+///   types(`Result<_,E>` and `Fatal<P>`).
 ///
-/// The primary use case is for protocol methods that return `Result<T, Fatal<C>>` to be converted
-/// to the backward compatible `Result<T, RaftError<C, E>>` which can represent both fatal errors
+/// The primary use case is for protocol methods that return `Result<T, Fatal<P>>` to be converted
+/// to the backward compatible `Result<T, RaftError<P, E>>` which can represent both fatal errors
 /// and application-specific errors.
-pub(crate) trait IntoRaftResult<C, T, E>
-where C: RaftComposites
+pub(crate) trait IntoRaftResult<P, T, E>
+where P: RaftPrimitives
 {
-    /// Convert a `Result<Result<T, E>, Fatal<C>>` or `Result<T, Fatal<C>>` to a
-    /// `Result<T, RaftError<C, E>>`.
-    fn into_raft_result(self) -> Result<T, RaftError<C, E>>;
+    /// Convert a `Result<Result<T, E>, Fatal<P>>` or `Result<T, Fatal<P>>` to a
+    /// `Result<T, RaftError<P, E>>`.
+    fn into_raft_result(self) -> Result<T, RaftError<P, E>>;
 }
 
-impl<C, T, E> IntoRaftResult<C, T, E> for Result<Result<T, E>, Fatal<C>>
-where C: RaftComposites
+impl<P, T, E> IntoRaftResult<P, T, E> for Result<Result<T, E>, Fatal<P>>
+where P: RaftPrimitives
 {
-    fn into_raft_result(self) -> Result<T, RaftError<C, E>> {
+    fn into_raft_result(self) -> Result<T, RaftError<P, E>> {
         match self {
             Ok(Ok(t)) => Ok(t),
             Ok(Err(e)) => Err(RaftError::APIError(e)),
@@ -35,10 +35,10 @@ where C: RaftComposites
     }
 }
 
-impl<C, T> IntoRaftResult<C, T, Infallible> for Result<T, Fatal<C>>
-where C: RaftComposites
+impl<P, T> IntoRaftResult<P, T, Infallible> for Result<T, Fatal<P>>
+where P: RaftPrimitives
 {
-    fn into_raft_result(self) -> Result<T, RaftError<C>> {
+    fn into_raft_result(self) -> Result<T, RaftError<P>> {
         self.map_err(RaftError::Fatal)
     }
 }

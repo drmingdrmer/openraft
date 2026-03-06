@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crate::RaftComposites;
 use crate::RaftPrimitives;
 use crate::errors::ErrorSource;
 use crate::storage::SnapshotSignature;
@@ -8,26 +7,26 @@ use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LogIdOf;
 
 /// Convert error to StorageError::IO();
-pub trait ToStorageResult<C, T>
-where C: RaftComposites
+pub trait ToStorageResult<P, T>
+where P: RaftPrimitives
 {
     /// Convert `Result<T, E>` to `Result<T, StorageError>`
     ///
     /// `f` provides error context for building the StorageError.
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C::Prim>, ErrorVerb);
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<P>>
+    where F: FnOnce() -> (ErrorSubject<P>, ErrorVerb);
 }
 
-impl<C, T> ToStorageResult<C, T> for Result<T, std::io::Error>
-where C: RaftComposites
+impl<P, T> ToStorageResult<P, T> for Result<T, std::io::Error>
+where P: RaftPrimitives
 {
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C::Prim>, ErrorVerb) {
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<P>>
+    where F: FnOnce() -> (ErrorSubject<P>, ErrorVerb) {
         match self {
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<C::Prim>::from_error(&e));
+                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<P>::from_error(&e));
                 Err(io_err)
             }
         }
@@ -92,27 +91,27 @@ impl fmt::Display for ErrorVerb {
 
 /// Backward compatible with old application using `StorageIOError`
 #[deprecated(note = "use StorageError instead", since = "0.10.0")]
-pub type StorageIOError<C> = StorageError<C>;
+pub type StorageIOError<P> = StorageError<P>;
 
-impl<C> StorageError<C>
-where C: RaftComposites
+impl<P> StorageError<P>
+where P: RaftPrimitives
 {
     /// Backward compatible with old form `StorageError::IO{ source: StorageError }`
     #[deprecated(note = "no need to call this method", since = "0.10.0")]
-    pub fn into_io(self) -> Option<StorageError<C>> {
+    pub fn into_io(self) -> Option<StorageError<P>> {
         Some(self)
     }
 
     /// Create a StorageError from a std::io::Error.
-    pub fn from_io_error(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        StorageError::new(subject, verb, ErrorSourceOf::<C::Prim>::from_error(&io_error))
+    pub fn from_io_error(subject: ErrorSubject<P>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+        StorageError::new(subject, verb, ErrorSourceOf::<P>::from_error(&io_error))
     }
 }
 
-impl<C> From<StorageError<C>> for std::io::Error
-where C: RaftComposites
+impl<P> From<StorageError<P>> for std::io::Error
+where P: RaftPrimitives
 {
-    fn from(e: StorageError<C>) -> Self {
+    fn from(e: StorageError<P>) -> Self {
         std::io::Error::other(e.to_string())
     }
 }
@@ -124,97 +123,97 @@ where C: RaftComposites
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StorageError<C>
-where C: RaftComposites
+pub struct StorageError<P>
+where P: RaftPrimitives
 {
-    subject: ErrorSubject<C::Prim>,
+    subject: ErrorSubject<P>,
     verb: ErrorVerb,
-    source: ErrorSourceOf<C::Prim>,
+    source: ErrorSourceOf<P>,
 }
 
-impl<C> fmt::Display for StorageError<C>
-where C: RaftComposites
+impl<P> fmt::Display for StorageError<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
 
-impl<C> StorageError<C>
-where C: RaftComposites
+impl<P> StorageError<P>
+where P: RaftPrimitives
 {
     /// Create a new StorageError.
-    pub fn new(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn new(subject: ErrorSubject<P>, verb: ErrorVerb, source: ErrorSourceOf<P>) -> Self {
         Self { subject, verb, source }
     }
 
     /// Create an error for writing a log entry.
-    pub fn write_log_entry(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write_log_entry(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a log entry at an index.
-    pub fn read_log_at_index(log_index: u64, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_log_at_index(log_index: u64, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
     /// Create an error for reading a log entry.
-    pub fn read_log_entry(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_log_entry(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
     /// Create an error for writing multiple log entries.
-    pub fn write_logs(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write_logs(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading multiple log entries.
-    pub fn read_logs(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_logs(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing vote state.
-    pub fn write_vote(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write_vote(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading vote state.
-    pub fn read_vote(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_vote(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
     /// Create an error for applying a log entry to the state machine.
-    pub fn apply(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn apply(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for writing to the state machine.
-    pub fn write_state_machine(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write_state_machine(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading from the state machine.
-    pub fn read_state_machine(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_state_machine(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignature<P>>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignature<P>>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 
     /// General read error
-    pub fn read(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn read(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Read, source)
     }
 
     /// General write error
-    pub fn write(source: ErrorSourceOf<C::Prim>) -> Self {
+    pub fn write(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }

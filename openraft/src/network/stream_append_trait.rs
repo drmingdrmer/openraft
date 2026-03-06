@@ -56,7 +56,7 @@ where C: RaftComposites
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static;
 }
@@ -68,7 +68,7 @@ pub fn stream_append_sequential<'s, C, N, S>(
     network: &'s mut N,
     input: S,
     option: RPCOption,
-) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
 where
     C: RaftComposites,
     N: NetAppend<C> + ?Sized,

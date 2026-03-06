@@ -1,4 +1,5 @@
 use crate::RaftComposites;
+use crate::RaftPrimitives;
 use crate::StorageError;
 use crate::errors::NetworkError;
 use crate::errors::RPCError;
@@ -12,30 +13,30 @@ use crate::errors::Unreachable;
 /// Thus, this error includes storage error, network error, and remote error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
-pub enum StreamingError<C: RaftComposites> {
+pub enum StreamingError<P: RaftPrimitives> {
     /// The replication stream is closed intentionally.
     #[error(transparent)]
     Closed(#[from] ReplicationClosed),
 
     /// Storage error occurs when reading local data.
     #[error(transparent)]
-    StorageError(#[from] StorageError<C>),
+    StorageError(#[from] StorageError<P>),
 
     /// Timeout when streaming data to the remote node.
     #[error(transparent)]
-    Timeout(#[from] Timeout<C::Prim>),
+    Timeout(#[from] Timeout<P>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
-    Unreachable(#[from] Unreachable<C>),
+    Unreachable(#[from] Unreachable<P>),
 
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
-    Network(#[from] NetworkError<C>),
+    Network(#[from] NetworkError<P>),
 }
 
-impl<C: RaftComposites> From<StreamingError<C>> for ReplicationError<C> {
-    fn from(e: StreamingError<C>) -> Self {
+impl<C: RaftComposites> From<StreamingError<C::Prim>> for ReplicationError<C> {
+    fn from(e: StreamingError<C::Prim>) -> Self {
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),
             StreamingError::StorageError(e) => ReplicationError::StorageError(e),
@@ -46,8 +47,8 @@ impl<C: RaftComposites> From<StreamingError<C>> for ReplicationError<C> {
     }
 }
 
-impl<C: RaftComposites> From<RPCError<C>> for StreamingError<C> {
-    fn from(value: RPCError<C>) -> Self {
+impl<P: RaftPrimitives> From<RPCError<P>> for StreamingError<P> {
+    fn from(value: RPCError<P>) -> Self {
         match value {
             RPCError::Timeout(e) => StreamingError::Timeout(e),
             RPCError::Unreachable(e) => StreamingError::Unreachable(e),

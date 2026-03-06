@@ -17,8 +17,8 @@ where C: RaftComposites
     Closed(#[from] ReplicationClosed),
 
     #[error(transparent)]
-    StorageError(#[from] StorageError<C>),
+    StorageError(#[from] StorageError<C::Prim>),
 
     #[error(transparent)]
-    RPCError(#[from] RPCError<C>),
+    RPCError(#[from] RPCError<C::Prim>),
 }

@@ -67,7 +67,7 @@ where C: RaftComposites
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C::Prim>>;
 
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
@@ -98,7 +98,7 @@ where C: RaftComposites
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
@@ -106,7 +106,7 @@ where C: RaftComposites
     }
 
     /// Send a RequestVote RPC to the target.
-    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>>;
 
     /// Send a complete Snapshot to the target.
     ///
@@ -131,7 +131,7 @@ where C: RaftComposites
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
+    ) -> Result<SnapshotResponse<C>, StreamingError<C::Prim>>;
 
     /// Send TransferLeader message to the target node.
     ///
@@ -143,7 +143,11 @@ where C: RaftComposites
     ///
     /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
     #[since(version = "0.10.0")]
-    async fn transfer_leader(&mut self, _req: TransferLeaderRequest<C>, _option: RPCOption) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(
+        &mut self,
+        _req: TransferLeaderRequest<C>,
+        _option: RPCOption,
+    ) -> Result<(), RPCError<C::Prim>> {
         Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
         ))))
@@ -189,7 +193,7 @@ where
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C::Prim>> {
         RaftNetworkV2::append_entries(self, rpc, option).await
     }
 }
@@ -210,7 +214,7 @@ where
     C: RaftComposites,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>> {
         RaftNetworkV2::vote(self, rpc, option).await
     }
 }
@@ -227,7 +231,7 @@ where
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
+    ) -> Result<SnapshotResponse<C>, StreamingError<C::Prim>> {
         RaftNetworkV2::full_snapshot(self, vote, snapshot, cancel, option).await
     }
 }
@@ -238,7 +242,11 @@ where
     C: RaftComposites,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, option: RPCOption) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<C>,
+        option: RPCOption,
+    ) -> Result<(), RPCError<C::Prim>> {
         RaftNetworkV2::transfer_leader(self, req, option).await
     }
 }
@@ -252,7 +260,7 @@ where
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {

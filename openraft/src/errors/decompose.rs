@@ -2,7 +2,7 @@
 
 use std::error::Error;
 
-use crate::RaftComposites;
+use crate::RaftPrimitives;
 use crate::errors::Infallible;
 use crate::errors::RPCError;
 use crate::errors::RaftError;
@@ -19,10 +19,10 @@ use crate::errors::into_ok::into_ok;
 ///
 /// # Implementations
 ///
-/// - `Result<R, RaftError<C, E>>` decomposes into `Result<Result<R, E>, RaftError<C>>`, separating
+/// - `Result<R, RaftError<P, E>>` decomposes into `Result<Result<R, E>, RaftError<P>>`, separating
 ///   API errors (`E`) from fatal errors.
 ///
-/// - `Result<R, RPCError<C, RaftError<C, E>>>` decomposes into `Result<Result<R, E>, RPCError<C>>`,
+/// - `Result<R, RPCError<P, RaftError<P, E>>>` decomposes into `Result<Result<R, E>, RPCError<P>>`,
 ///   separating API errors from transport and fatal errors. Note: `RaftError::Fatal` is converted
 ///   to `RPCError::Unreachable`.
 ///
@@ -65,11 +65,11 @@ use crate::errors::into_ok::into_ok;
 /// ```ignore
 /// use openraft::error::{DecomposeResult, RPCError};
 ///
-/// async fn forward_to_leader<C: RaftComposites>(
+/// async fn forward_to_leader<P: RaftPrimitives>(
 ///     network: &mut Network,
 ///     request: Request
 /// ) -> Result<Response, AppError> {
-///     let result: Result<Response, RPCError<C, RaftError<C, ClientWriteError<C>>>>
+///     let result: Result<Response, RPCError<P, RaftError<P, ClientWriteError<P>>>>
 ///         = network.send_request(request).await;
 ///
 ///     match result.decompose() {
@@ -88,8 +88,8 @@ use crate::errors::into_ok::into_ok;
 ///     }
 /// }
 /// ```
-pub trait DecomposeResult<C, R, OuterError>
-where C: RaftComposites
+pub trait DecomposeResult<P, R, OuterError>
+where P: RaftPrimitives
 {
     /// The inner error type extracted from the composite error.
     type InnerError;
@@ -116,12 +116,12 @@ where C: RaftComposites
     }
 }
 
-impl<C, R, E> DecomposeResult<C, R, RaftError<C>> for Result<R, RaftError<C, E>>
-where C: RaftComposites
+impl<P, R, E> DecomposeResult<P, R, RaftError<P>> for Result<R, RaftError<P, E>>
+where P: RaftPrimitives
 {
     type InnerError = E;
 
-    fn decompose(self) -> Result<Result<R, E>, RaftError<C>> {
+    fn decompose(self) -> Result<Result<R, E>, RaftError<P>> {
         match self {
             Ok(r) => Ok(Ok(r)),
             Err(e) => match e {
@@ -132,15 +132,15 @@ where C: RaftComposites
     }
 }
 
-impl<C, R, E> DecomposeResult<C, R, RPCError<C>> for Result<R, RPCError<C, RaftError<C, E>>>
+impl<P, R, E> DecomposeResult<P, R, RPCError<P>> for Result<R, RPCError<P, RaftError<P, E>>>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Error,
 {
     type InnerError = E;
 
     /// `RaftError::Fatal` is considered as `RPCError::Unreachable`.
-    fn decompose(self) -> Result<Result<R, E>, RPCError<C>> {
+    fn decompose(self) -> Result<Result<R, E>, RPCError<P>> {
         match self {
             Ok(r) => Ok(Ok(r)),
             Err(e) => match e {

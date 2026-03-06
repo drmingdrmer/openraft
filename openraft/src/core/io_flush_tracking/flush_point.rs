@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::LogId;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::Vote;
 use crate::display_ext::display_option::DisplayOptionExt;
 
@@ -25,29 +25,29 @@ use crate::display_ext::display_option::DisplayOptionExt;
 /// - `!vote.is_committed() && last_log_id.is_none()`: A candidate's vote is accepted but it has not
 ///   yet become leader (no AppendEntries received).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
-pub struct FlushPoint<C>
-where C: RaftTypeConfig
+pub struct FlushPoint<P>
+where P: RaftPrimitives
 {
     /// The vote(leader) under which this I/O operation was submitted.
-    pub vote: Vote<C>,
+    pub vote: Vote<P>,
 
     /// The last log entry that was flushed, or `None` if only a vote was saved without appending
     /// logs.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogId<P>>,
 }
 
-impl<C> fmt::Display for FlushPoint<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for FlushPoint<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FlushPoint({}, {})", self.vote, self.last_log_id.display(),)
     }
 }
 
-impl<C> FlushPoint<C>
-where C: RaftTypeConfig
+impl<P> FlushPoint<P>
+where P: RaftPrimitives
 {
-    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(vote: Vote<P>, last_log_id: Option<LogId<P>>) -> Self {
         Self { vote, last_log_id }
     }
 }

@@ -26,5 +26,9 @@ where C: RaftComposites
     /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
     ///
     /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
-    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, option: RPCOption) -> Result<(), RPCError<C>>;
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<C>,
+        option: RPCOption,
+    ) -> Result<(), RPCError<C::Prim>>;
 }

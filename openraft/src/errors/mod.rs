@@ -139,27 +139,27 @@ where C: RaftComposites
     serde(bound(serialize = "E: serde::Serialize")),
     serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
-pub enum RPCError<C: RaftComposites, E: Error = Infallible> {
+pub enum RPCError<P: RaftPrimitives, E: Error = Infallible> {
     /// The RPC request timed out.
     #[error(transparent)]
-    Timeout(#[from] Timeout<C::Prim>),
+    Timeout(#[from] Timeout<P>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
-    Unreachable(#[from] Unreachable<C>),
+    Unreachable(#[from] Unreachable<P>),
 
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
-    Network(#[from] NetworkError<C>),
+    Network(#[from] NetworkError<P>),
 
     /// The remote node returned an error.
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C::Prim, E>),
+    RemoteError(#[from] RemoteError<P, E>),
 }
 
-impl<C, E> RPCError<C, E>
+impl<P, E> RPCError<P, E>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Error,
 {
     /// Returns a weight indicating how severe this error is for backoff purposes.
@@ -177,14 +177,14 @@ where
     }
 }
 
-impl<C, E> RPCError<C, RaftError<C, E>>
+impl<P, E> RPCError<P, RaftError<P, E>>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Error,
 {
     /// Return a reference to ForwardToLeader error if Self::RemoteError contains one.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C::Prim>>
-    where E: TryAsRef<ForwardToLeader<C::Prim>> {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<P>>
+    where E: TryAsRef<ForwardToLeader<P>> {
         match self {
             RPCError::Timeout(_) => None,
             RPCError::Unreachable(_) => None,
@@ -194,11 +194,11 @@ where
     }
 }
 
-impl<C> RPCError<C>
-where C: RaftComposites
+impl<P> RPCError<P>
+where P: RaftPrimitives
 {
     /// Convert to a [`RPCError`] with [`RaftError`] as the error type.
-    pub fn with_raft_error<E: Error>(self) -> RPCError<C, RaftError<C, E>> {
+    pub fn with_raft_error<E: Error>(self) -> RPCError<P, RaftError<P, E>> {
         match self {
             RPCError::Timeout(e) => RPCError::Timeout(e),
             RPCError::Unreachable(e) => RPCError::Unreachable(e),
@@ -243,12 +243,12 @@ impl<P: RaftPrimitives, T: Error> RemoteError<P, T> {
     }
 }
 
-impl<C, E> From<RemoteError<C::Prim, Fatal<C>>> for RemoteError<C::Prim, RaftError<C, E>>
+impl<P, E> From<RemoteError<P, Fatal<P>>> for RemoteError<P, RaftError<P, E>>
 where
-    C: RaftComposites,
+    P: RaftPrimitives,
     E: Error,
 {
-    fn from(e: RemoteError<C::Prim, Fatal<C>>) -> Self {
+    fn from(e: RemoteError<P, Fatal<P>>) -> Self {
         RemoteError {
             target: e.target,
             target_node: e.target_node,
@@ -264,22 +264,22 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
-pub struct NetworkError<C: RaftComposites> {
-    source: ErrorSourceOf<C::Prim>,
+pub struct NetworkError<P: RaftPrimitives> {
+    source: ErrorSourceOf<P>,
 }
 
-impl<C: RaftComposites> NetworkError<C> {
+impl<P: RaftPrimitives> NetworkError<P> {
     /// Create a new NetworkError from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: ErrorSourceOf::<C::Prim>::from_error(e),
+            source: ErrorSourceOf::<P>::from_error(e),
         }
     }
 
     /// Create a NetworkError from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: ErrorSourceOf::<C::Prim>::from_string(msg),
+            source: ErrorSourceOf::<P>::from_string(msg),
         }
     }
 }
@@ -297,22 +297,22 @@ impl<C: RaftComposites> NetworkError<C> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]
-pub struct Unreachable<C: RaftComposites> {
-    source: ErrorSourceOf<C::Prim>,
+pub struct Unreachable<P: RaftPrimitives> {
+    source: ErrorSourceOf<P>,
 }
 
-impl<C: RaftComposites> Unreachable<C> {
+impl<P: RaftPrimitives> Unreachable<P> {
     /// Create a new Unreachable error from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: ErrorSourceOf::<C::Prim>::from_error(e),
+            source: ErrorSourceOf::<P>::from_error(e),
         }
     }
 
     /// Create an Unreachable error from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: ErrorSourceOf::<C::Prim>::from_string(msg),
+            source: ErrorSourceOf::<P>::from_string(msg),
         }
     }
 }

@@ -47,5 +47,5 @@ where C: RaftComposites
         snapshot: Snapshot<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
+    ) -> Result<SnapshotResponse<C>, StreamingError<C::Prim>>;
 }

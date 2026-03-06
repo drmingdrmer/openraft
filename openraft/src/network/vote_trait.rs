@@ -23,5 +23,5 @@ pub trait NetVote<C>: OptionalSend + OptionalSync + 'static
 where C: RaftComposites
 {
     /// Send a RequestVote RPC to the target.
-    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>>;
 }

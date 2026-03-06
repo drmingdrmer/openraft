@@ -17,6 +17,7 @@ use tracing::Span;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
+use crate::RaftPrimitives;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
@@ -126,13 +127,13 @@ use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::vote_status::VoteStatus;
 
 /// The result of applying log entries to state machine.
-pub(crate) struct ApplyResult<C: RaftTypeConfig> {
+pub(crate) struct ApplyResult<P: RaftPrimitives> {
     pub(crate) since: u64,
     pub(crate) end: u64,
-    pub(crate) last_applied: LogIdOf<C>,
+    pub(crate) last_applied: LogIdOf<P>,
 }
 
-impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
+impl<P: RaftPrimitives> Debug for ApplyResult<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApplyResult")
             .field("since", &self.since)
@@ -142,7 +143,7 @@ impl<C: RaftTypeConfig> Debug for ApplyResult<C> {
     }
 }
 
-impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
+impl<P: RaftPrimitives> fmt::Display for ApplyResult<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
