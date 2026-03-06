@@ -4,12 +4,16 @@
 //! [`Entry`]: `RaftTypeConfig::Entry`
 
 pub mod async_runtime;
+mod raft_composites;
+mod raft_primitives;
 pub(crate) mod util;
 
 use std::fmt::Debug;
 
 pub use async_runtime::AsyncRuntime;
 pub use async_runtime::OneshotSender;
+pub use raft_composites::RaftComposites;
+pub use raft_primitives::RaftPrimitives;
 pub use util::TypeConfigExt;
 
 use crate::AppData;
@@ -164,28 +168,35 @@ pub trait RaftTypeConfig:
 pub mod alias {
     use crate::EntryPayload;
     use crate::LogId;
-    use crate::RaftTypeConfig;
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
     use crate::type_config::AsyncRuntime;
+    use crate::type_config::RaftComposites;
+    use crate::type_config::RaftPrimitives;
     use crate::vote::RaftLeaderId;
 
-    pub type DOf<C> = <C as RaftTypeConfig>::D;
-    pub type ROf<C> = <C as RaftTypeConfig>::R;
-    pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
-    pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
-    pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
-    pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
-    pub type TermOf<C> = <C as RaftTypeConfig>::Term;
-    pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
-    pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
-    pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
-    pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
-    pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
-    pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
-    pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;
+    // Primitive type aliases — resolve through `RaftPrimitives`.
+    // These work for both `C: RaftPrimitives` and `C: RaftTypeConfig`.
+    pub type DOf<C> = <C as RaftPrimitives>::D;
+    pub type ROf<C> = <C as RaftPrimitives>::R;
+    pub type AppDataOf<C> = <C as RaftPrimitives>::D;
+    pub type AppResponseOf<C> = <C as RaftPrimitives>::R;
+    pub type NodeIdOf<C> = <C as RaftPrimitives>::NodeId;
+    pub type NodeOf<C> = <C as RaftPrimitives>::Node;
+    pub type TermOf<C> = <C as RaftPrimitives>::Term;
+    pub type LeaderIdOf<C> = <C as RaftPrimitives>::LeaderId;
+
+    // Composite type aliases — resolve through `RaftComposites`.
+    // These work for both `C: RaftComposites` and `C: RaftTypeConfig`.
+    pub type PrimOf<C> = <C as RaftComposites>::Prim;
+    pub type VoteOf<C> = <C as RaftComposites>::Vote;
+    pub type EntryOf<C> = <C as RaftComposites>::Entry;
+    pub type SnapshotDataOf<C> = <C as RaftComposites>::SnapshotData;
+    pub type AsyncRuntimeOf<C> = <C as RaftComposites>::AsyncRuntime;
+    pub type ResponderOf<C, T> = <C as RaftComposites>::Responder<T>;
+    pub type ErrorSourceOf<C> = <C as RaftComposites>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;

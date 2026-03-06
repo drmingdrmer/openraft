@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use openraft_macros::since;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::base::OptionalFeatures;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::RaftLeaderId;
@@ -21,7 +21,7 @@ use crate::vote::vote_status::VoteStatus;
 #[since(version = "0.10.0")]
 pub trait RaftVote<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     Self: OptionalFeatures + Eq + Clone + Debug + Display + 'static,
 {
     /// Create a new vote for the specified leader with optional quorum commitment.
@@ -63,7 +63,7 @@ where
 
 pub(crate) trait RaftVoteExt<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     Self: RaftVote<C>,
 {
     #[allow(dead_code)]
@@ -171,7 +171,7 @@ where
 
 impl<C, T> RaftVoteExt<C> for T
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     T: RaftVote<C>,
 {
 }

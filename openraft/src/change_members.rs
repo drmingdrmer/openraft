@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::display_ext::DisplayBTreeSetExt;
 use crate::display_ext::DisplaySlice;
@@ -18,7 +18,7 @@ use crate::display_ext::DisplaySlice;
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ChangeMembers<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Upgrade learners to voters.
     ///
@@ -75,7 +75,7 @@ where C: RaftTypeConfig
 /// Convert a series of ids to a `Replace` operation.
 impl<C, I> From<I> for ChangeMembers<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     I: IntoIterator<Item = C::NodeId>,
 {
     fn from(r: I) -> Self {
@@ -85,7 +85,7 @@ where
 }
 
 impl<C> fmt::Display for ChangeMembers<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

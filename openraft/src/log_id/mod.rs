@@ -41,7 +41,7 @@ pub use log_index_option_ext::LogIndexOptionExt;
 
 pub use self::raft_log_id::RaftLogId;
 use crate::NodeId;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::RaftTerm;
 use crate::vote::leader_id_std;
@@ -53,7 +53,7 @@ use crate::vote::leader_id_std;
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// The id of the leader that proposed this log
     pub leader_id: CommittedLeaderIdOf<C>,
@@ -65,13 +65,13 @@ where C: RaftTypeConfig
 
 impl<C> Copy for LogId<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     CommittedLeaderIdOf<C>: Copy,
 {
 }
 
 impl<C> RaftLogId<C> for LogId<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
         LogId { leader_id, index }
@@ -87,7 +87,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Display for LogId<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.committed_leader_id(), self.index())
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> LogId<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
@@ -128,7 +128,7 @@ impl<Term, NID, C> LogId<C>
 where
     Term: RaftTerm,
     NID: NodeId,
-    C: RaftTypeConfig<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
+    C: RaftPrimitives<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
 {
     /// Creates a log id from a term and index.
     ///

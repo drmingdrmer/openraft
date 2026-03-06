@@ -4,13 +4,13 @@ use std::fmt;
 use std::fmt::Formatter;
 
 use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::entry::raft_payload::RaftPayload;
 
 /// Log entry payload variants.
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<C: RaftTypeConfig> {
+pub enum EntryPayload<C: RaftPrimitives> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
@@ -23,7 +23,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
 
 impl<C> Clone for EntryPayload<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     C::D: Clone,
 {
     fn clone(&self) -> Self {
@@ -36,7 +36,7 @@ where
 }
 
 impl<C> fmt::Debug for EntryPayload<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -52,7 +52,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for EntryPayload<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> EntryPayload<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -80,7 +80,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftPayload<C> for EntryPayload<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn get_membership(&self) -> Option<Membership<C>> {
         if let EntryPayload::Membership(m) = self {

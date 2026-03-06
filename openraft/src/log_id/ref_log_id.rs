@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use crate::LogId;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 
@@ -10,14 +10,14 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 /// Committed leader ID is the `term` in standard Raft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RefLogId<'k, C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     pub(crate) leader_id: &'k CommittedLeaderIdOf<C>,
     pub(crate) index: u64,
 }
 
 impl<'l, C> RefLogId<'l, C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Create a new reference log id.
     pub(crate) fn new(leader_id: &'l CommittedLeaderIdOf<C>, index: u64) -> Self {
@@ -41,7 +41,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Display for RefLogId<'_, C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.committed_leader_id(), self.index())
@@ -49,7 +49,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftLogId<C> for RefLogId<'_, C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn new(_leader_id: CommittedLeaderIdOf<C>, _index: u64) -> Self {
         unreachable!("RefLogId does not own the leader id, so it cannot be created from it.")

@@ -5,7 +5,7 @@ use openraft_macros::since;
 
 use crate::EntryPayload;
 use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
 use crate::entry::RaftPayload;
@@ -15,7 +15,7 @@ use crate::type_config::alias::LogIdOf;
 /// Defines operations on an entry.
 pub trait RaftEntry<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     Self: OptionalFeatures + Debug + Display,
     Self: RaftPayload<C>,
 {

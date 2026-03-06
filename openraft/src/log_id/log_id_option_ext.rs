@@ -1,9 +1,9 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::log_id::raft_log_id::RaftLogId;
 
 /// This helper trait extracts information from an `Option<LogId>`.
 pub trait LogIdOptionExt<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Returns the log index if it is not a `None`.
     fn index(&self) -> Option<u64>;
@@ -16,7 +16,7 @@ where C: RaftTypeConfig
 
 impl<C, T> LogIdOptionExt<C> for Option<T>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     T: RaftLogId<C>,
 {
     fn index(&self) -> Option<u64> {

@@ -1,9 +1,9 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::entry::RaftEntry;
 use crate::log_id::ref_log_id::RefLogId;
 
 pub(crate) trait RaftEntryExt<C>: RaftEntry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Returns a lightweight [`RefLogId`] that contains the log id information.
     fn ref_log_id(&self) -> RefLogId<'_, C> {
@@ -14,7 +14,7 @@ where C: RaftTypeConfig
 
 impl<C, T> RaftEntryExt<C> for T
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     T: RaftEntry<C>,
 {
 }

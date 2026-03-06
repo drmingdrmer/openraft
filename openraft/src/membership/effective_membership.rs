@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::StoredMembership;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id::raft_log_id::RaftLogId;
@@ -22,7 +22,7 @@ use crate::type_config::alias::LogIdOf;
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Eq)]
 pub struct EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     stored_membership: Arc<StoredMembership<C>>,
 
@@ -34,7 +34,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Default for EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn default() -> Self {
         Self {
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Debug for EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectiveMembership")
@@ -58,7 +58,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> PartialEq for EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn eq(&self, other: &Self) -> bool {
         self.stored_membership == other.stored_membership && self.voter_ids == other.voter_ids
@@ -67,7 +67,7 @@ where C: RaftTypeConfig
 
 impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     LID: RaftLogId<C>,
 {
     fn from(v: (&LID, Membership<C>)) -> Self {
@@ -76,7 +76,7 @@ where
 }
 
 impl<C> EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     pub(crate) fn new_arc(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
@@ -122,7 +122,7 @@ where C: RaftTypeConfig
 
 /// Membership API
 impl<C> EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     #[allow(dead_code)]
     pub(crate) fn is_voter(&self, nid: &C::NodeId) -> bool {
@@ -159,7 +159,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -173,7 +173,7 @@ where C: RaftTypeConfig
 
 /// Implement node-id joint quorum set.
 impl<C> QuorumSet<C::NodeId> for EffectiveMembership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     type Iter = std::collections::btree_set::IntoIter<C::NodeId>;
 

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::type_config::alias::CommittedLeaderIdOf;
 
 /// Log id is the globally unique identifier of a log entry.
@@ -8,7 +8,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 /// Equal log id means the same log entry.
 pub trait RaftLogId<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     Self: Eq + Clone + fmt::Debug,
 {
     /// Creates a log id proposed by a committed leader `leader_id` at the given index.
@@ -41,7 +41,7 @@ where
 
 impl<C, T> RaftLogId<C> for &T
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     T: RaftLogId<C>,
 {
     fn new(_leader_id: CommittedLeaderIdOf<C>, _index: u64) -> Self {

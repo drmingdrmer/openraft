@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::EntryPayload;
 use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -11,7 +11,7 @@ use crate::type_config::alias::LogIdOf;
 /// A Raft log entry.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// The log ID uniquely identifying this entry.
     pub log_id: LogIdOf<C>,
@@ -22,7 +22,7 @@ where C: RaftTypeConfig
 
 impl<C> Clone for Entry<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     C::D: Clone,
 {
     fn clone(&self) -> Self {
@@ -34,7 +34,7 @@ where
 }
 
 impl<C> fmt::Debug for Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
@@ -44,7 +44,7 @@ where C: RaftTypeConfig
 impl<C> PartialEq for Entry<C>
 where
     C::D: PartialEq,
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
 {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.payload == other.payload
@@ -52,7 +52,7 @@ where
 }
 
 impl<C> AsRef<Entry<C>> for Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn as_ref(&self) -> &Entry<C> {
         self
@@ -60,7 +60,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.log_id, self.payload)
@@ -68,7 +68,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftPayload<C> for Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn get_membership(&self) -> Option<Membership<C>> {
         self.payload.get_membership()
@@ -76,7 +76,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftEntry<C> for Entry<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self {
         Self { log_id, payload }

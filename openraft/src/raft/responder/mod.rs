@@ -8,7 +8,7 @@ use openraft_macros::since;
 
 use crate::LogId;
 use crate::OptionalSend;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 
 /// A trait that lets `RaftCore` send a result back to the client or to somewhere else.
 ///
@@ -26,7 +26,7 @@ use crate::RaftTypeConfig;
 pub trait Responder<C, T>
 where
     Self: OptionalSend + Sized + 'static,
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
 {
     /// Called when the log entry is locally committed (safe to read).
     ///

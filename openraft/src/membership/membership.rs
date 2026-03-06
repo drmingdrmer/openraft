@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::ChangeMembers;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
@@ -22,7 +22,7 @@ use crate::quorum::QuorumSet;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Multi configs of members.
     ///
@@ -36,7 +36,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Default for Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn default() -> Self {
         Membership {
@@ -47,7 +47,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> From<BTreeMap<C::NodeId, C::Node>> for Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn from(b: BTreeMap<C::NodeId, C::Node>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<C::NodeId>>();
@@ -56,7 +56,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{voters:[",)?;
@@ -107,7 +107,7 @@ where C: RaftTypeConfig
 
 // Public APIs
 impl<C> Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Create a new Membership from a joint config of voter-ids and a collection of all
     /// `Node` (voter nodes and learner nodes).
@@ -186,7 +186,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Membership<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Return true if the given node id is either a voter or a learner.
     pub(crate) fn contains(&self, node_id: &C::NodeId) -> bool {

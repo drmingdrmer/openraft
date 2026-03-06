@@ -1,7 +1,7 @@
 //! RaftLogId implementation for primitive tuples `(Term, u64)`.
 
 use crate::NodeId;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::leader_id_std;
@@ -14,7 +14,7 @@ macro_rules! impl_raft_log_id {
         impl<NID, C> RaftLogId<C> for ($term_type, u64)
         where
             NID: NodeId,
-            C: RaftTypeConfig<Term = $term_type, NodeId = NID, LeaderId = leader_id_std::LeaderId<$term_type, NID>>,
+            C: RaftPrimitives<Term = $term_type, NodeId = NID, LeaderId = leader_id_std::LeaderId<$term_type, NID>>,
         {
             fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
                 (*leader_id, index)

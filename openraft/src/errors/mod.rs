@@ -45,6 +45,7 @@ pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::Membership;
+use crate::RaftPrimitives;
 use crate::RaftTypeConfig;
 use crate::network::RPCTypes;
 use crate::raft_types::SnapshotSegmentId;
@@ -97,7 +98,7 @@ where C: RaftTypeConfig
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembershipError<C: RaftTypeConfig> {
+pub enum ChangeMembershipError<C: RaftPrimitives> {
     /// A membership change is already in progress.
     #[error(transparent)]
     InProgress(#[from] InProgress<C>),
@@ -391,7 +392,7 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 #[error(
     "the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}"
 )]
-pub struct InProgress<C: RaftTypeConfig> {
+pub struct InProgress<C: RaftPrimitives> {
     /// The log ID of the last committed membership change.
     pub committed: Option<LogIdOf<C>>,
     /// The log ID of the membership change currently in progress.
@@ -402,7 +403,7 @@ pub struct InProgress<C: RaftTypeConfig> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
-pub struct LearnerNotFound<C: RaftTypeConfig> {
+pub struct LearnerNotFound<C: RaftPrimitives> {
     /// The node ID of the learner that was not found.
     pub node_id: C::NodeId,
 }

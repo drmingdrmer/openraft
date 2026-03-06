@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Formatter;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -9,7 +9,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// `Vote` represent the privilege of a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Vote<C: RaftTypeConfig> {
+pub struct Vote<C: RaftPrimitives> {
     /// The id of the node that tries to become the leader.
     pub leader_id: C::LeaderId,
 
@@ -18,7 +18,7 @@ pub struct Vote<C: RaftTypeConfig> {
 }
 
 impl<C> PartialOrd for Vote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     #[inline]
     fn partial_cmp(&self, other: &Vote<C>) -> Option<Ordering> {
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> std::fmt::Display for Vote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.as_ref_vote().fmt(f)
@@ -35,7 +35,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftVote<C> for Vote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn from_leader_id(leader_id: C::LeaderId, committed: bool) -> Self {
         Self { leader_id, committed }
@@ -51,7 +51,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Vote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     /// Create a new uncommitted vote for the given term and node.
     pub fn new(term: C::Term, node_id: C::NodeId) -> Self {

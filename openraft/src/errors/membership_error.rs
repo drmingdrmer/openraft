@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::LearnerNotFound;
@@ -9,7 +9,7 @@ use crate::errors::NodeNotFound;
 /// [`Membership`]: crate::membership::Membership
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum MembershipError<C: RaftTypeConfig> {
+pub enum MembershipError<C: RaftPrimitives> {
     /// The membership configuration is empty.
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
@@ -20,7 +20,7 @@ pub enum MembershipError<C: RaftTypeConfig> {
 }
 
 impl<C> From<MembershipError<C>> for ChangeMembershipError<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn from(me: MembershipError<C>) -> Self {
         match me {

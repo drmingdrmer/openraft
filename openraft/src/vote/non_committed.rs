@@ -1,9 +1,8 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::Vote;
 use crate::type_config::alias::LeaderIdOf;
-use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -16,14 +15,14 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub(crate) struct UncommittedVote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     leader_id: LeaderIdOf<C>,
 }
 
 impl<C> Default for UncommittedVote<C>
 where
-    C: RaftTypeConfig,
+    C: RaftPrimitives,
     C::NodeId: Default,
 {
     fn default() -> Self {
@@ -34,14 +33,14 @@ where
 }
 
 impl<C> UncommittedVote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     pub(crate) fn new(leader_id: LeaderIdOf<C>) -> Self {
         Self { leader_id }
     }
 
-    pub(crate) fn into_vote(self) -> VoteOf<C> {
-        VoteOf::<C>::from_leader_id(self.leader_id, false)
+    pub(crate) fn into_vote<V: RaftVote<C>>(self) -> V {
+        V::from_leader_id(self.leader_id, false)
     }
 
     pub(crate) fn into_internal_vote(self) -> Vote<C> {
@@ -50,7 +49,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftVote<C> for UncommittedVote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn from_leader_id(leader_id: C::LeaderId, _committed: bool) -> Self {
         Self { leader_id }
@@ -66,7 +65,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for UncommittedVote<C>
-where C: RaftTypeConfig
+where C: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_ref_vote().fmt(f)
