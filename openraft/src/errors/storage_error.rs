@@ -27,7 +27,7 @@ where C: RaftComposites
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<C>::from_error(&e));
+                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<C::Prim>::from_error(&e));
                 Err(io_err)
             }
         }
@@ -105,7 +105,7 @@ where C: RaftComposites
 
     /// Create a StorageError from a std::io::Error.
     pub fn from_io_error(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        StorageError::new(subject, verb, ErrorSourceOf::<C>::from_error(&io_error))
+        StorageError::new(subject, verb, ErrorSourceOf::<C::Prim>::from_error(&io_error))
     }
 }
 
@@ -129,7 +129,7 @@ where C: RaftComposites
 {
     subject: ErrorSubject<C::Prim>,
     verb: ErrorVerb,
-    source: C::ErrorSource,
+    source: ErrorSourceOf<C::Prim>,
 }
 
 impl<C> fmt::Display for StorageError<C>
@@ -144,77 +144,77 @@ impl<C> StorageError<C>
 where C: RaftComposites
 {
     /// Create a new StorageError.
-    pub fn new(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
+    pub fn new(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, source: ErrorSourceOf<C::Prim>) -> Self {
         Self { subject, verb, source }
     }
 
     /// Create an error for writing a log entry.
-    pub fn write_log_entry(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
+    pub fn write_log_entry(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a log entry at an index.
-    pub fn read_log_at_index(log_index: u64, source: C::ErrorSource) -> Self {
+    pub fn read_log_at_index(log_index: u64, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
     /// Create an error for reading a log entry.
-    pub fn read_log_entry(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
+    pub fn read_log_entry(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
     /// Create an error for writing multiple log entries.
-    pub fn write_logs(source: C::ErrorSource) -> Self {
+    pub fn write_logs(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading multiple log entries.
-    pub fn read_logs(source: C::ErrorSource) -> Self {
+    pub fn read_logs(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing vote state.
-    pub fn write_vote(source: C::ErrorSource) -> Self {
+    pub fn write_vote(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading vote state.
-    pub fn read_vote(source: C::ErrorSource) -> Self {
+    pub fn read_vote(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
     /// Create an error for applying a log entry to the state machine.
-    pub fn apply(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
+    pub fn apply(log_id: LogIdOf<C::Prim>, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for writing to the state machine.
-    pub fn write_state_machine(source: C::ErrorSource) -> Self {
+    pub fn write_state_machine(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading from the state machine.
-    pub fn read_state_machine(source: C::ErrorSource) -> Self {
+    pub fn read_state_machine(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: C::ErrorSource) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: C::ErrorSource) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 
     /// General read error
-    pub fn read(source: C::ErrorSource) -> Self {
+    pub fn read(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Read, source)
     }
 
     /// General write error
-    pub fn write(source: C::ErrorSource) -> Self {
+    pub fn write(source: ErrorSourceOf<C::Prim>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }

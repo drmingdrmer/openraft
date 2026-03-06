@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::entry::RaftEntry;
-use crate::errors::ErrorSource;
 use crate::raft::responder::Responder;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::RaftPrimitives;
@@ -39,9 +38,6 @@ pub trait RaftComposites:
     /// Responder type for sending client write responses asynchronously.
     type Responder<T>: Responder<Self::Prim, T>
     where T: OptionalSend + 'static;
-
-    /// Error wrapper type for storage and network errors.
-    type ErrorSource: ErrorSource;
 }
 
 impl<C: crate::RaftTypeConfig> RaftComposites for C {
@@ -53,5 +49,4 @@ impl<C: crate::RaftTypeConfig> RaftComposites for C {
     type Responder<T>
         = C::Responder<T>
     where T: OptionalSend + 'static;
-    type ErrorSource = C::ErrorSource;
 }

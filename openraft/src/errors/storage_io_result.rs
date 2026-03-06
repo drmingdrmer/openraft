@@ -63,58 +63,58 @@ impl<C, T> StorageIOResult<C, T> for Result<T, std::io::Error>
 where C: RaftComposites
 {
     fn sto_write_log_entry(self, log_id: LogIdOf<C::Prim>) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write_log_entry(log_id, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write_log_entry(log_id, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_log_entry(self, log_id: LogIdOf<C::Prim>) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_log_entry(log_id, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_log_entry(log_id, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_log_at_index(self, log_index: u64) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_log_at_index(log_index, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_log_at_index(log_index, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_write_logs(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write_logs(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write_logs(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_logs(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_logs(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_logs(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_write_vote(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write_vote(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write_vote(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_vote(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_vote(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_vote(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_apply(self, log_id: LogIdOf<C::Prim>) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::apply(log_id, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::apply(log_id, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_write_sm(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write_state_machine(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write_state_machine(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_sm(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_state_machine(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_state_machine(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_write_snapshot(self, signature: Option<SnapshotSignature<C::Prim>>) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write_snapshot(signature, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write_snapshot(signature, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read_snapshot(self, signature: Option<SnapshotSignature<C::Prim>>) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read_snapshot(signature, ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read_snapshot(signature, ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_read(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::read(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::read(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 
     fn sto_write(self) -> Result<T, StorageError<C>> {
-        self.map_err(|e| StorageError::write(ErrorSourceOf::<C>::from_error(&e)))
+        self.map_err(|e| StorageError::write(ErrorSourceOf::<C::Prim>::from_error(&e)))
     }
 }

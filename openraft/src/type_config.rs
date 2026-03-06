@@ -196,7 +196,7 @@ pub mod alias {
     pub type SnapshotDataOf<C> = <C as RaftComposites>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftComposites>::AsyncRuntime;
     pub type ResponderOf<C, T> = <C as RaftComposites>::Responder<T>;
-    pub type ErrorSourceOf<C> = <C as RaftComposites>::ErrorSource;
+    pub type ErrorSourceOf<C> = <C as RaftPrimitives>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;

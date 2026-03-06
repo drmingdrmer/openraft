@@ -50,6 +50,7 @@ use crate::RaftPrimitives;
 use crate::network::RPCTypes;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
+use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
@@ -264,21 +265,21 @@ where
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
 pub struct NetworkError<C: RaftComposites> {
-    source: C::ErrorSource,
+    source: ErrorSourceOf<C::Prim>,
 }
 
 impl<C: RaftComposites> NetworkError<C> {
     /// Create a new NetworkError from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: C::ErrorSource::from_error(e),
+            source: ErrorSourceOf::<C::Prim>::from_error(e),
         }
     }
 
     /// Create a NetworkError from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: C::ErrorSource::from_string(msg),
+            source: ErrorSourceOf::<C::Prim>::from_string(msg),
         }
     }
 }
@@ -297,21 +298,21 @@ impl<C: RaftComposites> NetworkError<C> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]
 pub struct Unreachable<C: RaftComposites> {
-    source: C::ErrorSource,
+    source: ErrorSourceOf<C::Prim>,
 }
 
 impl<C: RaftComposites> Unreachable<C> {
     /// Create a new Unreachable error from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: C::ErrorSource::from_error(e),
+            source: ErrorSourceOf::<C::Prim>::from_error(e),
         }
     }
 
     /// Create an Unreachable error from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: C::ErrorSource::from_string(msg),
+            source: ErrorSourceOf::<C::Prim>::from_string(msg),
         }
     }
 }

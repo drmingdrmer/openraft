@@ -6,6 +6,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::errors::ErrorSource;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 
@@ -36,6 +37,9 @@ pub trait RaftPrimitives:
 
     /// A Leader identifier in a cluster.
     type LeaderId: RaftLeaderId<Self::Term, Self::NodeId>;
+
+    /// Error wrapper type for storage and network errors.
+    type ErrorSource: ErrorSource;
 }
 
 impl<C: crate::RaftTypeConfig> RaftPrimitives for C {
@@ -45,4 +49,5 @@ impl<C: crate::RaftTypeConfig> RaftPrimitives for C {
     type Node = C::Node;
     type Term = C::Term;
     type LeaderId = C::LeaderId;
+    type ErrorSource = C::ErrorSource;
 }
