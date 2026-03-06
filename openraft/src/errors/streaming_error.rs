@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::StorageError;
 use crate::errors::NetworkError;
 use crate::errors::RPCError;
@@ -12,7 +12,7 @@ use crate::errors::Unreachable;
 /// Thus, this error includes storage error, network error, and remote error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
-pub enum StreamingError<C: RaftTypeConfig> {
+pub enum StreamingError<C: RaftComposites> {
     /// The replication stream is closed intentionally.
     #[error(transparent)]
     Closed(#[from] ReplicationClosed),
@@ -23,7 +23,7 @@ pub enum StreamingError<C: RaftTypeConfig> {
 
     /// Timeout when streaming data to the remote node.
     #[error(transparent)]
-    Timeout(#[from] Timeout<C>),
+    Timeout(#[from] Timeout<C::Prim>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
@@ -34,7 +34,7 @@ pub enum StreamingError<C: RaftTypeConfig> {
     Network(#[from] NetworkError<C>),
 }
 
-impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C> {
+impl<C: RaftComposites> From<StreamingError<C>> for ReplicationError<C> {
     fn from(e: StreamingError<C>) -> Self {
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),
@@ -46,7 +46,7 @@ impl<C: RaftTypeConfig> From<StreamingError<C>> for ReplicationError<C> {
     }
 }
 
-impl<C: RaftTypeConfig> From<RPCError<C>> for StreamingError<C> {
+impl<C: RaftComposites> From<RPCError<C>> for StreamingError<C> {
     fn from(value: RPCError<C>) -> Self {
         match value {
             RPCError::Timeout(e) => StreamingError::Timeout(e),

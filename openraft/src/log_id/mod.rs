@@ -52,32 +52,32 @@ use crate::vote::leader_id_std;
 /// two parts: a leader id, which refers to the leader that proposed this log, and an integer index.
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct LogId<C>
-where C: RaftPrimitives
+pub struct LogId<P>
+where P: RaftPrimitives
 {
     /// The id of the leader that proposed this log
-    pub leader_id: CommittedLeaderIdOf<C>,
+    pub leader_id: CommittedLeaderIdOf<P>,
     /// The index of a log in the storage.
     ///
     /// Log index is a consecutive integer.
     pub index: u64,
 }
 
-impl<C> Copy for LogId<C>
+impl<P> Copy for LogId<P>
 where
-    C: RaftPrimitives,
-    CommittedLeaderIdOf<C>: Copy,
+    P: RaftPrimitives,
+    CommittedLeaderIdOf<P>: Copy,
 {
 }
 
-impl<C> RaftLogId<C> for LogId<C>
-where C: RaftPrimitives
+impl<P> RaftLogId<P> for LogId<P>
+where P: RaftPrimitives
 {
-    fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
+    fn new(leader_id: CommittedLeaderIdOf<P>, index: u64) -> Self {
         LogId { leader_id, index }
     }
 
-    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+    fn committed_leader_id(&self) -> &CommittedLeaderIdOf<P> {
         &self.leader_id
     }
 
@@ -86,30 +86,30 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> Display for LogId<C>
-where C: RaftPrimitives
+impl<P> Display for LogId<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.committed_leader_id(), self.index())
     }
 }
 
-impl<C> LogId<C>
-where C: RaftPrimitives
+impl<P> LogId<P>
+where P: RaftPrimitives
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
-    pub fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
+    pub fn new(leader_id: CommittedLeaderIdOf<P>, index: u64) -> Self {
         LogId { leader_id, index }
     }
 
     /// Returns the leader id that proposed this log.
-    pub fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+    pub fn committed_leader_id(&self) -> &CommittedLeaderIdOf<P> {
         &self.leader_id
     }
 
     /// Get the established(committed) leader ID of this log entry.
     #[deprecated(since = "0.10.0", note = "Use `committed_leader_id` instead.")]
-    pub fn leader_id(&self) -> &CommittedLeaderIdOf<C> {
+    pub fn leader_id(&self) -> &CommittedLeaderIdOf<P> {
         &self.leader_id
     }
 
@@ -122,13 +122,13 @@ where C: RaftPrimitives
 /// Methods available only when using `leader_id_std::LeaderId`.
 ///
 /// `Term` and `NID` are extracted as separate type parameters to avoid a rustc cycle error
-/// that occurs when using `C::Term` or `C::NodeId` inside an associated type equality constraint
-/// (e.g., `LeaderId = LeaderId<C::Term, C::NodeId>`).
-impl<Term, NID, C> LogId<C>
+/// that occurs when using `P::Term` or `P::NodeId` inside an associated type equality constraint
+/// (e.g., `LeaderId = LeaderId<P::Term, P::NodeId>`).
+impl<Term, NID, P> LogId<P>
 where
     Term: RaftTerm,
     NID: NodeId,
-    C: RaftPrimitives<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
+    P: RaftPrimitives<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
 {
     /// Creates a log id from a term and index.
     ///
@@ -141,7 +141,7 @@ where
     /// // Equivalent to: LogId::new(CommittedLeaderId::new(5), 100)
     /// let log_id = LogId::new_term_index(5, 100);
     /// ```
-    pub fn new_term_index(term: C::Term, index: u64) -> Self {
+    pub fn new_term_index(term: P::Term, index: u64) -> Self {
         LogId {
             leader_id: leader_id_std::CommittedLeaderId::new(term),
             index,

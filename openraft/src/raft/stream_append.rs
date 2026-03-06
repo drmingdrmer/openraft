@@ -15,12 +15,13 @@ use crate::raft::StreamAppendError;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::PrimOf;
 use crate::type_config::async_runtime::MpscReceiver;
 use crate::type_config::async_runtime::MpscSender;
 use crate::type_config::util::TypeConfigExt;
 
 /// Result type for stream append operations.
-pub type StreamAppendResult<C> = Result<Option<LogIdOf<C>>, StreamAppendError<C>>;
+pub type StreamAppendResult<C> = Result<Option<LogIdOf<PrimOf<C>>>, StreamAppendError<C>>;
 
 const PIPELINE_BUFFER_SIZE: usize = 64;
 

@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
 use crate::errors::RPCError;
@@ -35,7 +35,7 @@ use crate::raft::StreamAppendResult;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 pub trait NetStreamAppend<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
@@ -70,7 +70,7 @@ pub fn stream_append_sequential<'s, C, N, S>(
     option: RPCOption,
 ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
 where
-    C: RaftTypeConfig,
+    C: RaftComposites,
     N: NetAppend<C> + ?Sized,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
 {

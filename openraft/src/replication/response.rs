@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplayResultExt;
 use crate::type_config::alias::LogIdOf;
@@ -10,11 +10,11 @@ use crate::type_config::alias::LogIdOf;
 /// Update the `matched` log id of a replication target.
 /// Sent by a replication task `ReplicationCore`.
 #[derive(Debug, Clone)]
-pub(crate) struct Progress<C>
-where C: RaftTypeConfig
+pub(crate) struct Progress<P>
+where P: RaftPrimitives
 {
     /// The ID of the target node for which the match index is to be updated.
-    pub(crate) target: C::NodeId,
+    pub(crate) target: P::NodeId,
 
     /// The request by this leader has been successfully handled by the target node
     /// or an error in string.
@@ -24,11 +24,11 @@ where C: RaftTypeConfig
     /// the target node.
     ///
     /// The result also tracks the time when this request is sent.
-    pub(crate) result: Result<ReplicationResult<C>, String>,
+    pub(crate) result: Result<ReplicationResult<P>, String>,
 }
 
-impl<C> fmt::Display for Progress<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for Progress<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -44,10 +44,10 @@ where C: RaftTypeConfig
 ///
 /// Ok for matching, Err for conflict.
 #[derive(Clone, Debug)]
-pub(crate) struct ReplicationResult<C: RaftTypeConfig>(pub(crate) Result<Option<LogIdOf<C>>, LogIdOf<C>>);
+pub(crate) struct ReplicationResult<P: RaftPrimitives>(pub(crate) Result<Option<LogIdOf<P>>, LogIdOf<P>>);
 
-impl<C> fmt::Display for ReplicationResult<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for ReplicationResult<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {

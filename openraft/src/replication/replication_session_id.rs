@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::committed::CommittedVote;
@@ -18,18 +18,18 @@ use crate::vote::committed::CommittedVote;
 /// See: [ReplicationSession](crate::docs::data::replication_session)
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct ReplicationSessionId<C>
-where C: RaftTypeConfig
+pub(crate) struct ReplicationSessionId<P>
+where P: RaftPrimitives
 {
     /// The Leader or Candidate this replication belongs to.
-    pub(crate) leader_vote: CommittedVote<C>,
+    pub(crate) leader_vote: CommittedVote<P>,
 
     /// The log id of the membership log this replication works for.
-    pub(crate) membership_log_id: Option<LogIdOf<C>>,
+    pub(crate) membership_log_id: Option<LogIdOf<P>>,
 }
 
-impl<C> Display for ReplicationSessionId<C>
-where C: RaftTypeConfig
+impl<P> Display for ReplicationSessionId<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -41,10 +41,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> ReplicationSessionId<C>
-where C: RaftTypeConfig
+impl<P> ReplicationSessionId<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(vote: CommittedVote<C>, membership_log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(vote: CommittedVote<P>, membership_log_id: Option<LogIdOf<P>>) -> Self {
         Self {
             leader_vote: vote,
             membership_log_id,

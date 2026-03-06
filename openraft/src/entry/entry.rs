@@ -10,20 +10,20 @@ use crate::type_config::alias::LogIdOf;
 
 /// A Raft log entry.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Entry<C>
-where C: RaftPrimitives
+pub struct Entry<P>
+where P: RaftPrimitives
 {
     /// The log ID uniquely identifying this entry.
-    pub log_id: LogIdOf<C>,
+    pub log_id: LogIdOf<P>,
 
     /// This entry's payload.
-    pub payload: EntryPayload<C>,
+    pub payload: EntryPayload<P>,
 }
 
-impl<C> Clone for Entry<C>
+impl<P> Clone for Entry<P>
 where
-    C: RaftPrimitives,
-    C::D: Clone,
+    P: RaftPrimitives,
+    P::D: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -33,60 +33,60 @@ where
     }
 }
 
-impl<C> fmt::Debug for Entry<C>
-where C: RaftPrimitives
+impl<P> fmt::Debug for Entry<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
     }
 }
 
-impl<C> PartialEq for Entry<C>
+impl<P> PartialEq for Entry<P>
 where
-    C::D: PartialEq,
-    C: RaftPrimitives,
+    P::D: PartialEq,
+    P: RaftPrimitives,
 {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.payload == other.payload
     }
 }
 
-impl<C> AsRef<Entry<C>> for Entry<C>
-where C: RaftPrimitives
+impl<P> AsRef<Entry<P>> for Entry<P>
+where P: RaftPrimitives
 {
-    fn as_ref(&self) -> &Entry<C> {
+    fn as_ref(&self) -> &Entry<P> {
         self
     }
 }
 
-impl<C> fmt::Display for Entry<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for Entry<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.log_id, self.payload)
     }
 }
 
-impl<C> RaftPayload<C> for Entry<C>
-where C: RaftPrimitives
+impl<P> RaftPayload<P> for Entry<P>
+where P: RaftPrimitives
 {
-    fn get_membership(&self) -> Option<Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<P>> {
         self.payload.get_membership()
     }
 }
 
-impl<C> RaftEntry<C> for Entry<C>
-where C: RaftPrimitives
+impl<P> RaftEntry<P> for Entry<P>
+where P: RaftPrimitives
 {
-    fn new(log_id: LogIdOf<C>, payload: EntryPayload<C>) -> Self {
+    fn new(log_id: LogIdOf<P>, payload: EntryPayload<P>) -> Self {
         Self { log_id, payload }
     }
 
-    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<C>, u64) {
+    fn log_id_parts(&self) -> (&CommittedLeaderIdOf<P>, u64) {
         (&self.log_id.leader_id, self.log_id.index)
     }
 
-    fn set_log_id(&mut self, new: LogIdOf<C>) {
+    fn set_log_id(&mut self, new: LogIdOf<P>) {
         self.log_id = new;
     }
 }

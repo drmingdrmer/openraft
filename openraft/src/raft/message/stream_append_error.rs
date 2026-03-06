@@ -2,7 +2,7 @@ use std::fmt;
 
 use peel_off::Peel;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectVote;
 use crate::type_config::alias::LogIdOf;
@@ -13,18 +13,18 @@ use crate::type_config::alias::VoteOf;
 /// When this error is returned, the stream is terminated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StreamAppendError<C: RaftTypeConfig> {
+pub enum StreamAppendError<C: RaftComposites> {
     /// Log conflict at the given prev_log_id.
     ///
     /// The follower's log at this position does not match the leader's.
-    Conflict(LogIdOf<C>),
+    Conflict(LogIdOf<C::Prim>),
 
     /// The follower has a higher vote than the sender's.
     HigherVote(VoteOf<C>),
 }
 
 impl<C> fmt::Display for StreamAppendError<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -39,11 +39,11 @@ where C: RaftTypeConfig
 }
 
 /// Peel off `RejectVote`, leaving `ConflictingLogId` as the residual.
-impl<C: RaftTypeConfig> Peel for StreamAppendError<C> {
+impl<C: RaftComposites> Peel for StreamAppendError<C> {
     type Peeled = RejectVote<C>;
-    type Residual = ConflictingLogId<C>;
+    type Residual = ConflictingLogId<C::Prim>;
 
-    fn peel(self) -> Result<ConflictingLogId<C>, RejectVote<C>> {
+    fn peel(self) -> Result<ConflictingLogId<C::Prim>, RejectVote<C>> {
         match self {
             StreamAppendError::HigherVote(vote) => Err(RejectVote { higher: vote }),
             StreamAppendError::Conflict(log_id) => Ok(ConflictingLogId {

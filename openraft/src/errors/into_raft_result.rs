@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
 use crate::errors::RaftError;
@@ -16,7 +16,7 @@ use crate::errors::RaftError;
 /// to the backward compatible `Result<T, RaftError<C, E>>` which can represent both fatal errors
 /// and application-specific errors.
 pub(crate) trait IntoRaftResult<C, T, E>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Convert a `Result<Result<T, E>, Fatal<C>>` or `Result<T, Fatal<C>>` to a
     /// `Result<T, RaftError<C, E>>`.
@@ -24,7 +24,7 @@ where C: RaftTypeConfig
 }
 
 impl<C, T, E> IntoRaftResult<C, T, E> for Result<Result<T, E>, Fatal<C>>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn into_raft_result(self) -> Result<T, RaftError<C, E>> {
         match self {
@@ -36,7 +36,7 @@ where C: RaftTypeConfig
 }
 
 impl<C, T> IntoRaftResult<C, T, Infallible> for Result<T, Fatal<C>>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn into_raft_result(self) -> Result<T, RaftError<C>> {
         self.map_err(RaftError::Fatal)

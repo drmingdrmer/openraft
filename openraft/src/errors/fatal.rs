@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::StorageError;
 
 /// Unrecoverable error that causes Raft to shut down.
@@ -16,7 +16,7 @@ use crate::StorageError;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum Fatal<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Storage error that caused the Raft node to stop.
     #[error(transparent)]

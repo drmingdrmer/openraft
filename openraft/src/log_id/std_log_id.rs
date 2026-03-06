@@ -7,22 +7,22 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::vote::leader_id_std;
 
 /// `NID` is extracted as a separate type parameter to avoid a rustc cycle error
-/// that occurs when using `C::NodeId` inside an associated type equality constraint
-/// (e.g., `LeaderId = LeaderId<$term_type, C::NodeId>`).
+/// that occurs when using `P::NodeId` inside an associated type equality constraint
+/// (e.g., `LeaderId = LeaderId<$term_type, P::NodeId>`).
 macro_rules! impl_raft_log_id {
     ($term_type:ty) => {
-        impl<NID, C> RaftLogId<C> for ($term_type, u64)
+        impl<NID, P> RaftLogId<P> for ($term_type, u64)
         where
             NID: NodeId,
-            C: RaftPrimitives<Term = $term_type, NodeId = NID, LeaderId = leader_id_std::LeaderId<$term_type, NID>>,
+            P: RaftPrimitives<Term = $term_type, NodeId = NID, LeaderId = leader_id_std::LeaderId<$term_type, NID>>,
         {
-            fn new(leader_id: CommittedLeaderIdOf<C>, index: u64) -> Self {
+            fn new(leader_id: CommittedLeaderIdOf<P>, index: u64) -> Self {
                 (*leader_id, index)
             }
 
-            fn committed_leader_id(&self) -> &CommittedLeaderIdOf<C> {
+            fn committed_leader_id(&self) -> &CommittedLeaderIdOf<P> {
                 // SAFETY: CommittedLeaderId<Term> is repr(transparent) around Term.
-                unsafe { &*(std::ptr::addr_of!(self.0) as *const CommittedLeaderIdOf<C>) }
+                unsafe { &*(std::ptr::addr_of!(self.0) as *const CommittedLeaderIdOf<P>) }
             }
 
             fn index(&self) -> u64 {

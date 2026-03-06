@@ -17,20 +17,20 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub(crate) struct CommittedVote<C>
-where C: RaftPrimitives
+pub(crate) struct CommittedVote<P>
+where P: RaftPrimitives
 {
-    leader_id: LeaderIdOf<C>,
+    leader_id: LeaderIdOf<P>,
 }
 
-impl<C> Default for CommittedVote<C>
+impl<P> Default for CommittedVote<P>
 where
-    C: RaftPrimitives,
-    C::NodeId: Default,
+    P: RaftPrimitives,
+    P::NodeId: Default,
 {
     fn default() -> Self {
         Self {
-            leader_id: LeaderIdOf::<C>::new_with_default_term(C::NodeId::default()),
+            leader_id: LeaderIdOf::<P>::new_with_default_term(P::NodeId::default()),
         }
     }
 }
@@ -42,55 +42,55 @@ where
 /// - and the `CommittedVote` is accepted by a quorum,
 /// - and a `Vote` is granted if it is greater than the old one.
 #[allow(clippy::derive_ord_xor_partial_ord)]
-impl<C> Ord for CommittedVote<C>
-where C: RaftPrimitives
+impl<P> Ord for CommittedVote<P>
+where P: RaftPrimitives
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_ref_vote().partial_cmp(&other.as_ref_vote()).unwrap()
     }
 }
 
-impl<C> CommittedVote<C>
-where C: RaftPrimitives
+impl<P> CommittedVote<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(leader_id: LeaderIdOf<C>) -> Self {
+    pub(crate) fn new(leader_id: LeaderIdOf<P>) -> Self {
         Self { leader_id }
     }
 
-    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
+    pub(crate) fn committed_leader_id(&self) -> CommittedLeaderIdOf<P> {
         self.leader_id().to_committed()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn node_id(&self) -> &C::NodeId {
+    pub(crate) fn node_id(&self) -> &P::NodeId {
         self.leader_id.node_id()
     }
 
-    pub(crate) fn into_vote<V: RaftVote<C>>(self) -> V {
+    pub(crate) fn into_vote<V: RaftVote<P>>(self) -> V {
         V::from_leader_id(self.leader_id, true)
     }
 
-    pub(crate) fn into_internal_vote(self) -> Vote<C> {
-        Vote::<C>::from_leader_id(self.leader_id, true)
+    pub(crate) fn into_internal_vote(self) -> Vote<P> {
+        Vote::<P>::from_leader_id(self.leader_id, true)
     }
 }
 
-impl<C> fmt::Display for CommittedVote<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for CommittedVote<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_ref_vote().fmt(f)
     }
 }
 
-impl<C> RaftVote<C> for CommittedVote<C>
-where C: RaftPrimitives
+impl<P> RaftVote<P> for CommittedVote<P>
+where P: RaftPrimitives
 {
-    fn from_leader_id(_leader_id: C::LeaderId, _committed: bool) -> Self {
+    fn from_leader_id(_leader_id: P::LeaderId, _committed: bool) -> Self {
         unreachable!("CommittedVote should only be built from a Vote")
     }
 
-    fn leader_id(&self) -> &LeaderIdOf<C> {
+    fn leader_id(&self) -> &LeaderIdOf<P> {
         &self.leader_id
     }
 

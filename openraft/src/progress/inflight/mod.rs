@@ -7,7 +7,7 @@ use std::fmt::Formatter;
 
 use validit::Validate;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
 use crate::type_config::alias::LogIdOf;
@@ -19,14 +19,14 @@ use crate::type_config::alias::LogIdOf;
 /// inflight data.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) enum Inflight<C>
-where C: RaftTypeConfig
+pub(crate) enum Inflight<P>
+where P: RaftPrimitives
 {
     None,
 
     /// Replicating logs in a fixed range `(prev, last]`.
     Logs {
-        log_id_range: LogIdRange<C>,
+        log_id_range: LogIdRange<P>,
         inflight_id: InflightId,
     },
 
@@ -36,7 +36,7 @@ where C: RaftTypeConfig
     /// open-ended streaming replication. The `prev` advances as logs are
     /// acknowledged by the follower.
     LogsSince {
-        prev: Option<LogIdOf<C>>,
+        prev: Option<LogIdOf<P>>,
         inflight_id: InflightId,
     },
 
@@ -46,15 +46,15 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C> Copy for Inflight<C>
+impl<P> Copy for Inflight<P>
 where
-    C: RaftTypeConfig,
-    LogIdOf<C>: Copy,
+    P: RaftPrimitives,
+    LogIdOf<P>: Copy,
 {
 }
 
-impl<C> Validate for Inflight<C>
-where C: RaftTypeConfig
+impl<P> Validate for Inflight<P>
+where P: RaftPrimitives
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         match self {
@@ -66,8 +66,8 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Display for Inflight<C>
-where C: RaftTypeConfig
+impl<P> Display for Inflight<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -84,11 +84,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Inflight<C>
-where C: RaftTypeConfig
+impl<P> Inflight<P>
+where P: RaftPrimitives
 {
     /// Create inflight state for sending logs.
-    pub(crate) fn logs(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
+    pub(crate) fn logs(prev: Option<LogIdOf<P>>, last: Option<LogIdOf<P>>, inflight_id: InflightId) -> Self {
         #![allow(clippy::nonminimal_bool)]
         if !(prev < last) {
             Self::None
@@ -107,7 +107,7 @@ where C: RaftTypeConfig
 
     /// Create inflight state for streaming logs after a given log id.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn logs_since(prev: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
+    pub(crate) fn logs_since(prev: Option<LogIdOf<P>>, inflight_id: InflightId) -> Self {
         Self::LogsSince { prev, inflight_id }
     }
 
@@ -156,7 +156,7 @@ where C: RaftTypeConfig
     ///
     /// If `from_inflight_id` doesn't match the current `InflightId`,
     /// the ack is ignored as a stale response.
-    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) {
+    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<P>>, from_inflight_id: InflightId) {
         match self {
             Inflight::None => {
                 unreachable!("no inflight data")

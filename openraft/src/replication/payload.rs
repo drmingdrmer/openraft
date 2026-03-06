@@ -1,29 +1,29 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::LogIdOf;
 
 /// The payload specifying which logs to replicate.
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub(crate) enum Payload<C>
-where C: RaftTypeConfig
+pub(crate) enum Payload<P>
+where P: RaftPrimitives
 {
     /// Replicate logs in a fixed range `(prev, last]`.
     ///
     /// Used for batch replication where the leader sends a known set of log entries.
-    LogIdRange { log_id_range: LogIdRange<C> },
+    LogIdRange { log_id_range: LogIdRange<P> },
 
     /// Replicate logs after `prev` with no upper bound.
     ///
     /// Used for streaming replication where the leader continuously sends new logs.
     /// The `prev` is updated as logs are acknowledged.
-    LogsSince { prev: Option<LogIdOf<C>> },
+    LogsSince { prev: Option<LogIdOf<P>> },
 }
 
-impl<C> fmt::Display for Payload<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for Payload<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
@@ -37,10 +37,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Payload<C>
-where C: RaftTypeConfig
+impl<P> Payload<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) {
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<P>>) {
         match self {
             Payload::LogIdRange { log_id_range } => log_id_range.prev = matching,
             Payload::LogsSince { prev } => *prev = matching,

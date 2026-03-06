@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::VoteOf;
 
@@ -8,12 +8,12 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
+pub struct InstallSnapshotRequest<C: RaftComposites> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership, etc.
-    pub meta: SnapshotMeta<C>,
+    pub meta: SnapshotMeta<C::Prim>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
@@ -24,7 +24,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub done: bool,
 }
 
-impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
+impl<C: RaftComposites> fmt::Display for InstallSnapshotRequest<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -44,7 +44,7 @@ impl<C: RaftTypeConfig> fmt::Display for InstallSnapshotRequest<C> {
 #[derive(derive_more::Display)]
 #[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
+pub struct InstallSnapshotResponse<C: RaftComposites> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
@@ -55,12 +55,12 @@ pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
 #[derive(derive_more::Display)]
 #[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct SnapshotResponse<C: RaftTypeConfig> {
+pub struct SnapshotResponse<C: RaftComposites> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
 
-impl<C: RaftTypeConfig> SnapshotResponse<C> {
+impl<C: RaftComposites> SnapshotResponse<C> {
     /// Create a new snapshot response with the given vote.
     pub fn new(vote: VoteOf<C>) -> Self {
         Self { vote }
@@ -68,7 +68,7 @@ impl<C: RaftTypeConfig> SnapshotResponse<C> {
 }
 
 impl<C> From<SnapshotResponse<C>> for InstallSnapshotResponse<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn from(snap_resp: SnapshotResponse<C>) -> Self {
         Self { vote: snap_resp.vote }

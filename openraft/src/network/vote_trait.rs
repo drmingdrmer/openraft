@@ -4,7 +4,7 @@ use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::RPCError;
 use crate::network::RPCOption;
 use crate::raft::VoteRequest;
@@ -20,7 +20,7 @@ use crate::raft::VoteResponse;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
 pub trait NetVote<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Send a RequestVote RPC to the target.
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;

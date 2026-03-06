@@ -8,17 +8,17 @@ use crate::vote::RaftVote;
 /// Similar to [`Vote`] but with a reference to the `LeaderId`, and provide ordering and display
 /// implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RefVote<'a, C>
-where C: RaftPrimitives
+pub(crate) struct RefVote<'a, P>
+where P: RaftPrimitives
 {
-    pub(crate) leader_id: &'a C::LeaderId,
+    pub(crate) leader_id: &'a P::LeaderId,
     pub(crate) committed: bool,
 }
 
-impl<'a, C> RefVote<'a, C>
-where C: RaftPrimitives
+impl<'a, P> RefVote<'a, P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(leader_id: &'a C::LeaderId, committed: bool) -> Self {
+    pub(crate) fn new(leader_id: &'a P::LeaderId, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 
@@ -28,17 +28,17 @@ where C: RaftPrimitives
 
     /// Convert to an owned [`Vote`].
     #[allow(dead_code)]
-    pub(crate) fn to_owned(&self) -> Vote<C> {
+    pub(crate) fn to_owned(&self) -> Vote<P> {
         Vote::from_leader_id(self.leader_id.clone(), self.committed)
     }
 }
 
 // Commit votes have a total order relation with all other votes
-impl<'a, C> PartialOrd for RefVote<'a, C>
-where C: RaftPrimitives
+impl<'a, P> PartialOrd for RefVote<'a, P>
+where P: RaftPrimitives
 {
     #[inline]
-    fn partial_cmp(&self, other: &RefVote<'a, C>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &RefVote<'a, P>) -> Option<Ordering> {
         match PartialOrd::partial_cmp(&self.leader_id, &other.leader_id) {
             Some(Ordering::Equal) => PartialOrd::partial_cmp(&self.committed, &other.committed),
             None => {
@@ -57,8 +57,8 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> std::fmt::Display for RefVote<'_, C>
-where C: RaftPrimitives
+impl<P> std::fmt::Display for RefVote<'_, P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(

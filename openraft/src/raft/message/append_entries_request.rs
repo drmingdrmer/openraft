@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::entry::RaftEntry;
@@ -17,12 +17,12 @@ use crate::type_config::alias::VoteOf;
 /// previous log entries.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct AppendEntriesRequest<C: RaftTypeConfig> {
+pub struct AppendEntriesRequest<C: RaftComposites> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,
 
     /// The log id immediately preceding the new entries.
-    pub prev_log_id: Option<LogIdOf<C>>,
+    pub prev_log_id: Option<LogIdOf<C::Prim>>,
 
     /// The new log entries to store.
     ///
@@ -31,10 +31,10 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub entries: Vec<C::Entry>,
 
     /// The leader's committed log id.
-    pub leader_commit: Option<LogIdOf<C>>,
+    pub leader_commit: Option<LogIdOf<C::Prim>>,
 }
 
-impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C> {
+impl<C: RaftComposites> fmt::Debug for AppendEntriesRequest<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppendEntriesRequest")
             .field("vote", &self.vote)
@@ -46,7 +46,7 @@ impl<C: RaftTypeConfig> fmt::Debug for AppendEntriesRequest<C> {
 }
 
 impl<C> fmt::Display for AppendEntriesRequest<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -64,12 +64,12 @@ where C: RaftTypeConfig
 }
 
 impl<C> AppendEntriesRequest<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Returns the last log id in this request.
     ///
     /// This is the log id of the last entry, or `prev_log_id` if entries is empty.
-    pub(crate) fn last_log_id(&self) -> Option<LogIdOf<C>> {
+    pub(crate) fn last_log_id(&self) -> Option<LogIdOf<C::Prim>> {
         self.entries.last().map(|e| e.log_id()).or(self.prev_log_id.clone())
     }
 
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     ///
     /// The range is `(prev_log_id, last_log_id]` where `last_log_id` is the log id
     /// of the last entry, or `prev_log_id` if entries is empty.
-    pub(crate) fn log_id_range(&self) -> LogIdRange<C> {
+    pub(crate) fn log_id_range(&self) -> LogIdRange<C::Prim> {
         LogIdRange::new(self.prev_log_id.clone(), self.last_log_id())
     }
 }

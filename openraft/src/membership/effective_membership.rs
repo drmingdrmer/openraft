@@ -21,20 +21,20 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Eq)]
-pub struct EffectiveMembership<C>
-where C: RaftPrimitives
+pub struct EffectiveMembership<P>
+where P: RaftPrimitives
 {
-    stored_membership: Arc<StoredMembership<C>>,
+    stored_membership: Arc<StoredMembership<P>>,
 
     /// The quorum set built from `membership`.
-    quorum_set: Joint<C::NodeId, Vec<C::NodeId>, Vec<Vec<C::NodeId>>>,
+    quorum_set: Joint<P::NodeId, Vec<P::NodeId>, Vec<Vec<P::NodeId>>>,
 
     /// Cache of the union of all members
-    voter_ids: BTreeSet<C::NodeId>,
+    voter_ids: BTreeSet<P::NodeId>,
 }
 
-impl<C> Default for EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> Default for EffectiveMembership<P>
+where P: RaftPrimitives
 {
     fn default() -> Self {
         Self {
@@ -45,8 +45,8 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> Debug for EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> Debug for EffectiveMembership<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectiveMembership")
@@ -57,33 +57,33 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> PartialEq for EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> PartialEq for EffectiveMembership<P>
+where P: RaftPrimitives
 {
     fn eq(&self, other: &Self) -> bool {
         self.stored_membership == other.stored_membership && self.voter_ids == other.voter_ids
     }
 }
 
-impl<C, LID> From<(&LID, Membership<C>)> for EffectiveMembership<C>
+impl<P, LID> From<(&LID, Membership<P>)> for EffectiveMembership<P>
 where
-    C: RaftPrimitives,
-    LID: RaftLogId<C>,
+    P: RaftPrimitives,
+    LID: RaftLogId<P>,
 {
-    fn from(v: (&LID, Membership<C>)) -> Self {
+    fn from(v: (&LID, Membership<P>)) -> Self {
         EffectiveMembership::new(Some(v.0.to_log_id()), v.1)
     }
 }
 
-impl<C> EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> EffectiveMembership<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new_arc(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogIdOf<P>>, membership: Membership<P>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
     /// Create a new EffectiveMembership from a log ID and membership configuration.
-    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogIdOf<P>>, membership: Membership<P>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
         let configs = membership.get_joint_config();
@@ -101,51 +101,51 @@ where C: RaftPrimitives
         }
     }
 
-    pub(crate) fn new_from_stored_membership(stored: StoredMembership<C>) -> Self {
+    pub(crate) fn new_from_stored_membership(stored: StoredMembership<P>) -> Self {
         Self::new(stored.log_id().clone(), stored.membership().clone())
     }
 
-    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<C>> {
+    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<P>> {
         &self.stored_membership
     }
 
     /// Get the log ID at which this membership was stored.
-    pub fn log_id(&self) -> &Option<LogIdOf<C>> {
+    pub fn log_id(&self) -> &Option<LogIdOf<P>> {
         self.stored_membership.log_id()
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<C> {
+    pub fn membership(&self) -> &Membership<P> {
         self.stored_membership.membership()
     }
 }
 
 /// Membership API
-impl<C> EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> EffectiveMembership<P>
+where P: RaftPrimitives
 {
     #[allow(dead_code)]
-    pub(crate) fn is_voter(&self, nid: &C::NodeId) -> bool {
+    pub(crate) fn is_voter(&self, nid: &P::NodeId) -> bool {
         self.membership().is_voter(nid)
     }
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
-    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
+    pub fn voter_ids(&self) -> impl Iterator<Item = P::NodeId> + '_ {
         self.voter_ids.iter().cloned()
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
+    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = P::NodeId> + '_ {
         self.membership().learner_ids()
     }
 
     /// Get the node (either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
+    pub fn get_node(&self, node_id: &P::NodeId) -> Option<&P::Node> {
         self.membership().get_node(node_id)
     }
 
     /// Returns an Iterator of all nodes (voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&P::NodeId, &P::Node)> {
         self.membership().nodes()
     }
 
@@ -153,13 +153,13 @@ where C: RaftPrimitives
     ///
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a vec of node-id.
-    pub fn get_joint_config(&self) -> &Vec<Vec<C::NodeId>> {
+    pub fn get_joint_config(&self) -> &Vec<Vec<P::NodeId>> {
         self.quorum_set.children()
     }
 }
 
-impl<C> fmt::Display for EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for EffectiveMembership<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -172,12 +172,12 @@ where C: RaftPrimitives
 }
 
 /// Implement node-id joint quorum set.
-impl<C> QuorumSet<C::NodeId> for EffectiveMembership<C>
-where C: RaftPrimitives
+impl<P> QuorumSet<P::NodeId> for EffectiveMembership<P>
+where P: RaftPrimitives
 {
-    type Iter = std::collections::btree_set::IntoIter<C::NodeId>;
+    type Iter = std::collections::btree_set::IntoIter<P::NodeId>;
 
-    fn is_quorum<'a, I: Iterator<Item = &'a C::NodeId> + Clone>(&self, ids: I) -> bool {
+    fn is_quorum<'a, I: Iterator<Item = &'a P::NodeId> + Clone>(&self, ids: I) -> bool {
         self.quorum_set.is_quorum(ids)
     }
 

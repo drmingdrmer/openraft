@@ -23,10 +23,10 @@ use crate::RaftPrimitives;
 /// # Type Parameters
 ///
 /// - `T`: The type of value to send through this responder
-pub trait Responder<C, T>
+pub trait Responder<P, T>
 where
     Self: OptionalSend + Sized + 'static,
-    C: RaftPrimitives,
+    P: RaftPrimitives,
 {
     /// Called when the log entry is locally committed (safe to read).
     ///
@@ -39,7 +39,7 @@ where
     ///
     /// Default implementation does nothing.
     #[since(version = "0.10.0")]
-    fn on_commit(&mut self, _log_id: LogId<C>) {}
+    fn on_commit(&mut self, _log_id: LogId<P>) {}
 
     /// Called when the request completes (applied; previously it is `send`).
     /// Send the final result to the client.

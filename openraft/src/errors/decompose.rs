@@ -2,7 +2,7 @@
 
 use std::error::Error;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::Infallible;
 use crate::errors::RPCError;
 use crate::errors::RaftError;
@@ -65,7 +65,7 @@ use crate::errors::into_ok::into_ok;
 /// ```ignore
 /// use openraft::error::{DecomposeResult, RPCError};
 ///
-/// async fn forward_to_leader<C: RaftTypeConfig>(
+/// async fn forward_to_leader<C: RaftComposites>(
 ///     network: &mut Network,
 ///     request: Request
 /// ) -> Result<Response, AppError> {
@@ -89,7 +89,7 @@ use crate::errors::into_ok::into_ok;
 /// }
 /// ```
 pub trait DecomposeResult<C, R, OuterError>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// The inner error type extracted from the composite error.
     type InnerError;
@@ -117,7 +117,7 @@ where C: RaftTypeConfig
 }
 
 impl<C, R, E> DecomposeResult<C, R, RaftError<C>> for Result<R, RaftError<C, E>>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     type InnerError = E;
 
@@ -134,7 +134,7 @@ where C: RaftTypeConfig
 
 impl<C, R, E> DecomposeResult<C, R, RPCError<C>> for Result<R, RPCError<C, RaftError<C, E>>>
 where
-    C: RaftTypeConfig,
+    C: RaftComposites,
     E: Error,
 {
     type InnerError = E;

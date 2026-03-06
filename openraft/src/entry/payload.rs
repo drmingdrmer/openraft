@@ -10,21 +10,21 @@ use crate::entry::raft_payload::RaftPayload;
 /// Log entry payload variants.
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<C: RaftPrimitives> {
+pub enum EntryPayload<P: RaftPrimitives> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
     /// Normal application data.
-    Normal(C::D),
+    Normal(P::D),
 
     /// A change-membership log entry.
-    Membership(Membership<C>),
+    Membership(Membership<P>),
 }
 
-impl<C> Clone for EntryPayload<C>
+impl<P> Clone for EntryPayload<P>
 where
-    C: RaftPrimitives,
-    C::D: Clone,
+    P: RaftPrimitives,
+    P::D: Clone,
 {
     fn clone(&self) -> Self {
         match self {
@@ -35,8 +35,8 @@ where
     }
 }
 
-impl<C> fmt::Debug for EntryPayload<C>
-where C: RaftPrimitives
+impl<P> fmt::Debug for EntryPayload<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -51,8 +51,8 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> fmt::Display for EntryPayload<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for EntryPayload<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -67,8 +67,8 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> EntryPayload<C>
-where C: RaftPrimitives
+impl<P> EntryPayload<P>
+where P: RaftPrimitives
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -79,10 +79,10 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> RaftPayload<C> for EntryPayload<C>
-where C: RaftPrimitives
+impl<P> RaftPayload<P> for EntryPayload<P>
+where P: RaftPrimitives
 {
-    fn get_membership(&self) -> Option<Membership<C>> {
+    fn get_membership(&self) -> Option<Membership<P>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {

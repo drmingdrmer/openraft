@@ -4,7 +4,7 @@ use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::RPCError;
 use crate::network::RPCOption;
 use crate::raft::message::TransferLeaderRequest;
@@ -19,7 +19,7 @@ use crate::raft::message::TransferLeaderRequest;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
 pub trait NetTransferLeader<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Send TransferLeader message to the target node.
     ///

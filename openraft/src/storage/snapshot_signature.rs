@@ -1,18 +1,18 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::SnapshotId;
 use crate::type_config::alias::LogIdOf;
 
 /// A small piece of information for identifying a snapshot and error tracing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct SnapshotSignature<C>
-where C: RaftTypeConfig
+pub struct SnapshotSignature<P>
+where P: RaftPrimitives
 {
     /// Log entries up to which this snapshot includes, inclusive.
-    pub last_log_id: Option<LogIdOf<C>>,
+    pub last_log_id: Option<LogIdOf<P>>,
 
     /// The last applied membership log id.
-    pub last_membership_log_id: Option<Box<LogIdOf<C>>>,
+    pub last_membership_log_id: Option<Box<LogIdOf<P>>>,
 
     /// To identify a snapshot when transferring.
     pub snapshot_id: SnapshotId,

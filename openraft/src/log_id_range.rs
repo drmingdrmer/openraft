@@ -16,33 +16,33 @@ use crate::type_config::alias::LogIdOf;
 /// The range of log to send is left open right close: `(prev, last]`.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct LogIdRange<C>
-where C: RaftPrimitives
+pub(crate) struct LogIdRange<P>
+where P: RaftPrimitives
 {
     /// The prev log id before the first to send, exclusive.
-    pub(crate) prev: Option<LogIdOf<C>>,
+    pub(crate) prev: Option<LogIdOf<P>>,
 
     /// The last log id to send, inclusive.
-    pub(crate) last: Option<LogIdOf<C>>,
+    pub(crate) last: Option<LogIdOf<P>>,
 }
 
-impl<C> Copy for LogIdRange<C>
+impl<P> Copy for LogIdRange<P>
 where
-    C: RaftPrimitives,
-    LogIdOf<C>: Copy,
+    P: RaftPrimitives,
+    LogIdOf<P>: Copy,
 {
 }
 
-impl<C> Display for LogIdRange<C>
-where C: RaftPrimitives
+impl<P> Display for LogIdRange<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {}]", self.prev.display(), self.last.display())
     }
 }
 
-impl<C> Validate for LogIdRange<C>
-where C: RaftPrimitives
+impl<P> Validate for LogIdRange<P>
+where P: RaftPrimitives
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         validit::less_equal!(&self.prev, &self.last);
@@ -50,10 +50,10 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> LogIdRange<C>
-where C: RaftPrimitives
+impl<P> LogIdRange<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(prev: Option<LogIdOf<P>>, last: Option<LogIdOf<P>>) -> Self {
         Self { prev, last }
     }
 

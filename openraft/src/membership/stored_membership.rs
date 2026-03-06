@@ -17,47 +17,47 @@ use crate::type_config::alias::LogIdOf;
 #[derive(Clone, Debug, Default)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StoredMembership<C>
-where C: RaftPrimitives
+pub struct StoredMembership<P>
+where P: RaftPrimitives
 {
     /// The id of the log that stores this membership config
-    log_id: Option<LogIdOf<C>>,
+    log_id: Option<LogIdOf<P>>,
 
     /// Membership config
-    membership: Membership<C>,
+    membership: Membership<P>,
 }
 
-impl<C> StoredMembership<C>
-where C: RaftPrimitives
+impl<P> StoredMembership<P>
+where P: RaftPrimitives
 {
     /// Create a new StoredMembership with the given log ID and membership configuration.
-    pub fn new(log_id: Option<LogIdOf<C>>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: Option<LogIdOf<P>>, membership: Membership<P>) -> Self {
         Self { log_id, membership }
     }
 
     /// Get the log ID at which this membership was stored.
-    pub fn log_id(&self) -> &Option<LogIdOf<C>> {
+    pub fn log_id(&self) -> &Option<LogIdOf<P>> {
         &self.log_id
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<C> {
+    pub fn membership(&self) -> &Membership<P> {
         &self.membership
     }
 
     /// Get an iterator over the voter node IDs.
-    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
+    pub fn voter_ids(&self) -> impl Iterator<Item = P::NodeId> {
         self.membership.voter_ids()
     }
 
     /// Get an iterator over all nodes (ID and node information).
-    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&P::NodeId, &P::Node)> {
         self.membership.nodes()
     }
 }
 
-impl<C> fmt::Display for StoredMembership<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for StoredMembership<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{log_id:{}, {}}}", DisplayOption(&self.log_id), self.membership)

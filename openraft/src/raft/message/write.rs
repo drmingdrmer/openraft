@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::errors::ClientWriteError;
 use crate::errors::ForwardToLeader;
 use crate::raft::ClientWriteResponse;
@@ -12,7 +12,7 @@ use crate::type_config::alias::LogIdOf;
 /// membership changes.
 ///
 /// [`Raft::client_write_many()`]: crate::Raft::client_write_many
-pub type WriteResult<C> = Result<WriteResponse<C>, ForwardToLeader<C>>;
+pub type WriteResult<P> = Result<WriteResponse<P>, ForwardToLeader<P>>;
 
 /// Response from a successful write operation.
 ///
@@ -24,18 +24,18 @@ pub type WriteResult<C> = Result<WriteResponse<C>, ForwardToLeader<C>>;
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "C::R: crate::AppDataResponse")
+    serde(bound = "P::R: crate::AppDataResponse")
 )]
-pub struct WriteResponse<C: RaftTypeConfig> {
+pub struct WriteResponse<P: RaftPrimitives> {
     /// The log ID of the applied entry.
-    pub log_id: LogIdOf<C>,
+    pub log_id: LogIdOf<P>,
 
     /// Application-defined response data.
-    pub response: C::R,
+    pub response: P::R,
 }
 
-impl<C: RaftTypeConfig> From<ClientWriteResponse<C>> for WriteResponse<C> {
-    fn from(resp: ClientWriteResponse<C>) -> Self {
+impl<P: RaftPrimitives> From<ClientWriteResponse<P>> for WriteResponse<P> {
+    fn from(resp: ClientWriteResponse<P>) -> Self {
         WriteResponse {
             log_id: resp.log_id,
             response: resp.data,
@@ -44,7 +44,7 @@ impl<C: RaftTypeConfig> From<ClientWriteResponse<C>> for WriteResponse<C> {
 }
 
 /// Convert `ClientWriteResult` to `WriteResult`.
-pub(crate) fn into_write_result<C: RaftTypeConfig>(result: ClientWriteResult<C>) -> WriteResult<C> {
+pub(crate) fn into_write_result<P: RaftPrimitives>(result: ClientWriteResult<P>) -> WriteResult<P> {
     match result {
         Ok(resp) => Ok(resp.into()),
         Err(ClientWriteError::ForwardToLeader(e)) => Err(e),

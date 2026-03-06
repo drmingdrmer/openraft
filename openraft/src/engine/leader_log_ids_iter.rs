@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -8,8 +8,8 @@ use crate::type_config::alias::LogIdOf;
 /// When `start == end`, the iterator is exhausted.
 /// Implements `DoubleEndedIterator` and `ExactSizeIterator`.
 #[derive(Debug, Clone)]
-pub(crate) struct LeaderLogIdsIter<C: RaftTypeConfig> {
-    committed_leader_id: CommittedLeaderIdOf<C>,
+pub(crate) struct LeaderLogIdsIter<P: RaftPrimitives> {
+    committed_leader_id: CommittedLeaderIdOf<P>,
 
     /// Next index to yield from the front (inclusive).
     start: u64,
@@ -18,8 +18,8 @@ pub(crate) struct LeaderLogIdsIter<C: RaftTypeConfig> {
     end: u64,
 }
 
-impl<C: RaftTypeConfig> LeaderLogIdsIter<C> {
-    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<C>, start: u64, end: u64) -> Self {
+impl<P: RaftPrimitives> LeaderLogIdsIter<P> {
+    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<P>, start: u64, end: u64) -> Self {
         Self {
             committed_leader_id,
             start,
@@ -36,8 +36,8 @@ impl<C: RaftTypeConfig> LeaderLogIdsIter<C> {
     }
 }
 
-impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
-    type Item = LogIdOf<C>;
+impl<P: RaftPrimitives> Iterator for LeaderLogIdsIter<P> {
+    type Item = LogIdOf<P>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.start >= self.end {
@@ -46,7 +46,7 @@ impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
 
         let index = self.start;
         self.start += 1;
-        Some(LogIdOf::<C>::new(self.committed_leader_id.clone(), index))
+        Some(LogIdOf::<P>::new(self.committed_leader_id.clone(), index))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -55,18 +55,18 @@ impl<C: RaftTypeConfig> Iterator for LeaderLogIdsIter<C> {
     }
 }
 
-impl<C: RaftTypeConfig> DoubleEndedIterator for LeaderLogIdsIter<C> {
+impl<P: RaftPrimitives> DoubleEndedIterator for LeaderLogIdsIter<P> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start >= self.end {
             return None;
         }
 
         self.end -= 1;
-        Some(LogIdOf::<C>::new(self.committed_leader_id.clone(), self.end))
+        Some(LogIdOf::<P>::new(self.committed_leader_id.clone(), self.end))
     }
 }
 
-impl<C: RaftTypeConfig> ExactSizeIterator for LeaderLogIdsIter<C> {}
+impl<P: RaftPrimitives> ExactSizeIterator for LeaderLogIdsIter<P> {}
 
 #[cfg(test)]
 mod tests {

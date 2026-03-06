@@ -17,23 +17,23 @@ use crate::display_ext::DisplaySlice;
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembers<C>
-where C: RaftPrimitives
+pub enum ChangeMembers<P>
+where P: RaftPrimitives
 {
     /// Upgrade learners to voters.
     ///
     /// The learners have to present or [`error::LearnerNotFound`](`crate::error::LearnerNotFound`)
     /// error will be returned.
-    AddVoterIds(BTreeSet<C::NodeId>),
+    AddVoterIds(BTreeSet<P::NodeId>),
 
     /// Add voters with corresponding nodes.
-    AddVoters(BTreeMap<C::NodeId, C::Node>),
+    AddVoters(BTreeMap<P::NodeId, P::Node>),
 
     /// Remove voters, leave removed voters as learner or not.
-    RemoveVoters(BTreeSet<C::NodeId>),
+    RemoveVoters(BTreeSet<P::NodeId>),
 
     /// Replace voter ids with a new set. The node of every new voter has to already be a learner.
-    ReplaceAllVoters(BTreeSet<C::NodeId>),
+    ReplaceAllVoters(BTreeSet<P::NodeId>),
 
     /// Add nodes to membership, as learners.
     ///
@@ -42,7 +42,7 @@ where C: RaftPrimitives
     /// Prefer using this variant instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
     /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
-    AddNodes(BTreeMap<C::NodeId, C::Node>),
+    AddNodes(BTreeMap<P::NodeId, P::Node>),
 
     /// Add or replace nodes in membership config.
     ///
@@ -51,41 +51,41 @@ where C: RaftPrimitives
     /// Prefer using `AddNodes` instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
     /// See: [Update-Node](`crate::docs::cluster_control::dynamic_membership#update-node`)
-    SetNodes(BTreeMap<C::NodeId, C::Node>),
+    SetNodes(BTreeMap<P::NodeId, P::Node>),
 
     /// Remove nodes from membership.
     ///
     /// If a node is still a voter, it returns
     /// [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
-    RemoveNodes(BTreeSet<C::NodeId>),
+    RemoveNodes(BTreeSet<P::NodeId>),
 
     /// Replace all nodes with a new set.
     ///
     /// Every voter has to have a corresponding node in the new
     /// set, otherwise it returns [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
-    ReplaceAllNodes(BTreeMap<C::NodeId, C::Node>),
+    ReplaceAllNodes(BTreeMap<P::NodeId, P::Node>),
 
     /// Apply multiple changes to membership config.
     ///
     /// The changes are applied in the order they are given.
     /// And it still finishes in a two-step joint config change.
-    Batch(Vec<ChangeMembers<C>>),
+    Batch(Vec<ChangeMembers<P>>),
 }
 
 /// Convert a series of ids to a `Replace` operation.
-impl<C, I> From<I> for ChangeMembers<C>
+impl<P, I> From<I> for ChangeMembers<P>
 where
-    C: RaftPrimitives,
-    I: IntoIterator<Item = C::NodeId>,
+    P: RaftPrimitives,
+    I: IntoIterator<Item = P::NodeId>,
 {
     fn from(r: I) -> Self {
-        let ids = r.into_iter().collect::<BTreeSet<C::NodeId>>();
+        let ids = r.into_iter().collect::<BTreeSet<P::NodeId>>();
         ChangeMembers::ReplaceAllVoters(ids)
     }
 }
 
-impl<C> fmt::Display for ChangeMembers<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for ChangeMembers<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

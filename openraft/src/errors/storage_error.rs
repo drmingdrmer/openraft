@@ -1,31 +1,33 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
+use crate::RaftPrimitives;
+use crate::errors::ErrorSource;
 use crate::storage::SnapshotSignature;
-use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LogIdOf;
 
 /// Convert error to StorageError::IO();
 pub trait ToStorageResult<C, T>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Convert `Result<T, E>` to `Result<T, StorageError>`
     ///
     /// `f` provides error context for building the StorageError.
     fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb);
+    where F: FnOnce() -> (ErrorSubject<C::Prim>, ErrorVerb);
 }
 
 impl<C, T> ToStorageResult<C, T> for Result<T, std::io::Error>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb) {
+    where F: FnOnce() -> (ErrorSubject<C::Prim>, ErrorVerb) {
         match self {
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageError::new(subject, verb, C::err_from_error(&e));
+                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<C>::from_error(&e));
                 Err(io_err)
             }
         }
@@ -35,8 +37,8 @@ where C: RaftTypeConfig
 /// The subject of a storage error, indicating what operation or component failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ErrorSubject<C>
-where C: RaftTypeConfig
+pub enum ErrorSubject<P>
+where P: RaftPrimitives
 {
     /// A general storage error
     Store,
@@ -48,19 +50,19 @@ where C: RaftTypeConfig
     Logs,
 
     /// Error about a single log entry
-    Log(LogIdOf<C>),
+    Log(LogIdOf<P>),
 
     /// Error about a single log entry without knowing the log term.
     LogIndex(u64),
 
     /// Error happened when applying a log entry
-    Apply(LogIdOf<C>),
+    Apply(LogIdOf<P>),
 
     /// Error that happened when operating state machine.
     StateMachine,
 
     /// Error that happened when operating snapshots.
-    Snapshot(Option<SnapshotSignature<C>>),
+    Snapshot(Option<SnapshotSignature<P>>),
 
     /// No specific subject for this error.
     None,
@@ -93,7 +95,7 @@ impl fmt::Display for ErrorVerb {
 pub type StorageIOError<C> = StorageError<C>;
 
 impl<C> StorageError<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Backward compatible with old form `StorageError::IO{ source: StorageError }`
     #[deprecated(note = "no need to call this method", since = "0.10.0")]
@@ -102,13 +104,13 @@ where C: RaftTypeConfig
     }
 
     /// Create a StorageError from a std::io::Error.
-    pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        StorageError::new(subject, verb, C::err_from_error(&io_error))
+    pub fn from_io_error(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+        StorageError::new(subject, verb, ErrorSourceOf::<C>::from_error(&io_error))
     }
 }
 
 impl<C> From<StorageError<C>> for std::io::Error
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn from(e: StorageError<C>) -> Self {
         std::io::Error::other(e.to_string())
@@ -123,15 +125,15 @@ where C: RaftTypeConfig
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct StorageError<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
-    subject: ErrorSubject<C>,
+    subject: ErrorSubject<C::Prim>,
     verb: ErrorVerb,
     source: C::ErrorSource,
 }
 
 impl<C> fmt::Display for StorageError<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
@@ -139,15 +141,15 @@ where C: RaftTypeConfig
 }
 
 impl<C> StorageError<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Create a new StorageError.
-    pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
+    pub fn new(subject: ErrorSubject<C::Prim>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
         Self { subject, verb, source }
     }
 
     /// Create an error for writing a log entry.
-    pub fn write_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn write_log_entry(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
@@ -157,7 +159,7 @@ where C: RaftTypeConfig
     }
 
     /// Create an error for reading a log entry.
-    pub fn read_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn read_log_entry(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
@@ -182,7 +184,7 @@ where C: RaftTypeConfig
     }
 
     /// Create an error for applying a log entry to the state machine.
-    pub fn apply(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn apply(log_id: LogIdOf<C::Prim>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
@@ -197,12 +199,12 @@ where C: RaftTypeConfig
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignature<C>>, source: C::ErrorSource) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignature<C::Prim>>, source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 
@@ -265,7 +267,8 @@ mod tests {
         use crate::engine::testing::UTConfig;
         use crate::engine::testing::log_id;
 
-        let storage_err = StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("disk full"));
+        let storage_err: StorageError<UTConfig> =
+            StorageError::write_log_entry(log_id(1, 2, 3), AnyError::error("disk full"));
         let io_err: std::io::Error = storage_err.into();
 
         assert_eq!(io_err.kind(), std::io::ErrorKind::Other);

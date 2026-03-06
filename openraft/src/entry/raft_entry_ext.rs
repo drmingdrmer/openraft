@@ -2,19 +2,19 @@ use crate::RaftPrimitives;
 use crate::entry::RaftEntry;
 use crate::log_id::ref_log_id::RefLogId;
 
-pub(crate) trait RaftEntryExt<C>: RaftEntry<C>
-where C: RaftPrimitives
+pub(crate) trait RaftEntryExt<P>: RaftEntry<P>
+where P: RaftPrimitives
 {
     /// Returns a lightweight [`RefLogId`] that contains the log id information.
-    fn ref_log_id(&self) -> RefLogId<'_, C> {
+    fn ref_log_id(&self) -> RefLogId<'_, P> {
         let (leader_id, index) = self.log_id_parts();
         RefLogId::new(leader_id, index)
     }
 }
 
-impl<C, T> RaftEntryExt<C> for T
+impl<P, T> RaftEntryExt<P> for T
 where
-    C: RaftPrimitives,
-    T: RaftEntry<C>,
+    P: RaftPrimitives,
+    T: RaftEntry<P>,
 {
 }

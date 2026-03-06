@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -9,15 +9,15 @@ use crate::type_config::alias::VoteOf;
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteRequest<C: RaftTypeConfig> {
+pub struct VoteRequest<C: RaftComposites> {
     /// The candidate's vote requesting support.
     pub vote: VoteOf<C>,
     /// The candidate's last log id.
-    pub last_log_id: Option<LogIdOf<C>>,
+    pub last_log_id: Option<LogIdOf<C::Prim>>,
 }
 
 impl<C> fmt::Display for VoteRequest<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
@@ -25,10 +25,10 @@ where C: RaftTypeConfig
 }
 
 impl<C> VoteRequest<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Create a new vote request.
-    pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
+    pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C::Prim>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -36,7 +36,7 @@ where C: RaftTypeConfig
 /// The response to a `VoteRequest`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteResponse<C: RaftTypeConfig> {
+pub struct VoteResponse<C: RaftComposites> {
     /// vote after a node handling vote-request.
     /// Thus, `resp.vote >= req.vote` always holds.
     ///
@@ -48,14 +48,14 @@ pub struct VoteResponse<C: RaftTypeConfig> {
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogIdOf<C>>,
+    pub last_log_id: Option<LogIdOf<C::Prim>>,
 }
 
 impl<C> VoteResponse<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Create a new vote response.
-    pub fn new(vote: impl Borrow<VoteOf<C>>, last_log_id: Option<LogIdOf<C>>, granted: bool) -> Self {
+    pub fn new(vote: impl Borrow<VoteOf<C>>, last_log_id: Option<LogIdOf<C::Prim>>, granted: bool) -> Self {
         Self {
             vote: vote.borrow().clone(),
             vote_granted: granted,
@@ -71,7 +71,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> fmt::Display for VoteResponse<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

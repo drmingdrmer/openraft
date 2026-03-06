@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use openraft_macros::since;
 use peel_off::Peel;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::StorageError;
 use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
@@ -37,7 +37,7 @@ use crate::try_as_ref::TryAsRef;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum RaftError<C, E = Infallible>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// API-specific error returned by Raft API methods.
     #[error(transparent)]
@@ -51,7 +51,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> RaftError<C, Infallible>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     /// Convert to a [`Fatal`] error if its `APIError` variant is [`Infallible`],
     /// otherwise panic.
@@ -63,7 +63,7 @@ where C: RaftTypeConfig
 
 impl<C, E> RaftError<C, E>
 where
-    C: RaftTypeConfig,
+    C: RaftComposites,
     E: Debug,
 {
     /// Return a reference to Self::APIError.
@@ -99,8 +99,8 @@ where
     }
 
     /// Return a reference to ForwardToLeader if Self::APIError contains it.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
-    where E: TryAsRef<ForwardToLeader<C>> {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C::Prim>>
+    where E: TryAsRef<ForwardToLeader<C::Prim>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_as_ref(),
             RaftError::Fatal(_) => None,
@@ -108,8 +108,8 @@ where
     }
 
     /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
-    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C>>
-    where E: TryInto<ForwardToLeader<C>> {
+    pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C::Prim>>
+    where E: TryInto<ForwardToLeader<C::Prim>> {
         match self {
             RaftError::APIError(api_err) => api_err.try_into().ok(),
             RaftError::Fatal(_) => None,
@@ -117,18 +117,18 @@ where
     }
 }
 
-impl<C, E> TryAsRef<ForwardToLeader<C>> for RaftError<C, E>
+impl<C, E> TryAsRef<ForwardToLeader<C::Prim>> for RaftError<C, E>
 where
-    C: RaftTypeConfig,
-    E: Debug + TryAsRef<ForwardToLeader<C>>,
+    C: RaftComposites,
+    E: Debug + TryAsRef<ForwardToLeader<C::Prim>>,
 {
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<C::Prim>> {
         self.forward_to_leader()
     }
 }
 
 impl<C, E> From<StorageError<C>> for RaftError<C, E>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn from(se: StorageError<C>) -> Self {
         RaftError::Fatal(Fatal::from(se))
@@ -138,7 +138,7 @@ where C: RaftTypeConfig
 /// Peel off `Fatal`, leaving the API error `E` as the residual.
 impl<C, E> Peel for RaftError<C, E>
 where
-    C: RaftTypeConfig,
+    C: RaftComposites,
     E: Debug,
 {
     type Peeled = Fatal<C>;

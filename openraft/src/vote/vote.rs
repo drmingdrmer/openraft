@@ -9,39 +9,39 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// `Vote` represent the privilege of a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Vote<C: RaftPrimitives> {
+pub struct Vote<P: RaftPrimitives> {
     /// The id of the node that tries to become the leader.
-    pub leader_id: C::LeaderId,
+    pub leader_id: P::LeaderId,
 
     /// Whether this vote has been committed (granted by a quorum).
     pub committed: bool,
 }
 
-impl<C> PartialOrd for Vote<C>
-where C: RaftPrimitives
+impl<P> PartialOrd for Vote<P>
+where P: RaftPrimitives
 {
     #[inline]
-    fn partial_cmp(&self, other: &Vote<C>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Vote<P>) -> Option<Ordering> {
         PartialOrd::partial_cmp(&self.as_ref_vote(), &other.as_ref_vote())
     }
 }
 
-impl<C> std::fmt::Display for Vote<C>
-where C: RaftPrimitives
+impl<P> std::fmt::Display for Vote<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.as_ref_vote().fmt(f)
     }
 }
 
-impl<C> RaftVote<C> for Vote<C>
-where C: RaftPrimitives
+impl<P> RaftVote<P> for Vote<P>
+where P: RaftPrimitives
 {
-    fn from_leader_id(leader_id: C::LeaderId, committed: bool) -> Self {
+    fn from_leader_id(leader_id: P::LeaderId, committed: bool) -> Self {
         Self { leader_id, committed }
     }
 
-    fn leader_id(&self) -> &C::LeaderId {
+    fn leader_id(&self) -> &P::LeaderId {
         &self.leader_id
     }
 
@@ -50,21 +50,21 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> Vote<C>
-where C: RaftPrimitives
+impl<P> Vote<P>
+where P: RaftPrimitives
 {
     /// Create a new uncommitted vote for the given term and node.
-    pub fn new(term: C::Term, node_id: C::NodeId) -> Self {
+    pub fn new(term: P::Term, node_id: P::NodeId) -> Self {
         Self {
-            leader_id: C::LeaderId::new(term, node_id),
+            leader_id: P::LeaderId::new(term, node_id),
             committed: false,
         }
     }
 
     /// Create a new committed vote for the given term and node.
-    pub fn new_committed(term: C::Term, node_id: C::NodeId) -> Self {
+    pub fn new_committed(term: P::Term, node_id: P::NodeId) -> Self {
         Self {
-            leader_id: C::LeaderId::new(term, node_id),
+            leader_id: P::LeaderId::new(term, node_id),
             committed: true,
         }
     }
@@ -83,7 +83,7 @@ where C: RaftPrimitives
     /// Return the `LeaderId` this vote represents for.
     ///
     /// The leader may or may not be granted by a quorum.
-    pub fn leader_id(&self) -> &C::LeaderId {
+    pub fn leader_id(&self) -> &P::LeaderId {
         &self.leader_id
     }
 }

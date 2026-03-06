@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::engine::leader_log_ids_iter::LeaderLogIdsIter;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -16,8 +16,8 @@ use crate::type_config::alias::LogIdOf;
 /// This struct always represents a non-empty range; use `Option<LeaderLogIds>`
 /// when an empty range is needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeaderLogIds<C: RaftTypeConfig> {
-    committed_leader_id: CommittedLeaderIdOf<C>,
+pub(crate) struct LeaderLogIds<P: RaftPrimitives> {
+    committed_leader_id: CommittedLeaderIdOf<P>,
 
     /// First index (inclusive).
     first: u64,
@@ -26,19 +26,19 @@ pub(crate) struct LeaderLogIds<C: RaftTypeConfig> {
     last: u64,
 }
 
-impl<C> fmt::Display for LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for LeaderLogIds<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:[{}, {}]", self.committed_leader_id, self.first, self.last)
     }
 }
 
-impl<C> LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<P> LeaderLogIds<P>
+where P: RaftPrimitives
 {
     /// Create a new log ID range `[first, last]`.
-    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<C>, first: u64, last: u64) -> Self {
+    pub(crate) fn new(committed_leader_id: CommittedLeaderIdOf<P>, first: u64, last: u64) -> Self {
         debug_assert!(first <= last, "first {} must be <= last {}", first, last);
         Self {
             committed_leader_id,
@@ -47,7 +47,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn new_single(log_id: LogIdOf<C>) -> Self {
+    pub(crate) fn new_single(log_id: LogIdOf<P>) -> Self {
         let index = log_id.index();
         Self {
             committed_leader_id: log_id.committed_leader_id().clone(),
@@ -58,23 +58,23 @@ where C: RaftTypeConfig
 
     /// Returns the first log ID in the range.
     #[allow(dead_code)]
-    pub(crate) fn first_log_id(&self) -> LogIdOf<C> {
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), self.first)
+    pub(crate) fn first_log_id(&self) -> LogIdOf<P> {
+        LogIdOf::<P>::new(self.committed_leader_id.clone(), self.first)
     }
 
     /// Returns a reference to the first log ID in the range.
-    pub(crate) fn first_ref(&self) -> RefLogId<'_, C> {
+    pub(crate) fn first_ref(&self) -> RefLogId<'_, P> {
         RefLogId::new(&self.committed_leader_id, self.first)
     }
 
     /// Returns the last log ID in the range.
     #[allow(dead_code)]
-    pub(crate) fn last_log_id(&self) -> LogIdOf<C> {
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), self.last)
+    pub(crate) fn last_log_id(&self) -> LogIdOf<P> {
+        LogIdOf::<P>::new(self.committed_leader_id.clone(), self.last)
     }
 
     /// Returns a reference to the last log ID in the range.
-    pub(crate) fn last_ref(&self) -> RefLogId<'_, C> {
+    pub(crate) fn last_ref(&self) -> RefLogId<'_, P> {
         RefLogId::new(&self.committed_leader_id, self.last)
     }
 
@@ -83,7 +83,7 @@ where C: RaftTypeConfig
     /// # Panics
     /// Panics if `index` is out of range `[first, last]`.
     #[allow(dead_code)]
-    pub(crate) fn get(&self, index: u64) -> LogIdOf<C> {
+    pub(crate) fn get(&self, index: u64) -> LogIdOf<P> {
         debug_assert!(
             index >= self.first && index <= self.last,
             "index {} out of range [{}, {}]",
@@ -91,7 +91,7 @@ where C: RaftTypeConfig
             self.first,
             self.last
         );
-        LogIdOf::<C>::new(self.committed_leader_id.clone(), index)
+        LogIdOf::<P>::new(self.committed_leader_id.clone(), index)
     }
 
     /// Returns a reference to the log ID at the specified index.
@@ -99,7 +99,7 @@ where C: RaftTypeConfig
     /// # Panics
     /// Panics if `index` is out of range `[first, last]`.
     #[allow(dead_code)]
-    pub(crate) fn ref_at(&self, index: u64) -> RefLogId<'_, C> {
+    pub(crate) fn ref_at(&self, index: u64) -> RefLogId<'_, P> {
         debug_assert!(
             index >= self.first && index <= self.last,
             "index {} out of range [{}, {}]",
@@ -121,11 +121,11 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> IntoIterator for LeaderLogIds<C>
-where C: RaftTypeConfig
+impl<P> IntoIterator for LeaderLogIds<P>
+where P: RaftPrimitives
 {
-    type Item = LogIdOf<C>;
-    type IntoIter = LeaderLogIdsIter<C>;
+    type Item = LogIdOf<P>;
+    type IntoIter = LeaderLogIdsIter<P>;
 
     fn into_iter(self) -> Self::IntoIter {
         LeaderLogIdsIter::new(

@@ -1,26 +1,26 @@
 use peel_off::Peel;
 
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectVote;
 use crate::raft::StreamAppendError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
+pub(crate) enum RejectAppendEntries<C: RaftComposites> {
     #[error("reject AppendEntries by a greater vote: {0}")]
     RejectVote(RejectVote<C>),
 
     #[error("reject AppendEntries due to conflicting log id: {0}")]
-    ConflictingLogId(ConflictingLogId<C>),
+    ConflictingLogId(ConflictingLogId<C::Prim>),
 }
 
-impl<C: RaftTypeConfig> From<RejectVote<C>> for RejectAppendEntries<C> {
+impl<C: RaftComposites> From<RejectVote<C>> for RejectAppendEntries<C> {
     fn from(r: RejectVote<C>) -> Self {
         RejectAppendEntries::RejectVote(r)
     }
 }
 
-impl<C: RaftTypeConfig> From<RejectAppendEntries<C>> for StreamAppendError<C> {
+impl<C: RaftComposites> From<RejectAppendEntries<C>> for StreamAppendError<C> {
     fn from(e: RejectAppendEntries<C>) -> Self {
         match e {
             RejectAppendEntries::RejectVote(r) => StreamAppendError::HigherVote(r.higher),
@@ -30,11 +30,11 @@ impl<C: RaftTypeConfig> From<RejectAppendEntries<C>> for StreamAppendError<C> {
 }
 
 /// Peel off `RejectVote`, leaving `ConflictingLogId` as the residual.
-impl<C: RaftTypeConfig> Peel for RejectAppendEntries<C> {
+impl<C: RaftComposites> Peel for RejectAppendEntries<C> {
     type Peeled = RejectVote<C>;
-    type Residual = ConflictingLogId<C>;
+    type Residual = ConflictingLogId<C::Prim>;
 
-    fn peel(self) -> Result<ConflictingLogId<C>, RejectVote<C>> {
+    fn peel(self) -> Result<ConflictingLogId<C::Prim>, RejectVote<C>> {
         match self {
             RejectAppendEntries::RejectVote(e) => Err(e),
             RejectAppendEntries::ConflictingLogId(e) => Ok(e),

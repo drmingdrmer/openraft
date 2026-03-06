@@ -21,22 +21,22 @@ use crate::quorum::QuorumSet;
 /// of a majority of every config.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Membership<C>
-where C: RaftPrimitives
+pub struct Membership<P>
+where P: RaftPrimitives
 {
     /// Multi configs of members.
     ///
     /// AKA a joint config in original raft paper.
-    pub(crate) configs: Vec<BTreeSet<C::NodeId>>,
+    pub(crate) configs: Vec<BTreeSet<P::NodeId>>,
 
     /// Additional info of all nodes, e.g., the connecting host and port.
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
-    pub(crate) nodes: BTreeMap<C::NodeId, C::Node>,
+    pub(crate) nodes: BTreeMap<P::NodeId, P::Node>,
 }
 
-impl<C> Default for Membership<C>
-where C: RaftPrimitives
+impl<P> Default for Membership<P>
+where P: RaftPrimitives
 {
     fn default() -> Self {
         Membership {
@@ -46,17 +46,17 @@ where C: RaftPrimitives
     }
 }
 
-impl<C> From<BTreeMap<C::NodeId, C::Node>> for Membership<C>
-where C: RaftPrimitives
+impl<P> From<BTreeMap<P::NodeId, P::Node>> for Membership<P>
+where P: RaftPrimitives
 {
-    fn from(b: BTreeMap<C::NodeId, C::Node>) -> Self {
-        let member_ids = b.keys().cloned().collect::<BTreeSet<C::NodeId>>();
+    fn from(b: BTreeMap<P::NodeId, P::Node>) -> Self {
+        let member_ids = b.keys().cloned().collect::<BTreeSet<P::NodeId>>();
         Membership::new_unchecked(vec![member_ids], b)
     }
 }
 
-impl<C> fmt::Display for Membership<C>
-where C: RaftPrimitives
+impl<P> fmt::Display for Membership<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{voters:[",)?;
@@ -106,8 +106,8 @@ where C: RaftPrimitives
 }
 
 // Public APIs
-impl<C> Membership<C>
-where C: RaftPrimitives
+impl<P> Membership<P>
+where P: RaftPrimitives
 {
     /// Create a new Membership from a joint config of voter-ids and a collection of all
     /// `Node` (voter nodes and learner nodes).
@@ -118,8 +118,8 @@ where C: RaftPrimitives
     ///
     /// The `nodes` implements [`IntoNodes`] thus it can be `BTreeMap<NodeId, Node>` or
     /// `HashMap<NodeId,Node>` including all Voter and Learner nodes.
-    pub fn new<T>(config: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Result<Self, MembershipError<C>>
-    where T: IntoNodes<C::NodeId, C::Node> {
+    pub fn new<T>(config: Vec<BTreeSet<P::NodeId>>, nodes: T) -> Result<Self, MembershipError<P>>
+    where T: IntoNodes<P::NodeId, P::Node> {
         let m = Membership {
             configs: config,
             nodes: nodes.into_nodes(),
@@ -138,15 +138,15 @@ where C: RaftPrimitives
     ///
     /// - `config`: Joint configuration containing sets of voter node IDs
     /// - `nodes`: Iterator of all node IDs in the cluster
-    pub fn new_with_defaults<T>(config: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
+    pub fn new_with_defaults<T>(config: Vec<BTreeSet<P::NodeId>>, nodes: T) -> Self
     where
-        T: IntoIterator<Item = C::NodeId>,
-        C::Node: Default,
+        T: IntoIterator<Item = P::NodeId>,
+        P::Node: Default,
     {
-        let voter_nodes = config.as_joint().ids().map(|x| (x, C::Node::default())).collect::<BTreeMap<_, _>>();
+        let voter_nodes = config.as_joint().ids().map(|x| (x, P::Node::default())).collect::<BTreeMap<_, _>>();
 
         let nodes = Self::extend_nodes(
-            nodes.into_iter().map(|x| (x, C::Node::default())).collect(),
+            nodes.into_iter().map(|x| (x, P::Node::default())).collect(),
             &voter_nodes,
         );
 
@@ -160,41 +160,41 @@ where C: RaftPrimitives
     ///
     /// The returned `Vec` contains one or more configs (currently it is two). If there is only one
     /// config, it is in a uniform config, otherwise, it is in a joint consensus.
-    pub fn get_joint_config(&self) -> &Vec<BTreeSet<C::NodeId>> {
+    pub fn get_joint_config(&self) -> &Vec<BTreeSet<P::NodeId>> {
         &self.configs
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&C::NodeId, &C::Node)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&P::NodeId, &P::Node)> {
         self.nodes.iter()
     }
 
     /// Get the node (either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &C::NodeId) -> Option<&C::Node> {
+    pub fn get_node(&self, node_id: &P::NodeId) -> Option<&P::Node> {
         self.nodes.get(node_id)
     }
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
-    pub fn voter_ids(&self) -> impl Iterator<Item = C::NodeId> {
+    pub fn voter_ids(&self) -> impl Iterator<Item = P::NodeId> {
         self.configs.as_joint().ids()
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub fn learner_ids(&self) -> impl Iterator<Item = C::NodeId> + '_ {
+    pub fn learner_ids(&self) -> impl Iterator<Item = P::NodeId> + '_ {
         self.nodes.keys().filter(|x| !self.is_voter(x)).cloned()
     }
 }
 
-impl<C> Membership<C>
-where C: RaftPrimitives
+impl<P> Membership<P>
+where P: RaftPrimitives
 {
     /// Return true if the given node id is either a voter or a learner.
-    pub(crate) fn contains(&self, node_id: &C::NodeId) -> bool {
+    pub(crate) fn contains(&self, node_id: &P::NodeId) -> bool {
         self.nodes.contains_key(node_id)
     }
 
     /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, node_id: &C::NodeId) -> bool {
+    pub(crate) fn is_voter(&self, node_id: &P::NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(node_id) {
                 return true;
@@ -206,8 +206,8 @@ where C: RaftPrimitives
     /// Create a new Membership the same as [`Self::new()`], but does not add the default
     /// value `Node::default()` if a voter id is not in `nodes`. Thus, it may create an invalid
     /// instance.
-    pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Self
-    where T: IntoNodes<C::NodeId, C::Node> {
+    pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<P::NodeId>>, nodes: T) -> Self
+    where T: IntoNodes<P::NodeId, P::Node> {
         let nodes = nodes.into_nodes();
         Membership { configs, nodes }
     }
@@ -217,9 +217,9 @@ where C: RaftPrimitives
     /// Node that present in `old` will **NOT** be replaced because changing the address of a node
     /// potentially breaks consensus guarantees.
     pub(crate) fn extend_nodes(
-        old: BTreeMap<C::NodeId, C::Node>,
-        new: &BTreeMap<C::NodeId, C::Node>,
-    ) -> BTreeMap<C::NodeId, C::Node> {
+        old: BTreeMap<P::NodeId, P::Node>,
+        new: &BTreeMap<P::NodeId, P::Node>,
+    ) -> BTreeMap<P::NodeId, P::Node> {
         let mut res = old;
 
         for (k, v) in new.iter() {
@@ -235,7 +235,7 @@ where C: RaftPrimitives
     /// Ensure the membership config is valid:
     /// - No empty sub-config in it.
     /// - Every voter has a corresponding Node.
-    pub(crate) fn ensure_valid(&self) -> Result<(), MembershipError<C>> {
+    pub(crate) fn ensure_valid(&self) -> Result<(), MembershipError<P>> {
         self.ensure_non_empty_config()?;
         self.ensure_voter_nodes().map_err(|nid| NodeNotFound::new(nid, Operation::None))?;
         Ok(())
@@ -255,7 +255,7 @@ where C: RaftPrimitives
     /// Ensures that every vote has a corresponding Node.
     ///
     /// If a voter is found not having a Node, it returns the voter node id in an `Err()`
-    pub(crate) fn ensure_voter_nodes(&self) -> Result<(), C::NodeId> {
+    pub(crate) fn ensure_voter_nodes(&self) -> Result<(), P::NodeId> {
         for voter_id in self.voter_ids() {
             if !self.nodes.contains_key(&voter_id) {
                 return Err(voter_id);
@@ -289,7 +289,7 @@ where C: RaftPrimitives
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_coherent(&self, goal: BTreeSet<C::NodeId>, retain: bool) -> Self {
+    pub(crate) fn next_coherent(&self, goal: BTreeSet<P::NodeId>, retain: bool) -> Self {
         let config = Joint::from(self.configs.clone()).find_coherent(goal).children().clone();
 
         let mut nodes = self.nodes.clone();
@@ -312,7 +312,7 @@ where C: RaftPrimitives
     ///
     /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
-    pub(crate) fn change(mut self, change: ChangeMembers<C>, retain: bool) -> Result<Self, ChangeMembershipError<C>> {
+    pub(crate) fn change(mut self, change: ChangeMembers<P>, retain: bool) -> Result<Self, ChangeMembershipError<P>> {
         tracing::debug!("{}: change: {:?}", func_name!(), change);
 
         let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
@@ -341,7 +341,7 @@ where C: RaftPrimitives
     ///
     /// Note: This is an intermediate step in membership changes. The result may need to be
     /// transformed into a coherent configuration before being applied.
-    fn compute_target_membership(mut self, change: ChangeMembers<C>) -> Membership<C> {
+    fn compute_target_membership(mut self, change: ChangeMembers<P>) -> Membership<P> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         match change {
@@ -401,7 +401,7 @@ where C: RaftPrimitives
     }
 
     /// Build a QuorumSet from current joint config
-    pub(crate) fn to_quorum_set(&self) -> Joint<C::NodeId, Vec<C::NodeId>, Vec<Vec<C::NodeId>>> {
+    pub(crate) fn to_quorum_set(&self) -> Joint<P::NodeId, Vec<P::NodeId>, Vec<Vec<P::NodeId>>> {
         let mut qs = vec![];
         for c in self.get_joint_config().iter() {
             qs.push(c.iter().cloned().collect::<Vec<_>>());

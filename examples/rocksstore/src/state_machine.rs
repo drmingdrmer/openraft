@@ -142,16 +142,16 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             data: data.clone(),
         };
         let file_bytes = serialize(&snapshot_file)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
+            .map_err(|e| StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         // Write complete snapshot to file
         let snapshot_path = self.snapshot_dir.join(&snapshot_id);
         fs::write(&snapshot_path, &file_bytes)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
+            .map_err(|e| StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         // Return snapshot with data-only for backward compatibility with the data field
         let data_bytes = serialize(&data)
-            .map_err(|e| StorageError::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
+            .map_err(|e| StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e)))?;
 
         Ok(Snapshot {
             meta,

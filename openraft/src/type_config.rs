@@ -178,7 +178,7 @@ pub mod alias {
     use crate::vote::RaftLeaderId;
 
     // Primitive type aliases — resolve through `RaftPrimitives`.
-    // These work for both `C: RaftPrimitives` and `C: RaftTypeConfig`.
+    // These work for both `P: RaftPrimitives` and `C: RaftTypeConfig`.
     pub type DOf<C> = <C as RaftPrimitives>::D;
     pub type ROf<C> = <C as RaftPrimitives>::R;
     pub type AppDataOf<C> = <C as RaftPrimitives>::D;

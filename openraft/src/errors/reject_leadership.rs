@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftComposites;
 use crate::raft::AppendEntriesResponse;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -9,7 +9,7 @@ use crate::type_config::alias::VoteOf;
 /// `AppendEntries` RPC because the requesting node is not qualified to be
 /// leader from this node's perspective.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectLeadership<C: RaftTypeConfig> {
+pub(crate) enum RejectLeadership<C: RaftComposites> {
     /// The node has already granted a vote to — or seen a committed vote from —
     /// a candidate with an equal or higher term, so it refuses this one.
     #[error("reject leadership: local vote {0} is not less than the leader's")]
@@ -19,11 +19,11 @@ pub(crate) enum RejectLeadership<C: RaftTypeConfig> {
     /// the vote would risk data loss (standard Raft log-completeness check).
     #[allow(dead_code)]
     #[error("reject leadership: local last-log-id {0:?} is not less than the leader's")]
-    ByLastLogId(Option<LogIdOf<C>>),
+    ByLastLogId(Option<LogIdOf<C::Prim>>),
 }
 
 impl<C> From<RejectLeadership<C>> for AppendEntriesResponse<C>
-where C: RaftTypeConfig
+where C: RaftComposites
 {
     fn from(r: RejectLeadership<C>) -> Self {
         match r {
