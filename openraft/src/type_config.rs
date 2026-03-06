@@ -4,6 +4,8 @@
 //! [`Entry`]: `RaftTypeConfig::Entry`
 
 pub mod async_runtime;
+mod raft_composites;
+mod raft_primitives;
 pub(crate) mod util;
 
 use std::fmt::Debug;
@@ -11,6 +13,8 @@ use std::fmt::Debug;
 pub use async_runtime::AsyncRuntime;
 pub use async_runtime::OneshotSender;
 use openraft_macros::since;
+pub use raft_composites::RaftTypes;
+pub use raft_primitives::RaftPrimitives;
 pub use util::TypeConfigExt;
 
 use crate::AppData;
@@ -182,29 +186,37 @@ pub trait RaftTypeConfig:
 pub mod alias {
     use crate::EntryPayload;
     use crate::LogId;
-    use crate::RaftTypeConfig;
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
     use crate::type_config::AsyncRuntime;
+    use crate::type_config::RaftPrimitives;
+    use crate::type_config::RaftTypeConfig;
+    use crate::type_config::RaftTypes;
     use crate::vote::RaftLeaderId;
 
-    pub type DOf<C> = <C as RaftTypeConfig>::D;
-    pub type ROf<C> = <C as RaftTypeConfig>::R;
-    pub type AppDataOf<C> = <C as RaftTypeConfig>::D;
-    pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
-    pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
-    pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
-    pub type TermOf<C> = <C as RaftTypeConfig>::Term;
-    pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
-    pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
-    pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
-    pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
-    pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
-    pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
+    // Primitive type aliases — resolve through `RaftPrimitives`.
+    // These work for both `P: RaftPrimitives` and `C: RaftTypeConfig`.
+    pub type DOf<C> = <C as RaftPrimitives>::D;
+    pub type ROf<C> = <C as RaftPrimitives>::R;
+    pub type AppDataOf<C> = <C as RaftPrimitives>::D;
+    pub type AppResponseOf<C> = <C as RaftPrimitives>::R;
+    pub type NodeIdOf<C> = <C as RaftPrimitives>::NodeId;
+    pub type NodeOf<C> = <C as RaftPrimitives>::Node;
+    pub type TermOf<C> = <C as RaftPrimitives>::Term;
+    pub type LeaderIdOf<C> = <C as RaftPrimitives>::LeaderId;
+
+    // Composite type aliases — resolve through `RaftComposites`.
+    // These work for both `C: RaftComposites` and `C: RaftTypeConfig`.
+    pub type PrimOf<C> = <C as RaftTypes>::Prim;
+    pub type VoteOf<C> = <C as RaftTypes>::Vote;
+    pub type EntryOf<C> = <C as RaftTypes>::Entry;
+    pub type SnapshotDataOf<C> = <C as RaftTypes>::SnapshotData;
+    pub type AsyncRuntimeOf<C> = <C as RaftTypes>::AsyncRuntime;
+    pub type ResponderOf<C, T> = <C as RaftTypes>::Responder<T>;
     pub type BatchOf<C, T> = <C as RaftTypeConfig>::Batch<T>;
-    pub type ErrorSourceOf<C> = <C as RaftTypeConfig>::ErrorSource;
+    pub type ErrorSourceOf<C> = <C as RaftPrimitives>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
     type Rt<C> = AsyncRuntimeOf<C>;
@@ -245,8 +257,12 @@ pub mod alias {
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type SnapshotOf<C> =
-        crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SnapshotDataOf<C>>;
+    pub type SnapshotOf<C> = crate::storage::Snapshot<
+        CommittedLeaderIdOf<PrimOf<C>>,
+        NodeIdOf<PrimOf<C>>,
+        NodeOf<PrimOf<C>>,
+        SnapshotDataOf<C>,
+    >;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;

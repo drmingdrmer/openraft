@@ -1,31 +1,32 @@
 use std::fmt;
 
-use crate::RaftTypeConfig;
-use crate::type_config::TypeConfigExt;
+use crate::RaftPrimitives;
+use crate::errors::ErrorSource;
+use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotSignatureOf;
 
 /// Convert error to StorageError::IO();
-pub trait ToStorageResult<C, T>
-where C: RaftTypeConfig
+pub trait ToStorageResult<P, T>
+where P: RaftPrimitives
 {
     /// Convert `Result<T, E>` to `Result<T, StorageError>`
     ///
     /// `f` provides error context for building the StorageError.
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb);
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<P>>
+    where F: FnOnce() -> (ErrorSubject<P>, ErrorVerb);
 }
 
-impl<C, T> ToStorageResult<C, T> for Result<T, std::io::Error>
-where C: RaftTypeConfig
+impl<P, T> ToStorageResult<P, T> for Result<T, std::io::Error>
+where P: RaftPrimitives
 {
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
-    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb) {
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<P>>
+    where F: FnOnce() -> (ErrorSubject<P>, ErrorVerb) {
         match self {
             Ok(x) => Ok(x),
             Err(e) => {
                 let (subject, verb) = f();
-                let io_err = StorageError::new(subject, verb, C::err_from_error(&e));
+                let io_err = StorageError::new(subject, verb, ErrorSourceOf::<P>::from_error(&e));
                 Err(io_err)
             }
         }
@@ -35,8 +36,8 @@ where C: RaftTypeConfig
 /// The subject of a storage error, indicating what operation or component failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ErrorSubject<C>
-where C: RaftTypeConfig
+pub enum ErrorSubject<P>
+where P: RaftPrimitives
 {
     /// A general storage error
     Store,
@@ -48,19 +49,19 @@ where C: RaftTypeConfig
     Logs,
 
     /// Error about a single log entry
-    Log(LogIdOf<C>),
+    Log(LogIdOf<P>),
 
     /// Error about a single log entry without knowing the log term.
     LogIndex(u64),
 
     /// Error happened when applying a log entry
-    Apply(LogIdOf<C>),
+    Apply(LogIdOf<P>),
 
     /// Error that happened when operating state machine.
     StateMachine,
 
     /// Error that happened when operating snapshots.
-    Snapshot(Option<SnapshotSignatureOf<C>>),
+    Snapshot(Option<SnapshotSignatureOf<P>>),
 
     /// No specific subject for this error.
     None,
@@ -90,27 +91,27 @@ impl fmt::Display for ErrorVerb {
 
 /// Backward compatible with old application using `StorageIOError`
 #[deprecated(note = "use StorageError instead", since = "0.10.0")]
-pub type StorageIOError<C> = StorageError<C>;
+pub type StorageIOError<P> = StorageError<P>;
 
-impl<C> StorageError<C>
-where C: RaftTypeConfig
+impl<P> StorageError<P>
+where P: RaftPrimitives
 {
     /// Backward compatible with old form `StorageError::IO{ source: StorageError }`
     #[deprecated(note = "no need to call this method", since = "0.10.0")]
-    pub fn into_io(self) -> Option<StorageError<C>> {
+    pub fn into_io(self) -> Option<StorageError<P>> {
         Some(self)
     }
 
     /// Create a StorageError from a std::io::Error.
-    pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
-        StorageError::new(subject, verb, C::err_from_error(&io_error))
+    pub fn from_io_error(subject: ErrorSubject<P>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+        StorageError::new(subject, verb, ErrorSourceOf::<P>::from_error(&io_error))
     }
 }
 
-impl<C> From<StorageError<C>> for std::io::Error
-where C: RaftTypeConfig
+impl<P> From<StorageError<P>> for std::io::Error
+where P: RaftPrimitives
 {
-    fn from(e: StorageError<C>) -> Self {
+    fn from(e: StorageError<P>) -> Self {
         std::io::Error::other(e.to_string())
     }
 }
@@ -122,97 +123,97 @@ where C: RaftTypeConfig
 /// further damage.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StorageError<C>
-where C: RaftTypeConfig
+pub struct StorageError<P>
+where P: RaftPrimitives
 {
-    subject: ErrorSubject<C>,
+    subject: ErrorSubject<P>,
     verb: ErrorVerb,
-    source: C::ErrorSource,
+    source: ErrorSourceOf<P>,
 }
 
-impl<C> fmt::Display for StorageError<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for StorageError<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
 
-impl<C> StorageError<C>
-where C: RaftTypeConfig
+impl<P> StorageError<P>
+where P: RaftPrimitives
 {
     /// Create a new StorageError.
-    pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: C::ErrorSource) -> Self {
+    pub fn new(subject: ErrorSubject<P>, verb: ErrorVerb, source: ErrorSourceOf<P>) -> Self {
         Self { subject, verb, source }
     }
 
     /// Create an error for writing a log entry.
-    pub fn write_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn write_log_entry(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a log entry at an index.
-    pub fn read_log_at_index(log_index: u64, source: C::ErrorSource) -> Self {
+    pub fn read_log_at_index(log_index: u64, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::LogIndex(log_index), ErrorVerb::Read, source)
     }
 
     /// Create an error for reading a log entry.
-    pub fn read_log_entry(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn read_log_entry(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Log(log_id), ErrorVerb::Read, source)
     }
 
     /// Create an error for writing multiple log entries.
-    pub fn write_logs(source: C::ErrorSource) -> Self {
+    pub fn write_logs(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading multiple log entries.
-    pub fn read_logs(source: C::ErrorSource) -> Self {
+    pub fn read_logs(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Logs, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing vote state.
-    pub fn write_vote(source: C::ErrorSource) -> Self {
+    pub fn write_vote(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading vote state.
-    pub fn read_vote(source: C::ErrorSource) -> Self {
+    pub fn read_vote(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
     }
 
     /// Create an error for applying a log entry to the state machine.
-    pub fn apply(log_id: LogIdOf<C>, source: C::ErrorSource) -> Self {
+    pub fn apply(log_id: LogIdOf<P>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Apply(log_id), ErrorVerb::Write, source)
     }
 
     /// Create an error for writing to the state machine.
-    pub fn write_state_machine(source: C::ErrorSource) -> Self {
+    pub fn write_state_machine(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Write, source)
     }
 
     /// Create an error for reading from the state machine.
-    pub fn read_state_machine(source: C::ErrorSource) -> Self {
+    pub fn read_state_machine(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::StateMachine, ErrorVerb::Read, source)
     }
 
     /// Create an error for writing a snapshot.
-    pub fn write_snapshot(signature: Option<SnapshotSignatureOf<C>>, source: C::ErrorSource) -> Self {
+    pub fn write_snapshot(signature: Option<SnapshotSignatureOf<P>>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Write, source)
     }
 
     /// Create an error for reading a snapshot.
-    pub fn read_snapshot(signature: Option<SnapshotSignatureOf<C>>, source: C::ErrorSource) -> Self {
+    pub fn read_snapshot(signature: Option<SnapshotSignatureOf<P>>, source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Snapshot(signature), ErrorVerb::Read, source)
     }
 
     /// General read error
-    pub fn read(source: C::ErrorSource) -> Self {
+    pub fn read(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Read, source)
     }
 
     /// General write error
-    pub fn write(source: C::ErrorSource) -> Self {
+    pub fn write(source: ErrorSourceOf<P>) -> Self {
         Self::new(ErrorSubject::Store, ErrorVerb::Write, source)
     }
 }

@@ -6,7 +6,7 @@ use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::errors::ReplicationClosed;
 use crate::errors::StreamingError;
 use crate::network::RPCOption;
@@ -24,7 +24,7 @@ use crate::type_config::alias::VoteOf;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
 pub trait NetSnapshot<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Send a complete Snapshot to the target.
     ///
@@ -48,5 +48,5 @@ where C: RaftTypeConfig
         snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
+    ) -> Result<SnapshotResponse<C>, StreamingError<C::Prim>>;
 }

@@ -2,7 +2,7 @@ use std::fmt;
 
 use display_more::DisplayOptionExt;
 
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 use crate::raft_state::io_state::IOId;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;
@@ -20,50 +20,50 @@ use crate::vote::RaftVote;
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
-pub(crate) struct LogIOId<C>
-where C: RaftTypeConfig
+pub(crate) struct LogIOId<P>
+where P: RaftPrimitives
 {
     /// The id of the leader that performs the log io operation.
-    pub(crate) committed_vote: CommittedVoteOf<C>,
+    pub(crate) committed_vote: CommittedVoteOf<P>,
 
     /// The last log id that has been flushed to storage.
-    pub(crate) log_id: Option<LogIdOf<C>>,
+    pub(crate) log_id: Option<LogIdOf<P>>,
 }
 
-impl<C> fmt::Display for LogIOId<C>
-where C: RaftTypeConfig
+impl<P> fmt::Display for LogIOId<P>
+where P: RaftPrimitives
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "by:{}, {}", self.committed_vote, self.log_id.display())
     }
 }
 
-impl<C> LogIOId<C>
-where C: RaftTypeConfig
+impl<P> LogIOId<P>
+where P: RaftPrimitives
 {
-    pub(crate) fn new(committed_vote: CommittedVoteOf<C>, log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(committed_vote: CommittedVoteOf<P>, log_id: Option<LogIdOf<P>>) -> Self {
         Self { committed_vote, log_id }
     }
 
     #[allow(dead_code)]
-    pub(crate) fn committed_vote(&self) -> &CommittedVoteOf<C> {
+    pub(crate) fn committed_vote(&self) -> &CommittedVoteOf<P> {
         &self.committed_vote
     }
 
-    pub(crate) fn to_committed_vote(&self) -> CommittedVoteOf<C> {
+    pub(crate) fn to_committed_vote(&self) -> CommittedVoteOf<P> {
         self.committed_vote.clone()
     }
 
-    pub(crate) fn leader_id(&self) -> &LeaderIdOf<C> {
+    pub(crate) fn leader_id(&self) -> &LeaderIdOf<P> {
         self.committed_vote.leader_id()
     }
 
     /// Return the last log id included in this io operation.
-    pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
+    pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<P>> {
         self.log_id.as_ref()
     }
 
-    pub(crate) fn to_io_id(&self) -> IOId<C> {
+    pub(crate) fn to_io_id(&self) -> IOId<P> {
         IOId::Log(self.clone())
     }
 }

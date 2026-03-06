@@ -48,19 +48,21 @@ pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::LogId;
 use crate::Membership;
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
+use crate::RaftTypes;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftCommittedLeaderId;
 
 /// For backward compatibility, use [`LinearizableReadError`] instead.
 #[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
-pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
+pub type CheckIsLeaderError<P> = LinearizableReadError<P>;
 
 /// Error related to installing a snapshot.
 // TODO: remove
@@ -77,22 +79,22 @@ pub enum InstallSnapshotError {
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ClientWriteError<C>
-where C: RaftTypeConfig
+pub enum ClientWriteError<P>
+where P: RaftPrimitives
 {
     /// This node is not the leader; request should be forwarded to the leader.
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<P>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId>),
+    ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<P>, P::NodeId>),
 }
 
-impl<C> TryAsRef<ForwardToLeader<C>> for ClientWriteError<C>
-where C: RaftTypeConfig
+impl<P> TryAsRef<ForwardToLeader<P>> for ClientWriteError<P>
+where P: RaftPrimitives
 {
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<P>> {
         match self {
             Self::ForwardToLeader(f) => Some(f),
             _ => None,
@@ -129,7 +131,7 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InitializeError<C>
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Initialization operation is not allowed in the current state.
     #[error(transparent)]
@@ -137,12 +139,12 @@ where C: RaftTypeConfig
 
     /// This node is not included in the initial membership configuration.
     #[error(transparent)]
-    NotInMembers(#[from] NotInMembers<C>),
+    NotInMembers(#[from] NotInMembers<C::Prim>),
 }
 
 /// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-// C already has serde bound.
+// P already has serde bound.
 // E still needs additional serde bound.
 // `serde(bound="")` does not work in this case.
 #[cfg_attr(
@@ -151,27 +153,27 @@ where C: RaftTypeConfig
     serde(bound(serialize = "E: serde::Serialize")),
     serde(bound(deserialize = "E: for <'d> serde::Deserialize<'d>"))
 )]
-pub enum RPCError<C: RaftTypeConfig, E: Error = Infallible> {
+pub enum RPCError<P: RaftPrimitives, E: Error = Infallible> {
     /// The RPC request timed out.
     #[error(transparent)]
-    Timeout(#[from] Timeout<C>),
+    Timeout(#[from] Timeout<P>),
 
     /// The node is temporarily unreachable and should backoff before retrying.
     #[error(transparent)]
-    Unreachable(#[from] Unreachable<C>),
+    Unreachable(#[from] Unreachable<P>),
 
     /// Failed to send the RPC request and should retry immediately.
     #[error(transparent)]
-    Network(#[from] NetworkError<C>),
+    Network(#[from] NetworkError<P>),
 
     /// The remote node returned an error.
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C, E>),
+    RemoteError(#[from] RemoteError<P, E>),
 }
 
-impl<C, E> RPCError<C, E>
+impl<P, E> RPCError<P, E>
 where
-    C: RaftTypeConfig,
+    P: RaftPrimitives,
     E: Error,
 {
     /// Returns a weight indicating how severe this error is for backoff purposes.
@@ -189,14 +191,14 @@ where
     }
 }
 
-impl<C, E> RPCError<C, RaftError<C, E>>
+impl<P, E> RPCError<P, RaftError<P, E>>
 where
-    C: RaftTypeConfig,
+    P: RaftPrimitives,
     E: Error,
 {
     /// Return a reference to ForwardToLeader error if Self::RemoteError contains one.
-    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
-    where E: TryAsRef<ForwardToLeader<C>> {
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<P>>
+    where E: TryAsRef<ForwardToLeader<P>> {
         match self {
             RPCError::Timeout(_) => None,
             RPCError::Unreachable(_) => None,
@@ -206,11 +208,11 @@ where
     }
 }
 
-impl<C> RPCError<C>
-where C: RaftTypeConfig
+impl<P> RPCError<P>
+where P: RaftPrimitives
 {
     /// Convert to a [`RPCError`] with [`RaftError`] as the error type.
-    pub fn with_raft_error<E: Error>(self) -> RPCError<C, RaftError<C, E>> {
+    pub fn with_raft_error<E: Error>(self) -> RPCError<P, RaftError<P, E>> {
         match self {
             RPCError::Timeout(e) => RPCError::Timeout(e),
             RPCError::Unreachable(e) => RPCError::Unreachable(e),
@@ -223,22 +225,22 @@ where C: RaftTypeConfig
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]
-pub struct RemoteError<C, T: Error>
-where C: RaftTypeConfig
+pub struct RemoteError<P, T: Error>
+where P: RaftPrimitives
 {
     /// The node ID of the remote peer where the error occurred.
     #[cfg_attr(feature = "serde", serde(bound = ""))]
-    pub target: C::NodeId,
+    pub target: P::NodeId,
     /// The node information of the remote peer, if available.
     #[cfg_attr(feature = "serde", serde(bound = ""))]
-    pub target_node: Option<C::Node>,
+    pub target_node: Option<P::Node>,
     /// The error that occurred on the remote peer.
     pub source: T,
 }
 
-impl<C: RaftTypeConfig, T: Error> RemoteError<C, T> {
+impl<P: RaftPrimitives, T: Error> RemoteError<P, T> {
     /// Create a new RemoteError with target node ID.
-    pub fn new(target: C::NodeId, e: T) -> Self {
+    pub fn new(target: P::NodeId, e: T) -> Self {
         Self {
             target,
             target_node: None,
@@ -246,7 +248,7 @@ impl<C: RaftTypeConfig, T: Error> RemoteError<C, T> {
         }
     }
     /// Create a new RemoteError with target node ID and node information.
-    pub fn new_with_node(target: C::NodeId, node: C::Node, e: T) -> Self {
+    pub fn new_with_node(target: P::NodeId, node: P::Node, e: T) -> Self {
         Self {
             target,
             target_node: Some(node),
@@ -255,12 +257,12 @@ impl<C: RaftTypeConfig, T: Error> RemoteError<C, T> {
     }
 }
 
-impl<C, E> From<RemoteError<C, Fatal<C>>> for RemoteError<C, RaftError<C, E>>
+impl<P, E> From<RemoteError<P, Fatal<P>>> for RemoteError<P, RaftError<P, E>>
 where
-    C: RaftTypeConfig,
+    P: RaftPrimitives,
     E: Error,
 {
-    fn from(e: RemoteError<C, Fatal<C>>) -> Self {
+    fn from(e: RemoteError<P, Fatal<P>>) -> Self {
         RemoteError {
             target: e.target,
             target_node: e.target_node,
@@ -276,22 +278,22 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
-pub struct NetworkError<C: RaftTypeConfig> {
-    source: C::ErrorSource,
+pub struct NetworkError<P: RaftPrimitives> {
+    source: ErrorSourceOf<P>,
 }
 
-impl<C: RaftTypeConfig> NetworkError<C> {
+impl<P: RaftPrimitives> NetworkError<P> {
     /// Create a new NetworkError from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: C::ErrorSource::from_error(e),
+            source: ErrorSourceOf::<P>::from_error(e),
         }
     }
 
     /// Create a NetworkError from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: C::ErrorSource::from_string(msg),
+            source: ErrorSourceOf::<P>::from_string(msg),
         }
     }
 }
@@ -309,22 +311,22 @@ impl<C: RaftTypeConfig> NetworkError<C> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]
-pub struct Unreachable<C: RaftTypeConfig> {
-    source: C::ErrorSource,
+pub struct Unreachable<P: RaftPrimitives> {
+    source: ErrorSourceOf<P>,
 }
 
-impl<C: RaftTypeConfig> Unreachable<C> {
+impl<P: RaftPrimitives> Unreachable<P> {
     /// Create a new Unreachable error from an error.
     pub fn new<E: Error + 'static>(e: &E) -> Self {
         Self {
-            source: C::ErrorSource::from_error(e),
+            source: ErrorSourceOf::<P>::from_error(e),
         }
     }
 
     /// Create an Unreachable error from a string message.
     pub fn from_string(msg: impl ToString) -> Self {
         Self {
-            source: C::ErrorSource::from_string(msg),
+            source: ErrorSourceOf::<P>::from_string(msg),
         }
     }
 }
@@ -333,13 +335,13 @@ impl<C: RaftTypeConfig> Unreachable<C> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("timeout after {timeout:?} when {action} {id}->{target}")]
-pub struct Timeout<C: RaftTypeConfig> {
+pub struct Timeout<P: RaftPrimitives> {
     /// The type of RPC that timed out.
     pub action: RPCTypes,
     /// The node ID that initiated the request.
-    pub id: C::NodeId,
+    pub id: P::NodeId,
     /// The target node ID.
-    pub target: C::NodeId,
+    pub target: P::NodeId,
     /// The timeout duration that elapsed.
     pub timeout: Duration,
 }
@@ -348,17 +350,17 @@ pub struct Timeout<C: RaftTypeConfig> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
-pub struct ForwardToLeader<C>
-where C: RaftTypeConfig
+pub struct ForwardToLeader<P>
+where P: RaftPrimitives
 {
     /// The node ID of the current leader, if known.
-    pub leader_id: Option<C::NodeId>,
+    pub leader_id: Option<P::NodeId>,
     /// The node information of the current leader, if known.
-    pub leader_node: Option<C::Node>,
+    pub leader_node: Option<P::Node>,
 }
 
-impl<C> ForwardToLeader<C>
-where C: RaftTypeConfig
+impl<P> ForwardToLeader<P>
+where P: RaftPrimitives
 {
     /// Create a ForwardToLeader error with no known leader information.
     pub const fn empty() -> Self {
@@ -369,7 +371,7 @@ where C: RaftTypeConfig
     }
 
     /// Create a ForwardToLeader error with known leader information.
-    pub fn new(leader_id: C::NodeId, node: C::Node) -> Self {
+    pub fn new(leader_id: P::NodeId, node: P::Node) -> Self {
         Self {
             leader_id: Some(leader_id),
             leader_node: Some(node),
@@ -392,11 +394,11 @@ pub struct SnapshotMismatch {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
-pub struct QuorumNotEnough<C: RaftTypeConfig> {
+pub struct QuorumNotEnough<P: RaftPrimitives> {
     /// A description of the cluster membership.
     pub cluster: String,
     /// The set of nodes that responded.
-    pub got: BTreeSet<C::NodeId>,
+    pub got: BTreeSet<P::NodeId>,
 }
 
 /// Error indicating a membership change is already in progress.
@@ -416,7 +418,6 @@ where CLID: RaftCommittedLeaderId
 }
 
 /// Error indicating a learner node was not found in the cluster.
-#[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
@@ -431,9 +432,9 @@ where NID: NodeId
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
-pub struct NotAllowed<C: RaftTypeConfig> {
+pub struct NotAllowed<C: RaftTypes> {
     /// The last log ID in the current state.
-    pub last_log_id: Option<LogIdOf<C>>,
+    pub last_log_id: Option<LogIdOf<C::Prim>>,
     /// The current vote state.
     pub vote: VoteOf<C>,
 }
@@ -442,13 +443,13 @@ pub struct NotAllowed<C: RaftTypeConfig> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("node {node_id} has to be a member. membership:{membership:?}")]
-pub struct NotInMembers<C>
-where C: RaftTypeConfig
+pub struct NotInMembers<P>
+where P: RaftPrimitives
 {
     /// The node ID that is not in the membership.
-    pub node_id: C::NodeId,
+    pub node_id: P::NodeId,
     /// The current cluster membership.
-    pub membership: Membership<C::NodeId, C::Node>,
+    pub membership: Membership<P::NodeId, P::Node>,
 }
 
 /// Error indicating an empty membership configuration was provided.

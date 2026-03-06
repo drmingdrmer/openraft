@@ -1,4 +1,4 @@
-use crate::RaftTypeConfig;
+use crate::RaftPrimitives;
 #[cfg(doc)]
 use crate::core::RaftCore;
 use crate::type_config::alias::LogIdOf;
@@ -8,11 +8,11 @@ use crate::type_config::alias::LogIdOf;
 /// Handles behavior not in [`Engine`](crate::engine::Engine), such as snapshot triggering and log
 /// purging.
 #[derive(Debug, Default, Clone)]
-pub(crate) struct CoreState<C>
-where C: RaftTypeConfig
+pub(crate) struct CoreState<P>
+where P: RaftPrimitives
 {
     /// LogId of the last snapshot attempt.
     ///
     /// Prevents repeated attempts when the state machine declines to build a snapshot.
-    pub(crate) snapshot_tried_at: Option<LogIdOf<C>>,
+    pub(crate) snapshot_tried_at: Option<LogIdOf<P>>,
 }

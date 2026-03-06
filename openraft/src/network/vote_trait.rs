@@ -4,7 +4,7 @@ use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::errors::RPCError;
 use crate::network::RPCOption;
 use crate::raft::VoteRequest;
@@ -20,12 +20,12 @@ use crate::raft::VoteResponse;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
 pub trait NetVote<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Send a RequestVote RPC to the target.
     ///
     /// The network implementation is responsible for enforcing `option.soft_ttl()`.
-    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>>;
 
     /// Send a Pre-Vote RPC to the target.
     ///
@@ -36,7 +36,7 @@ where C: RaftTypeConfig
     ///
     /// Implementations that send a real Pre-Vote RPC are responsible for enforcing
     /// `option.soft_ttl()`.
-    async fn pre_vote(&mut self, rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+    async fn pre_vote(&mut self, rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>> {
         Ok(VoteResponse::new(rpc.vote, None, true))
     }
 }

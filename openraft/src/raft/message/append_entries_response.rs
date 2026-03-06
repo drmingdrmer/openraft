@@ -2,7 +2,7 @@ use std::fmt;
 
 use display_more::DisplayOptionExt;
 
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
@@ -18,7 +18,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<C: RaftTypeConfig> {
+pub enum AppendEntriesResponse<C: RaftTypes> {
     /// Successfully replicated all log entries to the target node.
     Success,
 
@@ -39,7 +39,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// [`RPCError`]: crate::errors::RPCError
     /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
     /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
-    PartialSuccess(Option<LogIdOf<C>>),
+    PartialSuccess(Option<LogIdOf<C::Prim>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
     /// match on the remote target node.
@@ -54,7 +54,7 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
 }
 
 impl<C> AppendEntriesResponse<C>
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Returns true if the response indicates a successful replication.
     pub fn is_success(&self) -> bool {
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
     /// Returns the partial success log id if this is a `PartialSuccess` response.
     ///
     /// Returns `None` for `Success`, `Conflict`, or `HigherVote` responses.
-    pub(crate) fn get_partial_success(&self) -> Option<&Option<LogIdOf<C>>> {
+    pub(crate) fn get_partial_success(&self) -> Option<&Option<LogIdOf<C::Prim>>> {
         match self {
             AppendEntriesResponse::PartialSuccess(log_id) => Some(log_id),
             _ => None,
@@ -83,8 +83,8 @@ where C: RaftTypeConfig
     /// - `last_log_id`: The last_log_id of the sent entries, used for Success.
     pub fn into_stream_result(
         self,
-        prev_log_id: Option<LogIdOf<C>>,
-        last_log_id: Option<LogIdOf<C>>,
+        prev_log_id: Option<LogIdOf<C::Prim>>,
+        last_log_id: Option<LogIdOf<C::Prim>>,
     ) -> StreamAppendResult<C> {
         match self {
             AppendEntriesResponse::Success => Ok(last_log_id),
@@ -95,7 +95,7 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
+impl<C: RaftTypes> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
     fn from(r: StreamAppendResult<C>) -> Self {
         match r {
             Ok(_) => AppendEntriesResponse::Success,
@@ -106,7 +106,7 @@ impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
 }
 
 impl<C> fmt::Display for AppendEntriesResponse<C>
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

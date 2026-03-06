@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
 use crate::errors::RPCError;
@@ -35,7 +35,7 @@ use crate::raft::StreamAppendResult;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 pub trait NetStreamAppend<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static;
 }
@@ -73,9 +73,9 @@ pub fn stream_append_sequential<'s, C, N, S>(
     network: &'s mut N,
     input: S,
     option: RPCOption,
-) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C::Prim>>>, RPCError<C::Prim>>>
 where
-    C: RaftTypeConfig,
+    C: RaftTypes,
     N: NetAppend<C> + ?Sized,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
 {

@@ -3,7 +3,7 @@ use std::fmt;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::entry::RaftEntry;
 use crate::type_config::alias::LogIdOf;
 
@@ -12,23 +12,23 @@ use crate::type_config::alias::LogIdOf;
 /// - `prev_log_id`: the log id of the entry just before this segment; `None` means the segment
 ///   starts at the very beginning of the log.
 /// - `entries`: the entries in this segment, each consecutive to the previous.
-pub struct LogSegment<C: RaftTypeConfig> {
-    pub prev_log_id: Option<LogIdOf<C>>,
+pub struct LogSegment<C: RaftTypes> {
+    pub prev_log_id: Option<LogIdOf<C::Prim>>,
     pub entries: Vec<C::Entry>,
 }
 
-impl<C: RaftTypeConfig> LogSegment<C> {
-    pub fn new(prev_log_id: Option<LogIdOf<C>>, entries: Vec<C::Entry>) -> Self {
+impl<C: RaftTypes> LogSegment<C> {
+    pub fn new(prev_log_id: Option<LogIdOf<C::Prim>>, entries: Vec<C::Entry>) -> Self {
         Self { prev_log_id, entries }
     }
 
     /// Returns the log id of the last entry in this segment, or `prev_log_id` if empty.
-    pub fn last(&self) -> Option<LogIdOf<C>> {
+    pub fn last(&self) -> Option<LogIdOf<C::Prim>> {
         self.entries.last().map(|e| e.log_id()).or_else(|| self.prev_log_id.clone())
     }
 }
 
-impl<C: RaftTypeConfig> fmt::Display for LogSegment<C>
+impl<C: RaftTypes> fmt::Display for LogSegment<C>
 where C::Entry: fmt::Display
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

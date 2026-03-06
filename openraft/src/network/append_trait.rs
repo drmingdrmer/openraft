@@ -4,7 +4,7 @@ use openraft_macros::add_async_trait;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftTypeConfig;
+use crate::RaftTypes;
 use crate::errors::RPCError;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
@@ -20,7 +20,7 @@ use crate::raft::AppendEntriesResponse;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 #[add_async_trait]
 pub trait NetAppend<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+where C: RaftTypes
 {
     /// Send an AppendEntries RPC to the target.
     ///
@@ -29,5 +29,5 @@ where C: RaftTypeConfig
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C::Prim>>;
 }
