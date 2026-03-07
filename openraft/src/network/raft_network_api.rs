@@ -1,6 +1,6 @@
 //! Defines the [`RaftNetworkApi`] super-trait used internally by Openraft.
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::network::NetBackoff;
 use crate::network::NetSnapshot;
 use crate::network::NetStreamAppend;
@@ -20,7 +20,7 @@ use crate::network::NetVote;
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 pub(crate) trait RaftNetworkApi<C>:
     NetBackoff<C> + NetStreamAppend<C> + NetVote<C> + NetSnapshot<C> + NetTransferLeader<C>
-where C: RaftComposites
+where C: RaftTypes
 {
 }
 
@@ -28,7 +28,7 @@ where C: RaftComposites
 // that implements all required sub-traits.
 impl<C, T> RaftNetworkApi<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: NetBackoff<C> + NetStreamAppend<C> + NetVote<C> + NetSnapshot<C> + NetTransferLeader<C>,
 {
 }

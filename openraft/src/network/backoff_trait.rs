@@ -2,7 +2,7 @@
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::network::Backoff;
 
 /// Provides backoff strategy for network operations.
@@ -15,7 +15,7 @@ use crate::network::Backoff;
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 pub trait NetBackoff<C>: OptionalSend + OptionalSync + 'static
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
     ///

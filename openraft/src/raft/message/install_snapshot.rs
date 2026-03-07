@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::storage::SnapshotMeta;
 use crate::type_config::alias::VoteOf;
 
@@ -8,7 +8,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct InstallSnapshotRequest<C: RaftComposites> {
+pub struct InstallSnapshotRequest<C: RaftTypes> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,
 
@@ -24,7 +24,7 @@ pub struct InstallSnapshotRequest<C: RaftComposites> {
     pub done: bool,
 }
 
-impl<C: RaftComposites> fmt::Display for InstallSnapshotRequest<C> {
+impl<C: RaftTypes> fmt::Display for InstallSnapshotRequest<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -44,7 +44,7 @@ impl<C: RaftComposites> fmt::Display for InstallSnapshotRequest<C> {
 #[derive(derive_more::Display)]
 #[display("{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct InstallSnapshotResponse<C: RaftComposites> {
+pub struct InstallSnapshotResponse<C: RaftTypes> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
@@ -55,12 +55,12 @@ pub struct InstallSnapshotResponse<C: RaftComposites> {
 #[derive(derive_more::Display)]
 #[display("SnapshotResponse{{vote:{}}}", vote)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct SnapshotResponse<C: RaftComposites> {
+pub struct SnapshotResponse<C: RaftTypes> {
     /// The responder's current vote.
     pub vote: VoteOf<C>,
 }
 
-impl<C: RaftComposites> SnapshotResponse<C> {
+impl<C: RaftTypes> SnapshotResponse<C> {
     /// Create a new snapshot response with the given vote.
     pub fn new(vote: VoteOf<C>) -> Self {
         Self { vote }
@@ -68,7 +68,7 @@ impl<C: RaftComposites> SnapshotResponse<C> {
 }
 
 impl<C> From<SnapshotResponse<C>> for InstallSnapshotResponse<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn from(snap_resp: SnapshotResponse<C>) -> Self {
         Self { vote: snap_resp.vote }

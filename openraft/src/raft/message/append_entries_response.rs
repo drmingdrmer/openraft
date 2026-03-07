@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::display_ext::DisplayOptionExt;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
@@ -17,7 +17,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<C: RaftComposites> {
+pub enum AppendEntriesResponse<C: RaftTypes> {
     /// Successfully replicated all log entries to the target node.
     Success,
 
@@ -53,7 +53,7 @@ pub enum AppendEntriesResponse<C: RaftComposites> {
 }
 
 impl<C> AppendEntriesResponse<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Returns true if the response indicates a successful replication.
     pub fn is_success(&self) -> bool {
@@ -94,7 +94,7 @@ where C: RaftComposites
     }
 }
 
-impl<C: RaftComposites> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
+impl<C: RaftTypes> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
     fn from(r: StreamAppendResult<C>) -> Self {
         match r {
             Ok(_) => AppendEntriesResponse::Success,
@@ -105,7 +105,7 @@ impl<C: RaftComposites> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
 }
 
 impl<C> fmt::Display for AppendEntriesResponse<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

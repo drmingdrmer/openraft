@@ -148,9 +148,9 @@ pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::summary::MessageSummary;
 pub use crate::try_as_ref::TryAsRef;
-pub use crate::type_config::RaftComposites;
 pub use crate::type_config::RaftPrimitives;
 pub use crate::type_config::RaftTypeConfig;
+pub use crate::type_config::RaftTypes;
 #[cfg(feature = "type-alias")]
 pub use crate::type_config::alias;
 pub use crate::vote::Vote;

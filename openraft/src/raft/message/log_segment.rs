@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySliceExt;
 use crate::entry::RaftEntry;
@@ -11,12 +11,12 @@ use crate::type_config::alias::LogIdOf;
 /// - `prev_log_id`: the log id of the entry just before this segment; `None` means the segment
 ///   starts at the very beginning of the log.
 /// - `entries`: the entries in this segment, each consecutive to the previous.
-pub struct LogSegment<C: RaftComposites> {
+pub struct LogSegment<C: RaftTypes> {
     pub prev_log_id: Option<LogIdOf<C::Prim>>,
     pub entries: Vec<C::Entry>,
 }
 
-impl<C: RaftComposites> LogSegment<C> {
+impl<C: RaftTypes> LogSegment<C> {
     pub fn new(prev_log_id: Option<LogIdOf<C::Prim>>, entries: Vec<C::Entry>) -> Self {
         Self { prev_log_id, entries }
     }
@@ -27,7 +27,7 @@ impl<C: RaftComposites> LogSegment<C> {
     }
 }
 
-impl<C: RaftComposites> fmt::Display for LogSegment<C>
+impl<C: RaftTypes> fmt::Display for LogSegment<C>
 where C::Entry: fmt::Display
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

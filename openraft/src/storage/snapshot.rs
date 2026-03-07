@@ -2,14 +2,14 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::storage::SnapshotMeta;
 
 /// The data associated with the current snapshot.
 #[since(version = "0.10.0", change = "SnapshotData without Box")]
 #[derive(Debug, Clone)]
 pub struct Snapshot<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// metadata of a snapshot
     pub meta: SnapshotMeta<C::Prim>,
@@ -19,7 +19,7 @@ where C: RaftComposites
 }
 
 impl<C> Snapshot<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     #[allow(dead_code)]
     pub(crate) fn new(meta: SnapshotMeta<C::Prim>, snapshot: C::SnapshotData) -> Self {
@@ -28,7 +28,7 @@ where C: RaftComposites
 }
 
 impl<C> fmt::Display for Snapshot<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Snapshot{{meta: {}}}", self.meta)

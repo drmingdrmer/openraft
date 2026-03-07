@@ -17,7 +17,7 @@ use crate::vote::raft_vote::RaftVote;
 /// cleanly breaking circular type dependencies.
 ///
 /// Any `C: RaftTypeConfig` automatically implements `RaftComposites` via a blanket impl.
-pub trait RaftComposites:
+pub trait RaftTypes:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// The primitive types this composite configuration is built on.
@@ -40,7 +40,7 @@ pub trait RaftComposites:
     where T: OptionalSend + 'static;
 }
 
-impl<C: crate::RaftTypeConfig> RaftComposites for C {
+impl<C: crate::RaftTypeConfig> RaftTypes for C {
     type Prim = C;
     type Vote = C::Vote;
     type Entry = C::Entry;

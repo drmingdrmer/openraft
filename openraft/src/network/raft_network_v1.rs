@@ -3,7 +3,7 @@
 //! This module provides a deprecated trait directing users to use
 //! the `openraft-legacy` crate for the v1 network API.
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 
 /// **REMOVED**: Use `openraft_legacy::RaftNetwork` instead.
 ///
@@ -27,4 +27,4 @@ use crate::RaftComposites;
             Add `openraft-legacy` to your dependencies and use \
             `openraft_legacy::RaftNetwork` instead."
 )]
-pub trait RaftNetwork<C: RaftComposites> {}
+pub trait RaftNetwork<C: RaftTypes> {}

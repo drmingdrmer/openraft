@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
@@ -11,7 +11,7 @@ use crate::type_config::alias::VoteOf;
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct TransferLeaderRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// The vote of the Leader that is transferring the leadership.
     pub(crate) from_leader: VoteOf<C>,
@@ -24,7 +24,7 @@ where C: RaftComposites
 }
 
 impl<C> TransferLeaderRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Create a new transfer leader request.
     pub fn new(from: VoteOf<C>, to: NodeIdOf<C::Prim>, last_log_id: Option<LogIdOf<C::Prim>>) -> Self {
@@ -54,7 +54,7 @@ where C: RaftComposites
 }
 
 impl<C> fmt::Display for TransferLeaderRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

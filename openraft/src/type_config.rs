@@ -12,7 +12,7 @@ use std::fmt::Debug;
 
 pub use async_runtime::AsyncRuntime;
 pub use async_runtime::OneshotSender;
-pub use raft_composites::RaftComposites;
+pub use raft_composites::RaftTypes;
 pub use raft_primitives::RaftPrimitives;
 pub use util::TypeConfigExt;
 
@@ -173,8 +173,8 @@ pub mod alias {
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
     use crate::type_config::AsyncRuntime;
-    use crate::type_config::RaftComposites;
     use crate::type_config::RaftPrimitives;
+    use crate::type_config::RaftTypes;
     use crate::vote::RaftLeaderId;
 
     // Primitive type aliases — resolve through `RaftPrimitives`.
@@ -190,12 +190,12 @@ pub mod alias {
 
     // Composite type aliases — resolve through `RaftComposites`.
     // These work for both `C: RaftComposites` and `C: RaftTypeConfig`.
-    pub type PrimOf<C> = <C as RaftComposites>::Prim;
-    pub type VoteOf<C> = <C as RaftComposites>::Vote;
-    pub type EntryOf<C> = <C as RaftComposites>::Entry;
-    pub type SnapshotDataOf<C> = <C as RaftComposites>::SnapshotData;
-    pub type AsyncRuntimeOf<C> = <C as RaftComposites>::AsyncRuntime;
-    pub type ResponderOf<C, T> = <C as RaftComposites>::Responder<T>;
+    pub type PrimOf<C> = <C as RaftTypes>::Prim;
+    pub type VoteOf<C> = <C as RaftTypes>::Vote;
+    pub type EntryOf<C> = <C as RaftTypes>::Entry;
+    pub type SnapshotDataOf<C> = <C as RaftTypes>::SnapshotData;
+    pub type AsyncRuntimeOf<C> = <C as RaftTypes>::AsyncRuntime;
+    pub type ResponderOf<C, T> = <C as RaftTypes>::Responder<T>;
     pub type ErrorSourceOf<C> = <C as RaftPrimitives>::ErrorSource;
     pub type WriteResponderOf<C> = ResponderOf<C, ClientWriteResult<C>>;
 
@@ -229,7 +229,7 @@ pub mod alias {
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
     // Usually used types
-    pub type LogIdOf<C> = LogId<C>;
+    pub type LogIdOf<P> = LogId<P>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId<TermOf<C>, NodeIdOf<C>>>::Committed;
     pub type EntryPayloadOf<C> = EntryPayload<C>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;

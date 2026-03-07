@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -9,7 +9,7 @@ use crate::type_config::alias::VoteOf;
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteRequest<C: RaftComposites> {
+pub struct VoteRequest<C: RaftTypes> {
     /// The candidate's vote requesting support.
     pub vote: VoteOf<C>,
     /// The candidate's last log id.
@@ -17,7 +17,7 @@ pub struct VoteRequest<C: RaftComposites> {
 }
 
 impl<C> fmt::Display for VoteRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
@@ -25,7 +25,7 @@ where C: RaftComposites
 }
 
 impl<C> VoteRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Create a new vote request.
     pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C::Prim>>) -> Self {
@@ -36,7 +36,7 @@ where C: RaftComposites
 /// The response to a `VoteRequest`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct VoteResponse<C: RaftComposites> {
+pub struct VoteResponse<C: RaftTypes> {
     /// vote after a node handling vote-request.
     /// Thus, `resp.vote >= req.vote` always holds.
     ///
@@ -52,7 +52,7 @@ pub struct VoteResponse<C: RaftComposites> {
 }
 
 impl<C> VoteResponse<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Create a new vote response.
     pub fn new(vote: impl Borrow<VoteOf<C>>, last_log_id: Option<LogIdOf<C::Prim>>, granted: bool) -> Self {
@@ -71,7 +71,7 @@ where C: RaftComposites
 }
 
 impl<C> fmt::Display for VoteResponse<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

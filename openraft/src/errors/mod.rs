@@ -45,8 +45,8 @@ pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
 use crate::Membership;
-use crate::RaftComposites;
 use crate::RaftPrimitives;
+use crate::RaftTypes;
 use crate::network::RPCTypes;
 use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
@@ -117,7 +117,7 @@ pub enum ChangeMembershipError<P: RaftPrimitives> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InitializeError<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Initialization operation is not allowed in the current state.
     #[error(transparent)]
@@ -413,7 +413,7 @@ pub struct LearnerNotFound<P: RaftPrimitives> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
-pub struct NotAllowed<C: RaftComposites> {
+pub struct NotAllowed<C: RaftTypes> {
     /// The last log ID in the current state.
     pub last_log_id: Option<LogIdOf<C::Prim>>,
     /// The current vote state.

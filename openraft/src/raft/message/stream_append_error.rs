@@ -2,7 +2,7 @@ use std::fmt;
 
 use peel_off::Peel;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectVote;
 use crate::type_config::alias::LogIdOf;
@@ -13,7 +13,7 @@ use crate::type_config::alias::VoteOf;
 /// When this error is returned, the stream is terminated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StreamAppendError<C: RaftComposites> {
+pub enum StreamAppendError<C: RaftTypes> {
     /// Log conflict at the given prev_log_id.
     ///
     /// The follower's log at this position does not match the leader's.
@@ -24,7 +24,7 @@ pub enum StreamAppendError<C: RaftComposites> {
 }
 
 impl<C> fmt::Display for StreamAppendError<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -39,7 +39,7 @@ where C: RaftComposites
 }
 
 /// Peel off `RejectVote`, leaving `ConflictingLogId` as the residual.
-impl<C: RaftComposites> Peel for StreamAppendError<C> {
+impl<C: RaftTypes> Peel for StreamAppendError<C> {
     type Peeled = RejectVote<C>;
     type Residual = ConflictingLogId<C::Prim>;
 

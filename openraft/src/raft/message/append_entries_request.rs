@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::DisplaySlice;
 use crate::entry::RaftEntry;
@@ -17,7 +17,7 @@ use crate::type_config::alias::VoteOf;
 /// previous log entries.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct AppendEntriesRequest<C: RaftComposites> {
+pub struct AppendEntriesRequest<C: RaftTypes> {
     /// The leader's current vote.
     pub vote: VoteOf<C>,
 
@@ -34,7 +34,7 @@ pub struct AppendEntriesRequest<C: RaftComposites> {
     pub leader_commit: Option<LogIdOf<C::Prim>>,
 }
 
-impl<C: RaftComposites> fmt::Debug for AppendEntriesRequest<C> {
+impl<C: RaftTypes> fmt::Debug for AppendEntriesRequest<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppendEntriesRequest")
             .field("vote", &self.vote)
@@ -46,7 +46,7 @@ impl<C: RaftComposites> fmt::Debug for AppendEntriesRequest<C> {
 }
 
 impl<C> fmt::Display for AppendEntriesRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -64,7 +64,7 @@ where C: RaftComposites
 }
 
 impl<C> AppendEntriesRequest<C>
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Returns the last log id in this request.
     ///

@@ -1,5 +1,5 @@
-use crate::RaftComposites;
 use crate::RaftPrimitives;
+use crate::RaftTypes;
 use crate::StorageError;
 use crate::errors::NetworkError;
 use crate::errors::RPCError;
@@ -35,7 +35,7 @@ pub enum StreamingError<P: RaftPrimitives> {
     Network(#[from] NetworkError<P>),
 }
 
-impl<C: RaftComposites> From<StreamingError<C::Prim>> for ReplicationError<C> {
+impl<C: RaftTypes> From<StreamingError<C::Prim>> for ReplicationError<C> {
     fn from(e: StreamingError<C::Prim>) -> Self {
         match e {
             StreamingError::Closed(e) => ReplicationError::Closed(e),

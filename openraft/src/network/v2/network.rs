@@ -8,7 +8,7 @@ use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
-use crate::RaftComposites;
+use crate::RaftTypes;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
 use crate::errors::RPCError;
@@ -60,7 +60,7 @@ use crate::type_config::alias::VoteOf;
 #[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
-where C: RaftComposites
+where C: RaftTypes
 {
     /// Send an AppendEntries RPC to the target.
     async fn append_entries(
@@ -186,7 +186,7 @@ use crate::network::NetVote;
 #[allow(clippy::manual_async_fn)]
 impl<C, T> NetAppend<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     async fn append_entries(
@@ -200,7 +200,7 @@ where
 
 impl<C, T> NetBackoff<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     fn backoff(&self) -> Backoff {
@@ -211,7 +211,7 @@ where
 #[allow(clippy::manual_async_fn)]
 impl<C, T> NetVote<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C::Prim>> {
@@ -222,7 +222,7 @@ where
 #[allow(clippy::manual_async_fn)]
 impl<C, T> NetSnapshot<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     async fn full_snapshot(
@@ -239,7 +239,7 @@ where
 #[allow(clippy::manual_async_fn)]
 impl<C, T> NetTransferLeader<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     async fn transfer_leader(
@@ -253,7 +253,7 @@ where
 
 impl<C, T> NetStreamAppend<C> for T
 where
-    C: RaftComposites,
+    C: RaftTypes,
     T: RaftNetworkV2<C> + ?Sized,
 {
     fn stream_append<'s, S>(
