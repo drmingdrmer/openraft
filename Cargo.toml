@@ -76,6 +76,7 @@ members = [
     "tests",
     "stores/memstore",
     "stores/memstore-custom-node-id",
+    "ezraft",
 ]
 exclude = [
     "benchmarks/minimal",
