@@ -160,34 +160,54 @@ where
 
     /// Creates a stream of AppendEntries requests from the given context.
     fn new_request_stream(stream_context: StreamContext<C, LS>) -> BoxStream<'static, AppendEntriesRequest<C>> {
-        let strm = futures_util::stream::unfold(stream_context, Self::next_append_request);
-        Box::pin(strm)
-    }
+        let StreamContext {
+            stream_state,
+            inflight_append_queue,
+            fatal_error,
+            request_buffer_size,
+        } = stream_context;
 
-    /// Generates the next AppendEntries request and records it in the inflight queue.
-    ///
-    /// Used as the unfold function for the request stream.
-    async fn next_append_request(
-        stream_context: StreamContext<C, LS>,
-    ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
-        let res = {
-            let mut state = stream_context.stream_state.as_ref().lock().await;
-            state.next_request().await
-        };
+        let (tx, rx) = C::mpsc(request_buffer_size);
+        let (stream_alive_tx, mut stream_alive_rx) = C::watch_channel(());
 
-        let req = match res {
-            Ok(Some(req)) => req,
-            Ok(None) => return None,
-            Err(err) => {
-                let mut fatal_error = stream_context.fatal_error.lock().await;
-                *fatal_error = Some(err);
-                return None;
+        let _join_handle = C::spawn(async move {
+            loop {
+                let res = {
+                    let mut state = stream_state.as_ref().lock().await;
+                    let next_request = state.next_request().fuse();
+                    let stream_closed = stream_alive_rx.changed().fuse();
+
+                    futures_util::pin_mut!(next_request, stream_closed);
+
+                    futures_util::select! {
+                        res = next_request => res,
+                        _ = stream_closed => Ok(None),
+                    }
+                };
+
+                let req = match res {
+                    Ok(Some(req)) => req,
+                    Ok(None) => break,
+                    Err(err) => {
+                        let mut fatal_error = fatal_error.lock().await;
+                        *fatal_error = Some(err);
+                        break;
+                    }
+                };
+
+                if MpscSender::send(&tx, req).await.is_err() {
+                    break;
+                }
             }
-        };
+        });
 
-        stream_context.inflight_append_queue.push(req.last_log_id());
+        let strm = C::mpsc_to_stream(rx).map(move |req| {
+            let _stream_alive = &stream_alive_tx;
+            inflight_append_queue.push(req.last_log_id());
+            req
+        });
 
-        Some((req, stream_context))
+        Box::pin(strm)
     }
 
     /// Main replication loop that sends AppendEntries requests and processes responses.
@@ -306,6 +326,7 @@ where
             stream_state: self.stream_state.clone(),
             inflight_append_queue: inflight_queue.clone(),
             fatal_error: fatal_error.clone(),
+            request_buffer_size: self.replication_context.config.replication_request_buffer_size(),
         };
 
         let req_strm = Self::new_request_stream(stream_context);

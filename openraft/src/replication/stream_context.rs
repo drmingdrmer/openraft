@@ -25,4 +25,7 @@ where
 
     /// Fatal error found while generating the request stream.
     pub(crate) fatal_error: Arc<MutexOf<C, Option<ReplicationClosed>>>,
+
+    /// Number of generated requests to buffer before the network consumes them.
+    pub(crate) request_buffer_size: usize,
 }
