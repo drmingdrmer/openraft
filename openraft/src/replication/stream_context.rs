@@ -21,4 +21,7 @@ where
 
     /// Tracks in-flight requests for RTT measurement.
     pub(crate) inflight_append_queue: InflightAppendQueue<C>,
+
+    /// Number of generated requests to buffer before the network consumes them.
+    pub(crate) request_buffer_size: usize,
 }

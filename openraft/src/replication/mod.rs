@@ -158,24 +158,47 @@ where
 
     /// Creates a stream of AppendEntries requests from the given context.
     fn new_request_stream(stream_context: StreamContext<C, LS>) -> BoxStream<'static, AppendEntriesRequest<C>> {
-        let strm = futures_util::stream::unfold(stream_context, Self::next_append_request);
+        let StreamContext {
+            stream_state,
+            inflight_append_queue,
+            request_buffer_size,
+        } = stream_context;
+
+        let (tx, rx) = C::mpsc(request_buffer_size);
+        let (stream_alive_tx, mut stream_alive_rx) = C::watch_channel(());
+
+        let _join_handle = C::spawn(async move {
+            loop {
+                let req = {
+                    let mut state = stream_state.as_ref().lock().await;
+                    let next_request = state.next_request().fuse();
+                    let stream_closed = stream_alive_rx.changed().fuse();
+
+                    futures_util::pin_mut!(next_request, stream_closed);
+
+                    futures_util::select! {
+                        req = next_request => req,
+                        _ = stream_closed => None,
+                    }
+                };
+
+                let Some(req) = req else {
+                    break;
+                };
+
+                if MpscSender::send(&tx, req).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let strm = C::mpsc_to_stream(rx).map(move |req| {
+            let _stream_alive = &stream_alive_tx;
+            inflight_append_queue.push(req.last_log_id());
+            req
+        });
+
         Box::pin(strm)
-    }
-
-    /// Generates the next AppendEntries request and records it in the inflight queue.
-    ///
-    /// Used as the unfold function for the request stream.
-    async fn next_append_request(
-        stream_context: StreamContext<C, LS>,
-    ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
-        let req = {
-            let mut state = stream_context.stream_state.as_ref().lock().await;
-            state.next_request().await?
-        };
-
-        stream_context.inflight_append_queue.push(req.last_log_id());
-
-        Some((req, stream_context))
     }
 
     /// Main replication loop that sends AppendEntries requests and processes responses.
@@ -249,6 +272,7 @@ where
             let stream_context = StreamContext {
                 stream_state: self.stream_state.clone(),
                 inflight_append_queue: inflight_queue.clone(),
+                request_buffer_size: self.replication_context.config.replication_request_buffer_size(),
             };
 
             let req_strm = Self::new_request_stream(stream_context);

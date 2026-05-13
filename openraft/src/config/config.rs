@@ -33,6 +33,7 @@ pub(crate) struct Defaults {
     pub install_snapshot_timeout: u64,
     pub send_snapshot_timeout: u64,
     pub max_payload_entries: u64,
+    pub replication_request_buffer_size: u64,
     pub max_append_entries: u64,
     pub replication_lag_threshold: u64,
     pub snapshot_policy: SnapshotPolicy,
@@ -56,6 +57,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     install_snapshot_timeout: 200,
     send_snapshot_timeout: 0,
     max_payload_entries: 300,
+    replication_request_buffer_size: 4,
     max_append_entries: 4096,
     replication_lag_threshold: 5000,
     snapshot_policy: SnapshotPolicy::LogsSinceLast(5000),
@@ -198,6 +200,16 @@ pub struct Config {
     /// consistency with the rest of the cluster.
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_payload_entries))]
     pub max_payload_entries: u64,
+
+    /// The number of `AppendEntries` requests to pre-generate per replication stream.
+    ///
+    /// A small bounded buffer lets the log reader prepare the next request while
+    /// the network layer is sending earlier requests. Buffered requests are
+    /// treated the same as requests already handed to the network.
+    ///
+    /// Defaults to 4. Values smaller than 1 are treated as 1.
+    #[cfg_attr(feature = "clap", clap(long, default_value = "4"))]
+    pub replication_request_buffer_size: Option<u64>,
 
     /// The maximum number of log entries per append I/O operation.
     ///
@@ -425,6 +437,7 @@ impl Default for Config {
             install_snapshot_timeout: DEFAULTS.install_snapshot_timeout,
             send_snapshot_timeout: DEFAULTS.send_snapshot_timeout,
             max_payload_entries: DEFAULTS.max_payload_entries,
+            replication_request_buffer_size: Some(DEFAULTS.replication_request_buffer_size),
             max_append_entries: Some(DEFAULTS.max_append_entries),
             replication_lag_threshold: DEFAULTS.replication_lag_threshold,
             snapshot_policy: DEFAULTS.snapshot_policy.clone(),
@@ -512,6 +525,13 @@ impl Config {
     /// Defaults to 4096 if not specified.
     pub(crate) fn max_append_entries(&self) -> u64 {
         self.max_append_entries.unwrap_or(4096)
+    }
+
+    /// Get the replication request buffer size.
+    ///
+    /// Defaults to 4 if not specified. Values smaller than 1 are treated as 1.
+    pub(crate) fn replication_request_buffer_size(&self) -> usize {
+        self.replication_request_buffer_size.unwrap_or(DEFAULTS.replication_request_buffer_size).max(1) as usize
     }
 
     /// Validate the state of this config.

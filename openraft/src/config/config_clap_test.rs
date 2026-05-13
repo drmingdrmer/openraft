@@ -19,6 +19,7 @@ fn test_build() -> anyhow::Result<()> {
         "--send-snapshot-timeout=199",
         "--install-snapshot-timeout=200",
         "--max-payload-entries=201",
+        "--replication-request-buffer-size=4",
         "--snapshot-policy=since_last:202",
         "--replication-lag-threshold=203",
         "--snapshot-max-chunk-size=204",
@@ -39,6 +40,7 @@ fn test_build() -> anyhow::Result<()> {
     }
     assert_eq!(200, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
+    assert_eq!(Some(4), config.replication_request_buffer_size);
     assert_eq!(SnapshotPolicy::LogsSinceLast(202), config.snapshot_policy);
     assert_eq!(203, config.replication_lag_threshold);
     assert_eq!(204, config.snapshot_max_chunk_size);
