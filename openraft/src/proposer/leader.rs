@@ -1,13 +1,15 @@
 use std::fmt;
 
+use validit::Valid;
+
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::id_val::IdVal;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
@@ -61,7 +63,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: LogIdOf<C>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<ProgressEntry<C>, QS>,
+    pub(crate) progress: Valid<VecProgress<ProgressEntry<C>, QS>>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
@@ -76,7 +78,7 @@ where C: RaftTypeConfig
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>,
+    pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -139,11 +141,15 @@ where
             next_heartbeat: C::now(),
             last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
-                let stream_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(id, stream_id, last_log_id.next_index())
-            }),
-            clock_progress: VecProgress::new(quorum_set, learner_ids, IdVal::new_default),
+            progress: Valid::new(VecProgress::new(
+                quorum_set.clone(),
+                learner_ids.iter().cloned(),
+                |id| {
+                    let stream_id = StreamId::new(id_gen.next_id());
+                    ProgressEntry::empty(id, stream_id, last_log_id.next_index())
+                },
+            )),
+            clock_progress: Valid::new(VecProgress::new(quorum_set, learner_ids, IdVal::new_default)),
         }
     }
 
@@ -222,14 +228,14 @@ where
         let granted = self.clock_progress.increase_to(&node_id, Some(now));
 
         match granted {
-            Ok(x) => *x,
+            Some(x) => *x,
             // The leader node id may not be in the quorum set.
-            Err(x) => *x,
+            None => *self.clock_progress.quorum_accepted(),
         }
     }
 
     pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
-        if let Some(entry) = self.progress.try_get(target)
+        if let Some(entry) = self.progress.get(target)
             && entry.stream_id == stream_id
         {
             return true;
@@ -412,12 +418,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&2, Some(t2)).ok();
+        leading.clock_progress.increase_to(&2, Some(t2));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&3, Some(t3)).ok();
+        leading.clock_progress.increase_to(&3, Some(t3));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
@@ -433,12 +439,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&2, Some(t2)).ok();
+        leading.clock_progress.increase_to(&2, Some(t2));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&3, Some(t3)).ok();
+        leading.clock_progress.increase_to(&3, Some(t3));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }

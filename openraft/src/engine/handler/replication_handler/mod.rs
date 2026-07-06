@@ -3,6 +3,7 @@ use std::sync::Arc;
 use display_more::DisplayOptionExt;
 use display_more::DisplayResultExt;
 use progress::entry::update::Updater;
+use validit::Valid;
 
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -18,9 +19,9 @@ use crate::engine::handler::log_handler::LogHandler;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::progress;
+use crate::progress::IdVal;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::id_val::IdVal;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
@@ -114,18 +115,21 @@ where C: RaftTypeConfig
                 ProgressEntry::empty(id, progress_id, end)
             };
 
-            self.leader.progress = old_progress.upgrade_quorum_set(
+            self.leader.progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(
                 Arc::new((*em.membership()).clone()),
                 learner_ids.clone(),
                 default_entry,
-            );
+            ));
         }
 
         {
             let old_progress = self.leader.clock_progress.clone();
 
-            self.leader.clock_progress =
-                old_progress.upgrade_quorum_set(Arc::new((*em.membership()).clone()), learner_ids, IdVal::new_default);
+            self.leader.clock_progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(
+                Arc::new((*em.membership()).clone()),
+                learner_ids,
+                IdVal::new_default,
+            ));
         }
     }
 
@@ -187,7 +191,7 @@ where C: RaftTypeConfig
 
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in the current term.
-        let Ok(quorum_accepted) = self.leader.progress.update_entry_with(&node_id, |entry| {
+        let Some(quorum_accepted) = self.leader.progress.update_entry_with(&node_id, |entry| {
             entry.new_updater(&*self.config).update_matching(log_id, inflight_id)
         }) else {
             // the node does not exist anymore
@@ -485,7 +489,7 @@ where C: RaftTypeConfig
         let id = self.config.id.clone();
 
         // The leader may not be in membership anymore
-        if let Some(entry) = self.leader.progress.try_get(&id) {
+        if let Some(entry) = self.leader.progress.get(&id) {
             tracing::debug!("update progress: self_matching: {}", entry.matching().display());
 
             if entry.matching() >= upto.as_ref() {

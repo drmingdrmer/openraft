@@ -34,6 +34,7 @@ maplit             = { version = "1.0.2" }
 peel-off           = { version = "0.1.0" }
 pretty_assertions  = { version = "1.0.0" }
 proc-macro2        = { version = "1.0" }
+quorum-set         = { version = "0.1.0" }
 quote              = { version = "1.0" }
 rand               = { version = "0.10" }
 smallvec           = { version = "1" }
@@ -57,7 +58,7 @@ tokio              = { version = "1.39", default-features = false, features = [
 tracing            = { version = "0.1.40" }
 tracing-appender   = { version = "0.2.0" }
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
-validit            = { version = "0.2.5" }
+validit            = { version = "0.2.6" }
 
 
 [profile.release]
