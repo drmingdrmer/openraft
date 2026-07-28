@@ -65,7 +65,6 @@ pub struct Response {
 }
 
 // Define type configuration
-#[derive(Serialize, Deserialize)]
 struct Types;
 impl EzTypes for Types {
     type Request = Request;
