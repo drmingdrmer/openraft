@@ -61,6 +61,19 @@
 //! // let raft = EzRaft::<AppTypes>::join("127.0.0.1:8081", "127.0.0.1:8080", sm, storage, config).await?;
 //! raft.serve().await?;
 //! ```
+//!
+//! # Errors
+//!
+//! Every fallible method returns [`std::io::Error`], including the ones that fail for reasons
+//! that have nothing to do with I/O. This is deliberate: a caller cannot usefully branch on the
+//! difference. A write that finds no leader, one that cannot reach the leader, and one issued to
+//! a stopped node all mean the same thing to an application -- try again later -- because
+//! [`EzRaft::write`] already forwards to the leader on its own.
+//!
+//! [`EzStorage`] is where a user's own errors originate, and those are I/O errors already, so a
+//! second error type would buy nothing and cost a concept. Code that does need to tell the cases
+//! apart can reach the underlying openraft node and its typed errors through
+//! [`EzRaft::inner`](raft::EzRaft::inner).
 
 pub mod config;
 pub mod network;
