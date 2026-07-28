@@ -2,11 +2,13 @@
 //!
 //! This module provides the primary [`EzRaft`] struct that users interact with.
 
+use std::collections::BTreeSet;
 use std::io;
 use std::sync::Arc;
 
 use openraft::async_runtime::WatchReceiver;
 use openraft::BasicNode;
+use openraft::ChangeMembers;
 use openraft::Raft;
 use serde::Serialize;
 
@@ -197,10 +199,42 @@ where T: EzTypes
         Ok(())
     }
 
+    /// Wait for a learner to catch up, then make it a voter
+    ///
+    /// Only voters count towards a quorum, so a cluster tolerates a node failure only once its
+    /// nodes have been promoted. Promoting a node that is still far behind would stall the
+    /// membership change, hence the wait.
+    ///
+    /// Returns without changing anything if this node is no longer the leader; the new leader
+    /// owns the promotion from that point on.
+    pub async fn promote_to_voter(&self, node_id: u64) -> Result<(), io::Error> {
+        let caught_up = |m: &openraft::RaftMetrics<ORTypes<T>>| {
+            let Some(replication) = m.replication.as_ref() else {
+                // Not the leader anymore, stop waiting.
+                return true;
+            };
+            let matched = replication.get(&node_id).and_then(|log_id| log_id.as_ref()).map(|log_id| log_id.index);
+            matched >= m.last_log_index
+        };
+
+        let metrics = self
+            .raft
+            .wait(None)
+            .metrics(caught_up, "learner catches up before promotion")
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        if metrics.current_leader != Some(self.node_id) {
+            return Ok(());
+        }
+
+        self.change_membership(ChangeMembers::AddVoterIds(BTreeSet::from([node_id]))).await
+    }
+
     /// Change the cluster membership
     ///
     /// This modifies the cluster membership using OpenRaft's `ChangeMembers`.
-    pub async fn change_membership(&self, change: openraft::ChangeMembers<u64, BasicNode>) -> Result<(), io::Error> {
+    pub async fn change_membership(&self, change: ChangeMembers<u64, BasicNode>) -> Result<(), io::Error> {
         self.raft.change_membership(change, false).await.map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
