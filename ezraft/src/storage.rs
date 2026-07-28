@@ -47,6 +47,10 @@ where T: EzTypes
 {
     pub storage: Box<dyn EzStorage<T>>,
     pub cached_meta: EzMeta,
+
+    /// The snapshot last written or loaded, kept so that serving one to a lagging follower does
+    /// not re-run the startup-only [`EzStorage::load`].
+    pub cached_snapshot: Option<EzSnapshot>,
 }
 
 /// Internal state machine wrapper that tracks Raft metadata
@@ -94,10 +98,10 @@ where T: EzTypes
         // The snapshot data must be restored here, not just its position: reporting
         // `last_applied` at the snapshot makes openraft re-apply only the log tail after it, and
         // skip installing this snapshot itself.
-        let (last_applied, last_membership) = match snapshot {
+        let (last_applied, last_membership) = match &snapshot {
             Some(snap) => {
-                user_sm.install_snapshot(&snap.snapshot.into_inner()).await?;
-                (snap.meta.last_log_id, snap.meta.last_membership)
+                user_sm.install_snapshot(snap.snapshot.get_ref()).await?;
+                (snap.meta.last_log_id, snap.meta.last_membership.clone())
             }
             None => (None, StoredMembership::new(None, Membership::default())),
         };
@@ -105,6 +109,7 @@ where T: EzTypes
         let storage = StorageWithCache {
             storage: Box::new(user_storage),
             cached_meta,
+            cached_snapshot: snapshot,
         };
 
         let sm_state = StateMachineState {
@@ -179,6 +184,12 @@ where T: EzTypes
     }
 
     async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
+        let from = last_log_id.map(|id| id.index).next_index();
+        {
+            let mut state = self.storage.lock().await;
+            state.storage.persist(Persist::TruncateLogs(from)).await?;
+        }
+
         self.save_meta(|m| {
             m.last_log_id = last_log_id.map(|id| id.to_type());
         })
@@ -186,6 +197,11 @@ where T: EzTypes
     }
 
     async fn purge(&mut self, log_id: LogIdOf<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
+        {
+            let mut state = self.storage.lock().await;
+            state.storage.persist(Persist::PurgeLogs(log_id.index)).await?;
+        }
+
         self.save_meta(|m| m.last_purged = Some(log_id.to_type())).await
     }
 
@@ -309,12 +325,8 @@ where T: EzTypes
         // Update storage state
         {
             let mut state = self.storage.lock().await;
-            let snapshot = Snapshot {
-                meta: snapshot_meta.clone(),
-                snapshot: Cursor::new(data.clone()),
-            };
-            let update = Persist::Snapshot(snapshot);
-            state.storage.persist(update).await?;
+            state.storage.persist(Persist::Snapshot(new_snapshot(snapshot_meta, &data))).await?;
+            state.cached_snapshot = Some(new_snapshot(snapshot_meta, &data));
         }
 
         // The snapshot supersedes every log entry it covers, so the log positions move with it.
@@ -341,8 +353,8 @@ where T: EzTypes
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<EzSnapshot>, std::io::Error> {
-        let mut state = self.storage.lock().await;
-        Ok(state.storage.load().await?.1)
+        let state = self.storage.lock().await;
+        Ok(state.cached_snapshot.as_ref().map(|snap| new_snapshot(&snap.meta, snap.snapshot.get_ref())))
     }
 }
 
@@ -375,16 +387,18 @@ where T: EzTypes
         // and a durable purge point with no durable snapshot is an unrecoverable state.
         {
             let mut state = self.storage.lock().await;
-            let stored = Snapshot {
-                meta: snapshot_meta.clone(),
-                snapshot: Cursor::new(snapshot_data.clone()),
-            };
-            state.storage.persist(Persist::Snapshot(stored)).await?;
+            state.storage.persist(Persist::Snapshot(new_snapshot(&snapshot_meta, &snapshot_data))).await?;
+            state.cached_snapshot = Some(new_snapshot(&snapshot_meta, &snapshot_data));
         }
 
-        Ok(Snapshot {
-            meta: snapshot_meta,
-            snapshot: Cursor::new(snapshot_data),
-        })
+        Ok(new_snapshot(&snapshot_meta, &snapshot_data))
+    }
+}
+
+/// Build a [`EzSnapshot`] from its parts
+fn new_snapshot(meta: &EzSnapshotMeta, data: &[u8]) -> EzSnapshot {
+    Snapshot {
+        meta: meta.clone(),
+        snapshot: Cursor::new(data.to_vec()),
     }
 }

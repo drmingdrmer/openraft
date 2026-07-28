@@ -127,6 +127,30 @@ impl FileStorage {
     fn snapshot_data_path(&self) -> PathBuf {
         self.base_dir.join("snapshot.data")
     }
+
+    /// Delete every log file whose index satisfies `remove`
+    async fn remove_logs(&self, remove: impl Fn(u64) -> bool) -> io::Result<()> {
+        let mut dir = match fs::read_dir(self.logs_dir()).await {
+            Ok(dir) => dir,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+
+        while let Some(entry) = dir.next_entry().await? {
+            let name = entry.file_name();
+            let index = name.to_str().and_then(|n| n.strip_prefix("log-")).and_then(|n| n.parse::<u64>().ok());
+
+            let Some(index) = index else {
+                return Err(io::Error::other(format!("unexpected file in log dir: {:?}", name)));
+            };
+
+            if remove(index) {
+                fs::remove_file(entry.path()).await?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -175,6 +199,8 @@ impl EzStorage<Types> for FileStorage {
                 cursor.read_to_end(&mut data)?;
                 fs::write(&self.snapshot_data_path(), data).await?;
             }
+            Persist::TruncateLogs(from) => self.remove_logs(|index| index >= from).await?,
+            Persist::PurgeLogs(upto) => self.remove_logs(|index| index <= upto).await?,
         }
         Ok(())
     }

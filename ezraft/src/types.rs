@@ -148,10 +148,27 @@ where T: EzTypes
     Meta(EzMeta),
 
     /// Write a log entry
+    ///
+    /// Entries arrive in index order and never target an index that is already present: the
+    /// framework deletes conflicting entries with [`Persist::TruncateLogs`] first.
     #[display("LogEntry")]
     LogEntry(EzEntry<T>),
 
-    /// Write a complete snapshot
+    /// Write a complete snapshot, replacing the previous one
     #[display("Snapshot")]
     Snapshot(EzSnapshot),
+
+    /// Delete every log entry from this index onwards
+    ///
+    /// Sent when the entries conflict with the leader's log. They are not part of the
+    /// replicated log and must not be returned by [`crate::EzStorage::read_logs`] again.
+    #[display("TruncateLogs({_0})")]
+    TruncateLogs(u64),
+
+    /// Delete every log entry up to and including this index
+    ///
+    /// Sent once those entries are covered by a snapshot. This is the only signal that lets
+    /// storage reclaim space.
+    #[display("PurgeLogs({_0})")]
+    PurgeLogs(u64),
 }
