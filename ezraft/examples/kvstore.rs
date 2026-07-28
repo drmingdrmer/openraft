@@ -13,6 +13,16 @@
 //! # Terminal 3 (joins via seed node)
 //! cargo run --example kvstore -- --addr 127.0.0.1:8082 --seed 127.0.0.1:8080
 //! ```
+//!
+//! Then drive it through the write API, which takes the `Request` type below as JSON:
+//!
+//! ```bash
+//! curl -X POST 127.0.0.1:8080/api/write -H 'Content-Type: application/json' \
+//!     -d '{"Set": {"key": "hello", "value": "world"}}'
+//!
+//! curl -X POST 127.0.0.1:8080/api/write -H 'Content-Type: application/json' \
+//!     -d '{"Get": {"key": "hello"}}'
+//! ```
 
 use std::collections::BTreeMap;
 use std::io;
