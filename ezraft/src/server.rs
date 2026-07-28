@@ -8,6 +8,8 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use openraft::errors::decompose::DecomposeResult;
+use openraft::errors::Infallible;
 use openraft::raft;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
@@ -56,15 +58,19 @@ where T: EzTypes
     }
 
     /// Raft append entries RPC handler
+    ///
+    /// The body is the `Result` the peer's [`crate::network::Network`] expects; only a
+    /// [`Fatal`](openraft::errors::Fatal) error becomes an HTTP error status.
     async fn handle_append(
         req: web::Json<raft::AppendEntriesRequest<C<T>>>,
         ez: Data<Self>,
-    ) -> Result<web::Json<raft::AppendEntriesResponse<C<T>>>, actix_web::Error> {
+    ) -> Result<web::Json<Result<raft::AppendEntriesResponse<C<T>>, Infallible>>, actix_web::Error> {
         let resp = ez
             .raft
             .inner()
             .append_entries(req.into_inner())
             .await
+            .decompose()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("append_entries failed: {}", e)))?;
 
         Ok(web::Json(resp))
@@ -74,12 +80,13 @@ where T: EzTypes
     async fn handle_vote(
         req: web::Json<raft::VoteRequest<C<T>>>,
         ez: Data<Self>,
-    ) -> Result<web::Json<raft::VoteResponse<C<T>>>, actix_web::Error> {
+    ) -> Result<web::Json<Result<raft::VoteResponse<C<T>>, Infallible>>, actix_web::Error> {
         let resp = ez
             .raft
             .inner()
             .vote(req.into_inner())
             .await
+            .decompose()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("vote failed: {}", e)))?;
 
         Ok(web::Json(resp))
