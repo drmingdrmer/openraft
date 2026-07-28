@@ -342,13 +342,22 @@ where T: EzTypes
     }
 }
 
+/// How long a forwarded write may take before the leader is given up on
+///
+/// Generous, because the leader has to replicate and commit the request before answering.
+const FORWARD_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Send a write to the leader's `/api/write` endpoint and return what it applied
 ///
 /// The leader is asked to do the write on this node's behalf, so the answer is the same one the
 /// caller would have got from writing to the leader directly.
 async fn forward_write<T>(leader_addr: &str, req: &T::Request) -> Result<T::Response, io::Error>
 where T: EzTypes {
-    let client = reqwest::Client::builder().no_proxy().build().map_err(|e| io::Error::other(e.to_string()))?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(FORWARD_WRITE_TIMEOUT)
+        .build()
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     let url = format!("http://{}/api/write", leader_addr);
 
@@ -383,6 +392,9 @@ const JOIN_ATTEMPTS: usize = 20;
 /// How long to wait before attempting a join again
 const JOIN_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 
+/// How long a single join request may take before the target is given up on
+const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Request to join a cluster via seed node
 ///
 /// Follows the seed's redirect if it is not the leader, and retries the transient conditions a
@@ -390,7 +402,11 @@ const JOIN_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// in flight. A cluster admits one member at a time, so nodes started together take turns here
 /// instead of failing.
 async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> {
-    let client = reqwest::Client::builder().no_proxy().build().map_err(|e| io::Error::other(e.to_string()))?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(JOIN_TIMEOUT)
+        .build()
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     let mut target_addr = seed_addr.to_string();
     let mut last_err = "cluster did not accept the join".to_string();
