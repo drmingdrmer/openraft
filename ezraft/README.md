@@ -1,6 +1,6 @@
 # EzRaft
 
-A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.com/datafuselabs/openraft). EzRaft handles all Raft complexity internally - users only provide business logic and storage persistence.
+A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.com/databendlabs/openraft). EzRaft handles all Raft complexity internally - users only provide business logic and storage persistence.
 
 ## Overview
 
@@ -168,8 +168,8 @@ Most users can use `EzConfig::default()`.
 EzRaft includes built-in HTTP endpoints:
 
 - **Raft RPC** (`/raft/*`): Internal consensus communication
-- **Admin API** (`/api/*`): Initialize, add learners, change membership, metrics
-- **Application API**: Propose client requests (user-defined)
+- **Admin API** (`/api/*`): Join, change membership, metrics
+- **Application API** (`/api/write`): Propose client requests, using your request type as JSON
 
 ## Comparison with OpenRaft
 
@@ -179,7 +179,7 @@ EzRaft includes built-in HTTP endpoints:
 | Required methods | 21+ | 6 |
 | User-defined types | 12 (all generic parameters) | 2 (Request, Response) |
 | Network code | User implements (~100 lines) | Built-in (0 lines) |
-| Example complexity | ~300 lines | ~50 lines |
+| Example complexity | ~400 lines | ~280 lines |
 
 ## License
 

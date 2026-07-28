@@ -8,14 +8,14 @@
 //! # Quick Start
 //!
 //! ```ignore
-//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, Persist, EzTypes};
+//! use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, EzEntry, Persist, EzTypes};
 //! use serde::{Serialize, Deserialize};
 //!
 //! // 1. Define your request/response types
 //! #[derive(Serialize, Deserialize, Debug, Clone)]
 //! pub enum Request { Set { key: String, value: String } }
 //!
-//! #[derive(Serialize, Deserialize, Debug, Clone)]
+//! #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 //! pub struct Response { pub value: Option<String> }
 //!
 //! // 2. Implement EzTypes trait
@@ -48,6 +48,12 @@
 //! impl EzStateMachine<AppTypes> for AppStateMachine {
 //!     async fn apply(&mut self, req: Request) -> Response {
 //!         // Apply business logic
+//!     }
+//!     async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
+//!         // Serialize state machine to bytes
+//!     }
+//!     async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
+//!         // Restore state machine from bytes
 //!     }
 //! }
 //!
