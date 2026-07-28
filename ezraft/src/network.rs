@@ -29,6 +29,7 @@ use serde::Serialize;
 
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
+use crate::types::EzSnapshotData;
 
 /// Type alias for OpenRaft types
 type C<T> = OpenRaftTypes<T>;
@@ -48,7 +49,7 @@ impl EzNetworkFactory {
 }
 
 impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory {
-    type Network = Adapter<C<T>, Network>;
+    type Network = Adapter<C<T>, Network, EzSnapshotData>;
 
     async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
@@ -114,13 +115,13 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
         req: InstallSnapshotRequest<C<T>>,
         _option: RPCOption,
     ) -> Result<InstallSnapshotResponse<C<T>>, RPCError<C<T>, RaftError<C<T>, InstallSnapshotError>>> {
-        let res = self
-            .request::<_, _, _, C<T>>("raft/snapshot", req)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, _, C<T>>("raft/snapshot", req).await.map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
-            Err(e) => Err(RPCError::RemoteError(RemoteError::new(self.target, RaftError::APIError(e)))),
+            Err(e) => Err(RPCError::RemoteError(RemoteError::new(
+                self.target,
+                RaftError::APIError(e),
+            ))),
         }
     }
 
@@ -129,10 +130,7 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
         req: VoteRequest<C<T>>,
         _option: RPCOption,
     ) -> Result<VoteResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self
-            .request::<_, _, Infallible, C<T>>("raft/vote", req)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible, C<T>>("raft/vote", req).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }

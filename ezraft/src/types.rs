@@ -2,10 +2,13 @@
 //!
 //! This module contains the core data structures used throughout EzRaft.
 
+use std::io::Cursor;
+
 use openraft::entry::RaftEntry;
 use openraft::entry::RaftPayload;
 use openraft::log_id::RaftLogId;
 use openraft::vote::leader_id_std::CommittedLeaderId;
+use openraft::BasicNode;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
@@ -16,12 +19,17 @@ use serde::Serialize;
 
 use crate::type_config::EzTypes;
 use crate::type_config::EzVote;
-use crate::type_config::OpenRaftTypes;
 
 /// Log ID type (term, index)
 ///
 /// A tuple that implements `RaftLogId` via OpenRaft's blanket implementation.
 pub type EzLogId = (u64, u64);
+
+/// Committed leader ID: the term of the leader that proposed a log entry
+pub type EzCommittedLeaderId = CommittedLeaderId<u64>;
+
+/// Entry payload with EzRaft's node id and node types
+type EzEntryPayload<T> = EntryPayload<<T as EzTypes>::Request, u64, BasicNode>;
 
 /// A Raft log entry with EzRaft's simplified log ID type
 ///
@@ -36,7 +44,7 @@ where T: EzTypes
     pub log_id: EzLogId,
 
     /// Entry payload (Normal request, Blank, or Membership change)
-    pub payload: EntryPayload<OpenRaftTypes<T>>,
+    pub payload: EzEntryPayload<T>,
 }
 
 // Manually implement Debug to avoid T: Debug bound
@@ -62,47 +70,50 @@ where T: EzTypes
 }
 
 // Implement RaftPayload trait
-impl<T> RaftPayload<OpenRaftTypes<T>> for EzEntry<T>
+impl<T> RaftPayload<u64, BasicNode> for EzEntry<T>
 where T: EzTypes
 {
-    fn get_membership(&self) -> Option<Membership<OpenRaftTypes<T>>> {
+    fn get_membership(&self) -> Option<Membership<u64, BasicNode>> {
         self.payload.get_membership()
     }
 }
 
 // Implement openraft::RaftEntry trait so EzEntry works with OpenRaft
-impl<T> RaftEntry<OpenRaftTypes<T>> for EzEntry<T>
+impl<T> RaftEntry for EzEntry<T>
 where T: EzTypes
 {
-    fn new(log_id: LogId<OpenRaftTypes<T>>, payload: EntryPayload<OpenRaftTypes<T>>) -> Self {
+    type CommittedLeaderId = EzCommittedLeaderId;
+    type D = T::Request;
+    type NodeId = u64;
+    type Node = BasicNode;
+
+    fn new(log_id: LogId<EzCommittedLeaderId>, payload: EzEntryPayload<T>) -> Self {
         Self {
             log_id: log_id.to_type(),
             payload,
         }
     }
 
-    fn log_id_parts(&self) -> (&CommittedLeaderId<OpenRaftTypes<T>>, u64) {
-        <EzLogId as RaftLogId<OpenRaftTypes<T>>>::log_id_parts(&self.log_id)
+    fn log_id_parts(&self) -> (&EzCommittedLeaderId, u64) {
+        RaftLogId::log_id_parts(&self.log_id)
     }
 
-    fn set_log_id(&mut self, new: LogId<OpenRaftTypes<T>>) {
+    fn set_log_id(&mut self, new: LogId<EzCommittedLeaderId>) {
         self.log_id = new.to_type();
     }
 }
 
 /// Raft metadata managed by the framework
 ///
-/// The framework updates this structure and you persist it via [`EzStorage::persist`].
+/// The framework updates this structure and you persist it via [`crate::EzStorage::persist`].
 /// You don't need to understand the Raft details - just serialize and store it.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct EzMeta<T>
-where T: EzTypes
-{
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct EzMeta {
     /// This node's ID (assigned when joining cluster)
     pub node_id: Option<u64>,
 
     /// Current vote (term and node_id voted for)
-    pub vote: Option<EzVote<T>>,
+    pub vote: Option<EzVote>,
 
     /// Last log entry (term, index)
     pub last_log_id: Option<EzLogId>,
@@ -111,54 +122,30 @@ where T: EzTypes
     pub last_purged: Option<EzLogId>,
 }
 
-// Manual Clone implementation to avoid requiring T: Clone
-impl<T> Clone for EzMeta<T>
-where T: EzTypes
-{
-    fn clone(&self) -> Self {
-        Self {
-            node_id: self.node_id,
-            vote: self.vote,
-            last_log_id: self.last_log_id,
-            last_purged: self.last_purged,
-        }
-    }
-}
-
-impl<T> Default for EzMeta<T>
-where T: EzTypes
-{
-    fn default() -> Self {
-        Self {
-            node_id: None,
-            vote: None,
-            last_log_id: None,
-            last_purged: None,
-        }
-    }
-}
+/// Snapshot data type: the serialized state machine bytes
+pub type EzSnapshotData = Cursor<Vec<u8>>;
 
 /// Snapshot metadata type alias
 ///
 /// Points to OpenRaft's `SnapshotMeta` for full compatibility.
-pub type EzSnapshotMeta<T> = SnapshotMeta<OpenRaftTypes<T>>;
+pub type EzSnapshotMeta = SnapshotMeta<EzCommittedLeaderId, u64, BasicNode>;
 
 /// Snapshot type alias
 ///
 /// Points to OpenRaft's `Snapshot` for full compatibility.
-pub type EzSnapshot<T> = Snapshot<OpenRaftTypes<T>>;
+pub type EzSnapshot = Snapshot<EzCommittedLeaderId, u64, BasicNode, EzSnapshotData>;
 
 /// Persistence operation
 ///
 /// Each variant represents one atomic operation that should be persisted to disk.
-/// The framework calls [`EzStorage::persist`] with these operations.
+/// The framework calls [`crate::EzStorage::persist`] with these operations.
 #[derive(Debug, derive_more::Display)]
 pub enum Persist<T>
 where T: EzTypes
 {
     /// Update Raft metadata (term, vote, log positions)
     #[display("Meta")]
-    Meta(EzMeta<T>),
+    Meta(EzMeta),
 
     /// Write a log entry
     #[display("LogEntry")]
@@ -166,5 +153,5 @@ where T: EzTypes
 
     /// Write a complete snapshot
     #[display("Snapshot")]
-    Snapshot(EzSnapshot<T>),
+    Snapshot(EzSnapshot),
 }

@@ -9,6 +9,7 @@ use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
 use openraft::raft;
+use openraft::BasicNode;
 use openraft::ChangeMembers;
 use serde::Deserialize;
 
@@ -86,7 +87,7 @@ where T: EzTypes
 
     /// Change membership API handler
     async fn handle_change_membership(
-        req: web::Json<ChangeMembers<C<T>>>,
+        req: web::Json<ChangeMembers<u64, BasicNode>>,
         ez: Data<Self>,
     ) -> Result<web::Json<serde_json::Value>, actix_web::Error> {
         ez.raft
@@ -117,11 +118,7 @@ where T: EzTypes
         if metrics.current_leader != Some(metrics.id) {
             // Not the leader - find leader address and return it
             let leader_addr = metrics.current_leader.and_then(|leader_id| {
-                metrics
-                    .membership_config
-                    .membership()
-                    .get_node(&leader_id)
-                    .map(|n| n.addr.clone())
+                metrics.membership_config.membership().get_node(&leader_id).map(|n| n.addr.clone())
             });
             return Ok(web::Json(Err(leader_addr)));
         }
@@ -148,8 +145,7 @@ where T: EzTypes
 
 /// Run the HTTP server (convenience function)
 pub(crate) async fn run<T>(raft: EzRaft<T>) -> std::io::Result<()>
-where T: EzTypes
-{
+where T: EzTypes {
     EzServer::new(raft).run().await
 }
 

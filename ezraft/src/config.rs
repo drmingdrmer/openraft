@@ -3,6 +3,7 @@
 //! EzRaft provides sensible defaults for all Raft timing parameters.
 //! Users can optionally customize a few key parameters.
 
+use std::io;
 use std::time::Duration;
 
 use openraft::Config;
@@ -36,7 +37,7 @@ impl EzConfig {
     ///
     /// Validates and creates the internal Raft configuration.
     /// Election timeout is calculated as 3x to 6x the heartbeat interval.
-    pub(crate) fn to_raft_config(&self) -> Result<Config, openraft::ConfigError> {
+    pub(crate) fn to_raft_config(&self) -> Result<Config, io::Error> {
         let heartbeat_ms = self.heartbeat_interval.as_millis() as u64;
 
         let config = Config {
@@ -46,6 +47,6 @@ impl EzConfig {
             ..Default::default()
         };
 
-        config.validate()
+        config.validate().map_err(io::Error::other)
     }
 }

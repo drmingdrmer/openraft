@@ -49,7 +49,7 @@ struct AppStorage { base_dir: PathBuf }
 
 #[async_trait]
 impl EzStorage<AppTypes> for AppStorage {
-    async fn load(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error> {
         // Load meta (or default) and optional snapshot from disk
     }
 
@@ -119,7 +119,7 @@ pub trait EzStorage<T>: Send + Sync + 'static
 where
     T: EzTypes,
 {
-    async fn load(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
+    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error>;
     async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }

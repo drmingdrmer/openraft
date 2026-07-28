@@ -3,14 +3,15 @@
 //! This module provides the `EzTypes` trait and `OpenRaftTypes` wrapper
 //! that implement OpenRaft's `RaftTypeConfig` with sensible defaults.
 
-use std::io::Cursor;
 use std::marker::PhantomData;
 
 use openraft::impls::leader_id_std::LeaderId;
+use openraft::impls::InlineBatch;
 use openraft::impls::OneshotResponder;
 use openraft::AppData;
 use openraft::AppDataResponse;
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
 use serde::Deserialize;
@@ -82,14 +83,21 @@ impl<T: EzTypes> RaftTypeConfig for OpenRaftTypes<T> {
     type NodeId = u64;
     type Node = BasicNode;
     type Term = u64;
-    type LeaderId = LeaderId<Self>;
-    type Vote = Vote<Self>;
+    type LeaderId = EzLeaderId;
+    type Vote = Vote<EzLeaderId>;
     type Entry = crate::types::EzEntry<T>;
-    type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = openraft::TokioRuntime;
-    type Responder<X: Send + 'static> = OneshotResponder<Self, X>;
+    type Responder<X>
+        = OneshotResponder<Self, X>
+    where X: OptionalSend + 'static;
+    type Batch<X>
+        = InlineBatch<X>
+    where X: OptionalSend + 'static;
     type ErrorSource = openraft::AnyError;
 }
 
-/// Type alias for Vote with OpenRaftTypes<T>
-pub type EzVote<T> = Vote<OpenRaftTypes<T>>;
+/// Leader ID type: standard Raft, at most one leader per term
+pub type EzLeaderId = LeaderId<u64, u64>;
+
+/// Type alias for the Raft vote
+pub type EzVote = Vote<EzLeaderId>;
