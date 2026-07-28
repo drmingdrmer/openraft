@@ -164,7 +164,7 @@ where T: EzTypes
         let raft_config = Arc::new(raft_config);
 
         // Create network factory
-        let network = EzNetworkFactory::new();
+        let network = EzNetworkFactory::new()?;
 
         // Create OpenRaft instance
         let raft = Raft::new(node_id, raft_config, network, log_store, sm_store)

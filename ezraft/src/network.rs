@@ -4,6 +4,7 @@
 //! Users don't need to implement anything - the framework handles all RPC communication.
 
 use std::fmt::Display;
+use std::io;
 
 use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
@@ -39,13 +40,19 @@ type C<T> = OpenRaftTypes<T>;
 ///
 /// Creates HTTP clients to communicate with other Raft nodes.
 /// Implements OpenRaft's `RaftNetworkFactory` trait.
-#[derive(Default)]
-pub struct EzNetworkFactory;
+pub struct EzNetworkFactory {
+    client: Client,
+}
 
 impl EzNetworkFactory {
     /// Create a new network factory
-    pub fn new() -> Self {
-        Self
+    ///
+    /// The HTTP client is built once here and handed to every peer, so the whole node shares one
+    /// connection pool instead of opening a fresh one per peer.
+    pub fn new() -> Result<Self, io::Error> {
+        let client = Client::builder().no_proxy().build().map_err(io::Error::other)?;
+
+        Ok(Self { client })
     }
 }
 
@@ -54,7 +61,7 @@ impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory {
 
     async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
-        let client = Client::builder().no_proxy().build().unwrap();
+        let client = self.client.clone();
 
         Network { addr, client, target }.into_v2()
     }
