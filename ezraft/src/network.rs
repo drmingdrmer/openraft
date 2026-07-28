@@ -20,6 +20,7 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::AnyError;
 use openraft::BasicNode;
 use openraft_legacy::network_v1::Adapter;
 use openraft_legacy::network_v1::RaftNetwork as RaftNetworkV1;
@@ -88,6 +89,15 @@ impl Network {
                 RPCError::Network(NetworkError::new(&e))
             }
         })?;
+
+        // The body is a serialized `Result` only on success; any other status carries a
+        // plain-text reason that would otherwise surface as an opaque deserialization failure.
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            let err = AnyError::error(format!("{} responded {}: {}", url, status, body));
+            return Err(RPCError::Network(NetworkError::new(&err)));
+        }
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| NetworkError::new(&e))?;
 
