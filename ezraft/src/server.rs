@@ -50,6 +50,8 @@ where T: EzTypes
                 .route("/raft/append", web::post().to(Self::handle_append))
                 .route("/raft/vote", web::post().to(Self::handle_vote))
                 .route("/raft/snapshot", web::post().to(Self::handle_snapshot))
+                // Application API
+                .route("/api/write", web::post().to(Self::handle_write))
                 // Admin API
                 .route("/api/join", web::post().to(Self::handle_join))
                 .route("/api/change_membership", web::post().to(Self::handle_change_membership))
@@ -109,6 +111,23 @@ where T: EzTypes
             .await
             .decompose()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("install_snapshot failed: {}", e)))?;
+
+        Ok(web::Json(resp))
+    }
+
+    /// Application write API handler
+    ///
+    /// Takes the application's own request type as JSON, runs it through Raft, and returns
+    /// whatever the state machine's `apply` produced. This is how a client drives the cluster.
+    async fn handle_write(
+        req: web::Json<T::Request>,
+        ez: Data<Self>,
+    ) -> Result<web::Json<T::Response>, actix_web::Error> {
+        let resp = ez
+            .raft
+            .write(req.into_inner())
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("write failed: {}", e)))?;
 
         Ok(web::Json(resp))
     }
