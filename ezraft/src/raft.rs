@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
@@ -13,6 +14,7 @@ use openraft::BasicNode;
 use openraft::ChangeMembers;
 use openraft::Raft;
 use serde::Serialize;
+use tokio::time::sleep;
 
 use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
@@ -371,15 +373,25 @@ struct JoinRequest {
 /// Join response: Ok(node_id) or Err(leader_addr)
 type JoinResponse = Result<u64, Option<String>>;
 
+/// How many times a join is attempted before the node gives up and reports the last failure
+const JOIN_ATTEMPTS: usize = 20;
+
+/// How long to wait before attempting a join again
+const JOIN_RETRY_INTERVAL: Duration = Duration::from_millis(500);
+
 /// Request to join a cluster via seed node
 ///
-/// Retries with leader if seed is not the leader.
+/// Follows the seed's redirect if it is not the leader, and retries the transient conditions a
+/// starting cluster is full of: no leader elected yet, or another node's membership change still
+/// in flight. A cluster admits one member at a time, so nodes started together take turns here
+/// instead of failing.
 async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> {
     let client = reqwest::Client::builder().no_proxy().build().map_err(|e| io::Error::other(e.to_string()))?;
 
     let mut target_addr = seed_addr.to_string();
+    let mut last_err = "cluster did not accept the join".to_string();
 
-    loop {
+    for _ in 0..JOIN_ATTEMPTS {
         let url = format!("http://{}/api/join", target_addr);
         let req = JoinRequest {
             addr: my_addr.to_string(),
@@ -393,10 +405,11 @@ async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> 
             .map_err(|e| io::Error::other(format!("join request failed: {}", e)))?;
 
         if !resp.status().is_success() {
-            return Err(io::Error::other(format!(
-                "join request failed with status: {}",
-                resp.status()
-            )));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            last_err = format!("{} responded {}: {}", url, status, body);
+            sleep(JOIN_RETRY_INTERVAL).await;
+            continue;
         }
 
         let join_resp: JoinResponse =
@@ -404,8 +417,19 @@ async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> 
 
         match join_resp {
             Ok(node_id) => return Ok(node_id),
-            Err(Some(leader)) => target_addr = leader,
-            Err(None) => return Err(io::Error::other("no leader available")),
+            Err(Some(leader)) => {
+                last_err = format!("{} redirected to {}", url, leader);
+                target_addr = leader;
+            }
+            Err(None) => {
+                last_err = format!("{} knows of no leader", url);
+                sleep(JOIN_RETRY_INTERVAL).await;
+            }
         }
     }
+
+    Err(io::Error::other(format!(
+        "join gave up after {} attempts: {}",
+        JOIN_ATTEMPTS, last_err
+    )))
 }
