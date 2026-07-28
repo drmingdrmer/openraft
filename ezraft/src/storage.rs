@@ -89,7 +89,10 @@ where T: EzTypes
         user_sm: impl EzStateMachine<T>,
     ) -> Result<Self, std::io::Error> {
         // Load initial metadata and snapshot
-        let (cached_meta, snapshot) = user_storage.load().await?;
+        let Loaded {
+            meta: cached_meta,
+            snapshot,
+        } = user_storage.load().await?;
 
         let mut user_sm: Box<dyn EzStateMachine<T>> = Box::new(user_sm);
 

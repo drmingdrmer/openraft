@@ -26,7 +26,7 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 ## Quick Start
 
 ```rust
-use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzMeta, EzSnapshot, EzEntry, Persist, EzTypes};
+use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzEntry, Loaded, Persist, EzTypes};
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeMap;
 
@@ -49,8 +49,9 @@ struct AppStorage { base_dir: PathBuf }
 
 #[async_trait]
 impl EzStorage<AppTypes> for AppStorage {
-    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error> {
+    async fn load(&mut self) -> Result<Loaded, io::Error> {
         // Load meta (or default) and optional snapshot from disk
+        Ok(Loaded { meta, snapshot })
     }
 
     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
@@ -119,7 +120,7 @@ pub trait EzStorage<T>: Send + Sync + 'static
 where
     T: EzTypes,
 {
-    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error>;
+    async fn load(&mut self) -> Result<Loaded, io::Error>;
     async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
     async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<T>>, io::Error>;
 }
