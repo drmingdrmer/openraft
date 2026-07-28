@@ -46,6 +46,7 @@ use ezraft::Persist;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::fs;
+use tracing_subscriber::EnvFilter;
 
 // Define application request types
 #[derive(Serialize, Deserialize, Debug, Clone, derive_more::Display)]
@@ -242,6 +243,16 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    // Without this, everything Raft reports about a cluster that is not working goes nowhere.
+    // Warnings and errors by default; set RUST_LOG=info (or debug) to follow what Raft is doing.
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .init();
+
     let args = Args::parse();
     let addr = args.addr;
     let seed = args.seed;
