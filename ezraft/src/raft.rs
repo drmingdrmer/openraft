@@ -7,6 +7,8 @@ use std::io;
 use std::sync::Arc;
 
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::ClientWriteError;
+use openraft::errors::RaftError;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
 use openraft::Raft;
@@ -159,6 +161,10 @@ where T: EzTypes
     /// This proposes a client request to the Raft cluster.
     /// The request will be replicated and applied to the state machine once committed.
     ///
+    /// Only a leader can accept a write. Calling this on a follower forwards the request to the
+    /// leader over HTTP and returns the leader's answer, so a caller never has to track which
+    /// node is currently in charge.
+    ///
     /// # Arguments
     ///
     /// * `req` - User's request type
@@ -174,9 +180,20 @@ where T: EzTypes
     /// let resp = raft.write(req).await?;
     /// ```
     pub async fn write(&self, req: T::Request) -> Result<T::Response, io::Error> {
-        let resp = self.raft.client_write(req).await.map_err(|e| io::Error::other(e.to_string()))?;
+        let err = match self.raft.client_write(req.clone()).await {
+            Ok(resp) => return Ok(resp.data),
+            Err(e) => e,
+        };
 
-        Ok(resp.data)
+        let RaftError::APIError(ClientWriteError::ForwardToLeader(forward)) = &err else {
+            return Err(io::Error::other(err.to_string()));
+        };
+
+        // Forwarding to ourselves would repeat this call over HTTP forever.
+        match forward.leader_node.as_ref().map(|n| n.addr.as_str()) {
+            Some(leader) if leader != self.addr => forward_write::<T>(leader, &req).await,
+            _ => Err(io::Error::other(err.to_string())),
+        }
     }
 
     /// Add a learner node to the cluster
@@ -289,6 +306,32 @@ where T: EzTypes
     pub fn storage(&self) -> &Arc<StorageAdapter<T>> {
         &self.storage
     }
+}
+
+/// Send a write to the leader's `/api/write` endpoint and return what it applied
+///
+/// The leader is asked to do the write on this node's behalf, so the answer is the same one the
+/// caller would have got from writing to the leader directly.
+async fn forward_write<T>(leader_addr: &str, req: &T::Request) -> Result<T::Response, io::Error>
+where T: EzTypes {
+    let client = reqwest::Client::builder().no_proxy().build().map_err(|e| io::Error::other(e.to_string()))?;
+
+    let url = format!("http://{}/api/write", leader_addr);
+
+    let resp = client
+        .post(&url)
+        .json(req)
+        .send()
+        .await
+        .map_err(|e| io::Error::other(format!("forwarding write to {} failed: {}", url, e)))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(io::Error::other(format!("{} responded {}: {}", url, status, body)));
+    }
+
+    resp.json().await.map_err(|e| io::Error::other(format!("failed to parse write response: {}", e)))
 }
 
 /// Request to join a cluster
