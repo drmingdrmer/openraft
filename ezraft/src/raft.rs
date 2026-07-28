@@ -182,13 +182,17 @@ where T: EzTypes
     /// Learners receive log replication but don't participate in voting.
     /// This is useful for adding read-only nodes or preparing a node for membership.
     ///
+    /// Returns as soon as replication to the new node is set up; the node catches up in the
+    /// background. Waiting here would deadlock the join handler, whose caller cannot answer any
+    /// Raft RPC until it gets its node id back.
+    ///
     /// # Arguments
     ///
     /// * `node_id` - ID of the new learner node
     /// * `addr` - Address of the new learner node
     pub async fn add_learner(&self, node_id: u64, addr: String) -> Result<(), io::Error> {
         let node = BasicNode::new(addr);
-        self.raft.add_learner(node_id, node, true).await.map_err(|e| io::Error::other(e.to_string()))?;
+        self.raft.add_learner(node_id, node, false).await.map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }
