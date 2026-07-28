@@ -21,6 +21,9 @@ use crate::type_config::OpenRaftTypes;
 /// Type alias for OpenRaft types (more readable than ORTypes<T>)
 type ORTypes<T> = OpenRaftTypes<T>;
 
+/// The internal OpenRaft instance, with EzRaft's storage adapter as its state machine
+pub type ORRaft<T> = Raft<ORTypes<T>, Arc<StorageAdapter<T>>>;
+
 /// EzRaft - A simplified Raft interface
 ///
 /// This struct wraps OpenRaft's `Raft` and provides a simplified API.
@@ -43,7 +46,7 @@ where T: EzTypes
     storage: Arc<StorageAdapter<T>>,
 
     /// Internal OpenRaft instance
-    raft: Raft<ORTypes<T>>,
+    raft: ORRaft<T>,
 }
 
 impl<T> Clone for EzRaft<T>
@@ -121,7 +124,7 @@ where T: EzTypes
         let (log_store, sm_store) = (adapter.clone(), adapter.clone());
 
         // Convert EzConfig to OpenRaft Config
-        let raft_config = config.to_raft_config().map_err(|e| io::Error::other(e.to_string()))?;
+        let raft_config = config.to_raft_config()?;
         let raft_config = Arc::new(raft_config);
 
         // Create network factory
@@ -193,10 +196,7 @@ where T: EzTypes
     /// Change the cluster membership
     ///
     /// This modifies the cluster membership using OpenRaft's `ChangeMembers`.
-    pub async fn change_membership(
-        &self,
-        change: openraft::ChangeMembers<ORTypes<T>>,
-    ) -> Result<(), io::Error> {
+    pub async fn change_membership(&self, change: openraft::ChangeMembers<u64, BasicNode>) -> Result<(), io::Error> {
         self.raft.change_membership(change, false).await.map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
@@ -240,7 +240,7 @@ where T: EzTypes
     /// Get a reference to the internal OpenRaft instance
     ///
     /// This provides access to advanced OpenRaft APIs if needed.
-    pub fn inner(&self) -> &Raft<ORTypes<T>> {
+    pub fn inner(&self) -> &ORRaft<T> {
         &self.raft
     }
 
@@ -266,16 +266,15 @@ type JoinResponse = Result<u64, Option<String>>;
 ///
 /// Retries with leader if seed is not the leader.
 async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> {
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .build()
-        .map_err(|e| io::Error::other(e.to_string()))?;
+    let client = reqwest::Client::builder().no_proxy().build().map_err(|e| io::Error::other(e.to_string()))?;
 
     let mut target_addr = seed_addr.to_string();
 
     loop {
         let url = format!("http://{}/api/join", target_addr);
-        let req = JoinRequest { addr: my_addr.to_string() };
+        let req = JoinRequest {
+            addr: my_addr.to_string(),
+        };
 
         let resp = client
             .post(&url)
@@ -291,10 +290,8 @@ async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> 
             )));
         }
 
-        let join_resp: JoinResponse = resp
-            .json()
-            .await
-            .map_err(|e| io::Error::other(format!("failed to parse join response: {}", e)))?;
+        let join_resp: JoinResponse =
+            resp.json().await.map_err(|e| io::Error::other(format!("failed to parse join response: {}", e)))?;
 
         match join_resp {
             Ok(node_id) => return Ok(node_id),

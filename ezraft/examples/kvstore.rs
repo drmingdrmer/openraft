@@ -88,7 +88,7 @@ impl EzStateMachine<Types> for KvStateMachine {
     }
 
     async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
-        serde_json::to_vec(&self.data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        serde_json::to_vec(&self.data).map_err(io::Error::other)
     }
 
     async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
@@ -131,7 +131,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<Types> for FileStorage {
-    async fn load(&mut self) -> io::Result<(EzMeta<Types>, Option<EzSnapshot<Types>>)> {
+    async fn load(&mut self) -> io::Result<(EzMeta, Option<EzSnapshot>)> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
@@ -142,7 +142,7 @@ impl EzStorage<Types> for FileStorage {
         // Load snapshot (optional)
         let snapshot = match fs::read(&self.snapshot_meta_path()).await {
             Ok(meta_data) => {
-                let snap_meta: EzSnapshotMeta<Types> = serde_json::from_slice(&meta_data)?;
+                let snap_meta: EzSnapshotMeta = serde_json::from_slice(&meta_data)?;
                 let data = fs::read(&self.snapshot_data_path()).await?;
                 Some(EzSnapshot {
                     meta: snap_meta,

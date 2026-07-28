@@ -28,7 +28,7 @@ use crate::types::Persist;
 ///
 /// #[async_trait]
 /// impl EzStorage<AppTypes> for FileStorage {
-///     async fn load(&mut self) -> Result<(EzMeta<AppTypes>, Option<EzSnapshot<AppTypes>>), io::Error> {
+///     async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error> {
 ///         // 1. Load meta from base_dir/meta.json (use default if first run)
 ///         // 2. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
 ///         // Log entries are read separately via read_logs()
@@ -56,8 +56,8 @@ where
     /// Load metadata and snapshot on startup
     ///
     /// Returns persisted metadata (or default if first run) and optional snapshot.
-    /// Log entries are read separately via [`read_logs`].
-    async fn load(&mut self) -> Result<(EzMeta<T>, Option<EzSnapshot<T>>), io::Error>;
+    /// Log entries are read separately via [`Self::read_logs`].
+    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error>;
 
     /// Persist a state update
     ///

@@ -3,7 +3,7 @@
 //! This module bridges the user's [`EzStorage`] and [`EzStateMachine`] traits
 //! to OpenRaft's [`RaftLogStorage`] and [`RaftStateMachine`] traits.
 //!
-//! Users don't interact with this module directly - it's used internally by [`EzRaft`].
+//! Users don't interact with this module directly - it's used internally by [`crate::EzRaft`].
 
 use std::fmt::Debug;
 use std::io::Cursor;
@@ -14,9 +14,11 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use openraft::alias::LogIdOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::log_id::LogIndexOptionExt;
 use openraft::log_id::RaftLogId;
-use openraft::storage::ApplyResponder;
+use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogStorage;
@@ -24,6 +26,7 @@ use openraft::storage::RaftStateMachine;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
@@ -38,15 +41,12 @@ use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
 use crate::types::*;
 
-/// Type alias for snapshot data
-type SnapshotDataOf<T> = <OpenRaftTypes<T> as RaftTypeConfig>::SnapshotData;
-
 /// Internal storage state protected by single mutex
 pub struct StorageWithCache<T>
 where T: EzTypes
 {
     pub storage: Box<dyn EzStorage<T>>,
-    pub cached_meta: EzMeta<T>,
+    pub cached_meta: EzMeta,
 }
 
 /// Internal state machine wrapper that tracks Raft metadata
@@ -58,10 +58,10 @@ where T: EzTypes
     pub user_sm: Box<dyn EzStateMachine<T>>,
 
     /// Last log ID applied to the state machine
-    pub last_applied: Option<LogId<OpenRaftTypes<T>>>,
+    pub last_applied: Option<LogIdOf<OpenRaftTypes<T>>>,
 
     /// Last membership applied to the state machine
-    pub membership: StoredMembership<OpenRaftTypes<T>>,
+    pub membership: StoredMembershipOf<OpenRaftTypes<T>>,
 }
 
 /// Internal storage adapter
@@ -111,7 +111,7 @@ where T: EzTypes
     }
 
     /// Update metadata and persist to storage
-    pub async fn save_meta(&self, f: impl FnOnce(&mut EzMeta<T>)) -> Result<(), std::io::Error> {
+    pub async fn save_meta(&self, f: impl FnOnce(&mut EzMeta)) -> Result<(), std::io::Error> {
         let mut state = self.storage.lock().await;
         f(&mut state.cached_meta);
         let update = Persist::Meta(state.cached_meta.clone());
@@ -147,8 +147,8 @@ where T: EzTypes
 
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<OpenRaftTypes<T>>) -> Result<(), std::io::Error>
     where
-        I: IntoIterator<Item = <OpenRaftTypes<T> as RaftTypeConfig>::Entry> + Send,
-        I::IntoIter: Send,
+        I: IntoIterator<Item = <OpenRaftTypes<T> as RaftTypeConfig>::Entry> + OptionalSend,
+        I::IntoIter: OptionalSend,
     {
         let mut last_log_id = None;
 
@@ -169,14 +169,14 @@ where T: EzTypes
         Ok(())
     }
 
-    async fn truncate_after(&mut self, last_log_id: Option<LogId<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
         self.save_meta(|m| {
             m.last_log_id = last_log_id.map(|id| id.to_type());
         })
         .await
     }
 
-    async fn purge(&mut self, log_id: LogId<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
+    async fn purge(&mut self, log_id: LogIdOf<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
         self.save_meta(|m| m.last_purged = Some(log_id.to_type())).await
     }
 
@@ -194,7 +194,7 @@ where T: EzTypes
         Ok(state.cached_meta.vote)
     }
 
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
     ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error> {
@@ -236,26 +236,20 @@ where T: EzTypes
 impl<T> RaftStateMachine<OpenRaftTypes<T>> for Arc<StorageAdapter<T>>
 where T: EzTypes
 {
+    type SnapshotData = EzSnapshotData;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<OpenRaftTypes<T>>>, StoredMembership<OpenRaftTypes<T>>), std::io::Error> {
+    ) -> Result<(Option<LogIdOf<OpenRaftTypes<T>>>, StoredMembershipOf<OpenRaftTypes<T>>), std::io::Error> {
         let sm = self.sm_state.lock().await;
         Ok((sm.last_applied, sm.membership.clone()))
     }
 
     async fn apply<Strm>(&mut self, entries: Strm) -> Result<(), std::io::Error>
-    where Strm: futures::Stream<
-                Item = Result<
-                    (
-                        <OpenRaftTypes<T> as RaftTypeConfig>::Entry,
-                        Option<ApplyResponder<OpenRaftTypes<T>>>,
-                    ),
-                    std::io::Error,
-                >,
-            > + Send
-            + Unpin {
+    where Strm: futures::Stream<Item = Result<EntryResponder<OpenRaftTypes<T>>, std::io::Error>> + OptionalSend + Unpin
+    {
         let mut sm = self.sm_state.lock().await;
 
         let mut entries = entries;
@@ -288,14 +282,14 @@ where T: EzTypes
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<T>, std::io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<EzSnapshotData, std::io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
-        snapshot_meta: &SnapshotMeta<OpenRaftTypes<T>>,
-        snapshot_data: SnapshotDataOf<T>,
+        snapshot_meta: &EzSnapshotMeta,
+        snapshot_data: EzSnapshotData,
     ) -> Result<(), std::io::Error> {
         // Extract snapshot data
         let mut cursor = snapshot_data;
@@ -326,7 +320,7 @@ where T: EzTypes
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<OpenRaftTypes<T>>>, std::io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<EzSnapshot>, std::io::Error> {
         let mut state = self.storage.lock().await;
         Ok(state.storage.load().await?.1)
     }
@@ -336,7 +330,9 @@ where T: EzTypes
 impl<T> RaftSnapshotBuilder<OpenRaftTypes<T>> for Arc<StorageAdapter<T>>
 where T: EzTypes
 {
-    async fn build_snapshot(&mut self) -> Result<Snapshot<OpenRaftTypes<T>>, std::io::Error> {
+    type SnapshotData = EzSnapshotData;
+
+    async fn build_snapshot(&mut self) -> Result<EzSnapshot, std::io::Error> {
         // Get current state machine state and build snapshot data
         let (last_applied, last_membership, snapshot_data) = {
             let sm = self.sm_state.lock().await;

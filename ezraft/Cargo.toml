@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-openraft = { path = "../openraft", features = ["serde"] }
+openraft = { path = "../openraft", features = ["serde", "type-alias"] }
 openraft-legacy = { path = "../legacy" }
 actix-web = "4.0"
 serde = { version = "1.0", features = ["derive"] }
