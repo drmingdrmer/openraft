@@ -31,51 +31,67 @@ pub trait EzTypes: Send + Sync + 'static {
 /// Wrapper type that implements `RaftTypeConfig` for any `T: EzTypes`
 ///
 /// This provides all the default implementations needed for OpenRaft.
-pub struct OpenRaftTypes<T: EzTypes> {
+pub struct OpenRaftTypes<T>
+where T: EzTypes
+{
     _phantom: PhantomData<T>,
 }
 
-impl<T: EzTypes> Copy for OpenRaftTypes<T> {}
+impl<T> Copy for OpenRaftTypes<T> where T: EzTypes {}
 
-impl<T: EzTypes> Clone for OpenRaftTypes<T> {
+impl<T> Clone for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: EzTypes> Default for OpenRaftTypes<T> {
+impl<T> Default for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn default() -> Self {
         Self { _phantom: PhantomData }
     }
 }
 
-impl<T: EzTypes> PartialEq for OpenRaftTypes<T> {
+impl<T> PartialEq for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
-impl<T: EzTypes> Eq for OpenRaftTypes<T> {}
+impl<T> Eq for OpenRaftTypes<T> where T: EzTypes {}
 
-impl<T: EzTypes> PartialOrd for OpenRaftTypes<T> {
+impl<T> PartialOrd for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: EzTypes> Ord for OpenRaftTypes<T> {
+impl<T> Ord for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         std::cmp::Ordering::Equal
     }
 }
 
-impl<T: EzTypes> std::fmt::Debug for OpenRaftTypes<T> {
+impl<T> std::fmt::Debug for OpenRaftTypes<T>
+where T: EzTypes
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("OpenRaftTypes").finish()
     }
 }
 
-impl<T: EzTypes> RaftTypeConfig for OpenRaftTypes<T> {
+impl<T> RaftTypeConfig for OpenRaftTypes<T>
+where T: EzTypes
+{
     type D = T::Request;
     type R = T::Response;
     type NodeId = u64;

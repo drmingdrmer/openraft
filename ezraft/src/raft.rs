@@ -93,8 +93,8 @@ where T: EzTypes
     /// ```
     pub async fn create(
         http_addr: impl ToString,
-        state_machine: impl EzStateMachine<T> + 'static,
-        storage: impl EzStorage<T> + 'static,
+        state_machine: impl EzStateMachine<T>,
+        storage: impl EzStorage<T>,
         config: EzConfig,
     ) -> Result<Self, io::Error> {
         Self::new(http_addr, state_machine, storage, config, None).await
@@ -122,8 +122,8 @@ where T: EzTypes
     pub async fn join(
         http_addr: impl ToString,
         seed_addr: impl ToString,
-        state_machine: impl EzStateMachine<T> + 'static,
-        storage: impl EzStorage<T> + 'static,
+        state_machine: impl EzStateMachine<T>,
+        storage: impl EzStorage<T>,
         config: EzConfig,
     ) -> Result<Self, io::Error> {
         Self::new(http_addr, state_machine, storage, config, Some(seed_addr.to_string())).await
@@ -131,8 +131,8 @@ where T: EzTypes
 
     async fn new(
         http_addr: impl ToString,
-        state_machine: impl EzStateMachine<T> + 'static,
-        storage: impl EzStorage<T> + 'static,
+        state_machine: impl EzStateMachine<T>,
+        storage: impl EzStorage<T>,
         config: EzConfig,
         seed_addr: Option<String>,
     ) -> Result<Self, io::Error> {

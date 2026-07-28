@@ -56,7 +56,9 @@ impl EzNetworkFactory {
     }
 }
 
-impl<T: EzTypes> RaftNetworkFactory<C<T>> for EzNetworkFactory {
+impl<T> RaftNetworkFactory<C<T>> for EzNetworkFactory
+where T: EzTypes
+{
     type Network = Adapter<C<T>, Network, EzSnapshotData>;
 
     async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
@@ -120,7 +122,9 @@ impl Network {
 
 /// Implement RaftNetwork (v1 API) for HTTP transport
 #[allow(clippy::blocks_in_conditions)]
-impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
+impl<T> RaftNetworkV1<C<T>> for Network
+where T: EzTypes
+{
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C<T>>,

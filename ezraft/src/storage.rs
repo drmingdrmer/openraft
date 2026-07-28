@@ -85,8 +85,8 @@ where T: EzTypes
 {
     /// Create a new storage adapter and load initial metadata
     pub async fn new(
-        mut user_storage: impl EzStorage<T> + 'static,
-        user_sm: impl EzStateMachine<T> + 'static,
+        mut user_storage: impl EzStorage<T>,
+        user_sm: impl EzStateMachine<T>,
     ) -> Result<Self, std::io::Error> {
         // Load initial metadata and snapshot
         let (cached_meta, snapshot) = user_storage.load().await?;
@@ -238,10 +238,13 @@ where T: EzTypes
         Ok(state.cached_meta.vote)
     }
 
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
+    async fn try_get_log_entries<RB>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error> {
+    ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error>
+    where
+        RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
+    {
         // Held until the entries have been read: a purge landing in between would leave the
         // clamped range pointing at entries user storage has already deleted.
         let mut state = self.storage.lock().await;
