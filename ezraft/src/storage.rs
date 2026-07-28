@@ -223,13 +223,13 @@ where T: EzTypes
         &mut self,
         range: RB,
     ) -> Result<Vec<<OpenRaftTypes<T> as RaftTypeConfig>::Entry>, std::io::Error> {
+        // Held until the entries have been read: a purge landing in between would leave the
+        // clamped range pointing at entries user storage has already deleted.
+        let mut state = self.storage.lock().await;
+
         // Available log range: [lo, hi)
-        let (lo, hi) = {
-            let state = self.storage.lock().await;
-            let lo = state.cached_meta.last_purged.map(|(_, i)| i).next_index();
-            let hi = state.cached_meta.last_log_id.map(|(_, i)| i).next_index();
-            (lo, hi)
-        };
+        let lo = state.cached_meta.last_purged.map(|(_, i)| i).next_index();
+        let hi = state.cached_meta.last_log_id.map(|(_, i)| i).next_index();
 
         let start = match range.start_bound() {
             std::ops::Bound::Included(&x) => x,
@@ -252,7 +252,6 @@ where T: EzTypes
         }
 
         // Load only the requested range from user storage
-        let mut state = self.storage.lock().await;
         state.storage.read_logs(start, end).await
     }
 }
