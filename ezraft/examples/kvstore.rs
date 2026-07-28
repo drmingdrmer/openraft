@@ -255,8 +255,12 @@ async fn main() -> io::Result<()> {
     let state_machine = KvStateMachine::default();
     let storage = FileStorage::new(base_dir).await?;
 
-    // Create EzRaft instance (auto-joins or initializes based on seed)
-    let raft = EzRaft::<Types>::new(&addr, state_machine, storage, EzConfig::default(), seed).await?;
+    // Create EzRaft instance: the first node starts the cluster, the rest join it
+    let config = EzConfig::default();
+    let raft = match seed {
+        Some(seed) => EzRaft::<Types>::join(&addr, seed, state_machine, storage, config).await?,
+        None => EzRaft::<Types>::create(&addr, state_machine, storage, config).await?,
+    };
 
     println!("Node {} listening on {}", raft.node_id(), addr);
 

@@ -69,10 +69,10 @@ where T: EzTypes
 impl<T> EzRaft<T>
 where T: EzTypes
 {
-    /// Create a new EzRaft instance
+    /// Start a new cluster with this node as its only member
     ///
-    /// This initializes the internal Raft instance with the user's storage and state machine.
-    /// The node automatically joins a cluster or initializes as the first node.
+    /// Exactly one node of a cluster is created this way; every other node uses [`Self::join`].
+    /// Creating two nodes separately gives two one-node clusters that will never merge.
     ///
     /// # Arguments
     ///
@@ -80,23 +80,51 @@ where T: EzTypes
     /// * `state_machine` - User's state machine implementation
     /// * `storage` - User's storage implementation
     /// * `config` - EzRaft configuration (use `EzConfig::default()` for sensible defaults)
-    /// * `seed_addr` - Optional seed node address to join existing cluster
-    ///
-    /// # Behavior
-    ///
-    /// - If `seed_addr` is `None`: Initialize as single-node cluster with node_id = 0
-    /// - If `seed_addr` is `Some`: Join existing cluster via seed node
     ///
     /// # Example
     ///
     /// ```ignore
-    /// // First node (creates new cluster)
-    /// let raft = EzRaft::new("127.0.0.1:8080", sm, storage, config, None).await?;
-    ///
-    /// // Joining node (joins existing cluster)
-    /// let raft = EzRaft::new("127.0.0.1:8081", sm, storage, config, Some("127.0.0.1:8080".into())).await?;
+    /// let raft = EzRaft::create("127.0.0.1:8080", sm, storage, config).await?;
     /// ```
-    pub async fn new(
+    pub async fn create(
+        http_addr: impl ToString,
+        state_machine: impl EzStateMachine<T> + 'static,
+        storage: impl EzStorage<T> + 'static,
+        config: EzConfig,
+    ) -> Result<Self, io::Error> {
+        Self::new(http_addr, state_machine, storage, config, None).await
+    }
+
+    /// Join the cluster that `seed_addr` belongs to
+    ///
+    /// The seed assigns this node an id and adds it to the cluster; the seed does not have to be
+    /// the leader. On restart the persisted id is reused and the seed is not contacted again, so
+    /// passing an address that has since left the cluster is harmless.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_addr` - Address to bind HTTP server (e.g., "127.0.0.1:8081")
+    /// * `seed_addr` - Address of any node already in the cluster
+    /// * `state_machine` - User's state machine implementation
+    /// * `storage` - User's storage implementation
+    /// * `config` - EzRaft configuration (use `EzConfig::default()` for sensible defaults)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let raft = EzRaft::join("127.0.0.1:8081", "127.0.0.1:8080", sm, storage, config).await?;
+    /// ```
+    pub async fn join(
+        http_addr: impl ToString,
+        seed_addr: impl ToString,
+        state_machine: impl EzStateMachine<T> + 'static,
+        storage: impl EzStorage<T> + 'static,
+        config: EzConfig,
+    ) -> Result<Self, io::Error> {
+        Self::new(http_addr, state_machine, storage, config, Some(seed_addr.to_string())).await
+    }
+
+    async fn new(
         http_addr: impl ToString,
         state_machine: impl EzStateMachine<T> + 'static,
         storage: impl EzStorage<T> + 'static,

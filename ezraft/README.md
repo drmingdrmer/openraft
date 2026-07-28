@@ -92,15 +92,15 @@ async fn main() -> Result<()> {
     let storage = AppStorage { base_dir: "./data".into() };
 
     // First node (creates cluster)
-    let raft = EzRaft::<AppTypes>::new(
+    let raft = EzRaft::<AppTypes>::create(
         "127.0.0.1:8080",
         state_machine,
         storage,
         EzConfig::default(),
-        None,  // No seed = first node
     ).await?;
 
-    // Or join existing cluster: Some("127.0.0.1:8080".into())
+    // Every other node joins it:
+    // EzRaft::<AppTypes>::join("127.0.0.1:8081", "127.0.0.1:8080", sm, storage, config).await?
     raft.serve().await?;
 }
 ```
