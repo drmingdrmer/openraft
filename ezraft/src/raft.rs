@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
 use openraft::errors::InitializeError;
 use openraft::errors::RaftError;
@@ -256,6 +257,9 @@ where T: EzTypes
     /// nodes have been promoted. Promoting a node that is still far behind would stall the
     /// membership change, hence the wait.
     ///
+    /// A cluster admits one membership change at a time, so when several nodes join at once
+    /// their promotions take turns: one that finds another change in flight waits and retries.
+    ///
     /// Returns without changing anything if this node is no longer the leader; the new leader
     /// owns the promotion from that point on.
     pub async fn promote_to_voter(&self, node_id: u64) -> Result<(), io::Error> {
@@ -268,18 +272,41 @@ where T: EzTypes
             matched >= m.last_log_index
         };
 
-        let metrics = self
-            .raft
-            .wait(None)
-            .metrics(caught_up, "learner catches up before promotion")
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let mut last_err = String::new();
 
-        if metrics.current_leader != Some(self.node_id) {
-            return Ok(());
+        for _ in 0..PROMOTE_ATTEMPTS {
+            let metrics = self
+                .raft
+                .wait(None)
+                .metrics(caught_up, "learner catches up before promotion")
+                .await
+                .map_err(|e| io::Error::other(e.to_string()))?;
+
+            if metrics.current_leader != Some(self.node_id) {
+                return Ok(());
+            }
+
+            let change = ChangeMembers::AddVoterIds(BTreeSet::from([node_id]));
+            let err = match self.raft.change_membership(change, false).await {
+                Ok(_) => return Ok(()),
+                Err(e) => e,
+            };
+
+            match &err {
+                RaftError::APIError(ClientWriteError::ChangeMembershipError(ChangeMembershipError::InProgress(_))) => {
+                    last_err = err.to_string();
+                    sleep(PROMOTE_RETRY_INTERVAL).await;
+                }
+                // Deposed between the check above and the change; the new leader owns it now.
+                RaftError::APIError(ClientWriteError::ForwardToLeader(_)) => return Ok(()),
+                _ => return Err(io::Error::other(err.to_string())),
+            }
         }
 
-        self.change_membership(ChangeMembers::AddVoterIds(BTreeSet::from([node_id]))).await
+        Err(io::Error::other(format!(
+            "promotion of node {} gave up after {} attempts: {}",
+            node_id, PROMOTE_ATTEMPTS, last_err
+        )))
     }
 
     /// Change the cluster membership
@@ -344,6 +371,12 @@ where T: EzTypes
         &self.storage
     }
 }
+
+/// How many times a promotion retries while another membership change is in flight
+const PROMOTE_ATTEMPTS: usize = 20;
+
+/// How long to wait before retrying a promotion
+const PROMOTE_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 
 /// How long a forwarded write may take before the leader is given up on
 ///
