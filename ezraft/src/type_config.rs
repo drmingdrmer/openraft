@@ -31,9 +31,7 @@ pub trait EzTypes: Send + Sync + 'static {
 /// Wrapper type that implements `RaftTypeConfig` for any `T: EzTypes`
 ///
 /// This provides all the default implementations needed for OpenRaft.
-#[derive(Serialize, Deserialize)]
 pub struct OpenRaftTypes<T: EzTypes> {
-    #[serde(skip)]
     _phantom: PhantomData<T>,
 }
 
