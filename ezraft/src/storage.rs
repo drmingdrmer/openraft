@@ -351,6 +351,17 @@ where T: EzTypes
             snapshot_id,
         };
 
+        // Persist before returning: openraft purges logs covered by this snapshot right after,
+        // and a durable purge point with no durable snapshot is an unrecoverable state.
+        {
+            let mut state = self.storage.lock().await;
+            let stored = Snapshot {
+                meta: snapshot_meta.clone(),
+                snapshot: Cursor::new(snapshot_data.clone()),
+            };
+            state.storage.persist(Persist::Snapshot(stored)).await?;
+        }
+
         Ok(Snapshot {
             meta: snapshot_meta,
             snapshot: Cursor::new(snapshot_data),
