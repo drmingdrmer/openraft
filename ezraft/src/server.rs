@@ -135,7 +135,9 @@ where T: EzTypes
     /// Join cluster API handler
     ///
     /// A new node calls this endpoint to join an existing cluster.
-    /// The leader assigns a unique node ID based on the log index.
+    /// The leader assigns a unique node ID based on the log index, adds the node as a learner,
+    /// and promotes it to a voter once it has caught up, so that joining a cluster is all it
+    /// takes to make the cluster fault-tolerant.
     async fn handle_join(
         req: web::Json<JoinRequest>,
         ez: Data<Self>,
@@ -166,6 +168,15 @@ where T: EzTypes
             .add_learner(node_id, req.addr.clone())
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e)))?;
+
+        // Promote in the background: the new node cannot replicate anything, and therefore
+        // cannot catch up, until this response tells it which node it is.
+        let raft = ez.raft.clone();
+        tokio::spawn(async move {
+            if let Err(e) = raft.promote_to_voter(node_id).await {
+                tracing::error!("failed to promote node {} to voter: {}", node_id, e);
+            }
+        });
 
         Ok(web::Json(Ok(node_id)))
     }
