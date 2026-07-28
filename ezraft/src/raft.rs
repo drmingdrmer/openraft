@@ -2,6 +2,7 @@
 //!
 //! This module provides the primary [`EzRaft`] struct that users interact with.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::io;
 use std::sync::Arc;
@@ -9,6 +10,7 @@ use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
+use openraft::errors::InitializeError;
 use openraft::errors::RaftError;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
@@ -169,13 +171,15 @@ where T: EzTypes
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
-        // Auto-initialize if first node (node_id == 0 means truly first node)
-        // On restart, node_id is loaded from storage, so this only runs on first run of first node
+        // The created node starts the cluster with itself as its only member. On restart it loads
+        // id 0 from storage and comes back here, where initializing is rightly refused; every
+        // other refusal means the node cannot run.
         if node_id == 0 {
-            use std::collections::BTreeMap;
             let nodes = BTreeMap::from_iter([(node_id, BasicNode::new(http_addr.clone()))]);
-            // Ignore error if already initialized (restart case)
-            raft.initialize(nodes).await.ok();
+            match raft.initialize(nodes).await {
+                Ok(()) | Err(RaftError::APIError(InitializeError::NotAllowed(_))) => {}
+                Err(e) => return Err(io::Error::other(e.to_string())),
+            }
         }
 
         Ok(Self {
