@@ -10,9 +10,11 @@ use actix_web::App;
 use actix_web::HttpServer;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::errors::Infallible;
+use openraft::errors::InstallSnapshotError;
 use openraft::raft;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
+use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 use serde::Deserialize;
 
 use crate::raft::EzRaft;
@@ -47,6 +49,7 @@ where T: EzTypes
                 // Raft internal RPC
                 .route("/raft/append", web::post().to(Self::handle_append))
                 .route("/raft/vote", web::post().to(Self::handle_vote))
+                .route("/raft/snapshot", web::post().to(Self::handle_snapshot))
                 // Admin API
                 .route("/api/join", web::post().to(Self::handle_join))
                 .route("/api/change_membership", web::post().to(Self::handle_change_membership))
@@ -88,6 +91,24 @@ where T: EzTypes
             .await
             .decompose()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("vote failed: {}", e)))?;
+
+        Ok(web::Json(resp))
+    }
+
+    /// Raft install snapshot RPC handler
+    ///
+    /// A leader falls back to this when a follower lags behind the purged log.
+    async fn handle_snapshot(
+        req: web::Json<raft::InstallSnapshotRequest<C<T>>>,
+        ez: Data<Self>,
+    ) -> Result<web::Json<Result<raft::InstallSnapshotResponse<C<T>>, InstallSnapshotError>>, actix_web::Error> {
+        let resp = ez
+            .raft
+            .inner()
+            .install_snapshot(req.into_inner())
+            .await
+            .decompose()
+            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("install_snapshot failed: {}", e)))?;
 
         Ok(web::Json(resp))
     }
