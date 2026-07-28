@@ -21,6 +21,23 @@ use crate::types::Persist;
 /// Implement this to handle how Raft state is persisted to disk.
 /// The framework handles all Raft logic - you only handle serialization and I/O.
 ///
+/// # What the framework assumes
+///
+/// Raft's safety guarantees rest on these, so an implementation that breaks one can lose
+/// acknowledged writes or elect two leaders for the same term:
+///
+/// - **Durability.** [`persist`] must return only once the data would survive a crash of the
+///   machine, not just of the process. Anything weaker means a node can forget a vote it cast or a
+///   log entry it acknowledged. The bundled example writes files without `fsync`, which is fine for
+///   a demo and not enough for a real deployment.
+/// - **Ordering.** Operations are applied in the order [`persist`] receives them. A later one must
+///   not become durable before an earlier one.
+/// - **Read-your-writes.** [`read_logs`] returns what [`persist`] last wrote, including the
+///   deletions requested by [`Persist::TruncateLogs`] and [`Persist::PurgeLogs`].
+///
+/// [`persist`]: Self::persist
+/// [`read_logs`]: Self::read_logs
+///
 /// # Example (file-based storage)
 ///
 /// ```ignore
@@ -39,6 +56,8 @@ use crate::types::Persist;
 ///             Persist::Meta(meta) => { /* write meta */ }
 ///             Persist::LogEntry(entry) => { /* write log entry */ }
 ///             Persist::Snapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
+///             Persist::TruncateLogs(from) => { /* delete entries at index >= from */ }
+///             Persist::PurgeLogs(upto) => { /* delete entries at index <= upto */ }
 ///         }
 ///     }
 ///
@@ -57,12 +76,16 @@ where
     ///
     /// Returns persisted metadata (or default if first run) and optional snapshot.
     /// Log entries are read separately via [`Self::read_logs`].
+    ///
+    /// Called exactly once, before the node starts. The framework keeps the snapshot it gets
+    /// here, so serving one to a lagging peer does not call back into this method.
     async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error>;
 
     /// Persist a state update
     ///
     /// Each call represents one atomic operation that should be durably persisted.
-    /// The framework calls this method when state changes.
+    /// The framework calls this method when state changes. See [`Persist`] for what each
+    /// operation requires.
     async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
 
     /// Read log entries within a specific index range
