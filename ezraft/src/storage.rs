@@ -164,23 +164,42 @@ where T: EzTypes
         I: IntoIterator<Item = <OpenRaftTypes<T> as RaftTypeConfig>::Entry> + OptionalSend,
         I::IntoIter: OptionalSend,
     {
-        let mut last_log_id = None;
-
-        // Save all log entries
-        for entry in entries {
-            last_log_id = Some(entry.log_id);
-            let update = Persist::LogEntry(entry);
+        // One lock for the whole batch and the metadata that describes it, so no reader can
+        // observe a log that reaches past the last_log_id recorded for it.
+        let res = async {
             let mut state = self.storage.lock().await;
-            state.storage.persist(update).await?;
-        }
 
-        // Update metadata once with the last entry's log_id
-        if let Some(log_id) = last_log_id {
-            self.save_meta(|m| m.last_log_id = Some(log_id)).await?;
-        }
+            let mut last_log_id = None;
 
-        callback.io_completed(Ok(()));
-        Ok(())
+            // Save all log entries
+            for entry in entries {
+                last_log_id = Some(entry.log_id);
+                state.storage.persist(Persist::LogEntry(entry)).await?;
+            }
+
+            // Update metadata once with the last entry's log_id
+            if let Some(log_id) = last_log_id {
+                state.cached_meta.last_log_id = Some(log_id);
+                let update = Persist::Meta(state.cached_meta.clone());
+                state.storage.persist(update).await?;
+            }
+
+            Ok::<_, std::io::Error>(())
+        }
+        .await;
+
+        // openraft is waiting on this callback; returning the error alone would leave the append
+        // in flight forever.
+        match res {
+            Ok(()) => {
+                callback.io_completed(Ok(()));
+                Ok(())
+            }
+            Err(e) => {
+                callback.io_completed(Err(std::io::Error::other(e.to_string())));
+                Err(e)
+            }
+        }
     }
 
     async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<OpenRaftTypes<T>>>) -> Result<(), std::io::Error> {
