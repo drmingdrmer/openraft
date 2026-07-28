@@ -6,6 +6,8 @@
 use std::fmt::Display;
 use std::io;
 
+use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::error::Infallible;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
@@ -21,13 +23,11 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::AnyError;
-use openraft::BasicNode;
 use openraft_legacy::network_v1::Adapter;
 use openraft_legacy::network_v1::RaftNetwork as RaftNetworkV1;
 use reqwest::Client;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;

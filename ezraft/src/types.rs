@@ -4,16 +4,16 @@
 
 use std::io::Cursor;
 
-use openraft::entry::RaftEntry;
-use openraft::entry::RaftPayload;
-use openraft::log_id::RaftLogId;
-use openraft::vote::leader_id_std::CommittedLeaderId;
 use openraft::BasicNode;
 use openraft::EntryPayload;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::Snapshot;
 use openraft::SnapshotMeta;
+use openraft::entry::RaftEntry;
+use openraft::entry::RaftPayload;
+use openraft::log_id::RaftLogId;
+use openraft::vote::leader_id_std::CommittedLeaderId;
 use serde::Deserialize;
 use serde::Serialize;
 

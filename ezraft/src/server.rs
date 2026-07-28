@@ -4,16 +4,16 @@
 //! - Internal Raft RPC (append entries, vote)
 //! - Admin API (join, change membership, metrics)
 
-use actix_web::web;
-use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
-use openraft::errors::decompose::DecomposeResult;
-use openraft::errors::Infallible;
-use openraft::errors::InstallSnapshotError;
-use openraft::raft;
+use actix_web::web;
+use actix_web::web::Data;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
+use openraft::errors::Infallible;
+use openraft::errors::InstallSnapshotError;
+use openraft::errors::decompose::DecomposeResult;
+use openraft::raft;
 use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
 use serde::Deserialize;
 
