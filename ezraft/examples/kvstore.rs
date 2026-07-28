@@ -217,12 +217,10 @@ impl EzStorage<Types> for FileStorage {
     async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<Types>>> {
         let mut logs = Vec::new();
 
+        // Every index in the range must be there: a gap handed back to Raft would look like a
+        // shorter log rather than the missing entry it is.
         for index in start..end {
-            let data = match fs::read(&self.log_path(index)).await {
-                Ok(d) => d,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-                Err(e) => return Err(e),
-            };
+            let data = fs::read(&self.log_path(index)).await?;
             logs.push(serde_json::from_slice(&data)?);
         }
 
