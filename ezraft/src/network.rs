@@ -76,10 +76,14 @@ pub struct Network {
 
 impl Network {
     /// Send an HTTP POST request to a target node
+    ///
+    /// The request is given the timeout budget openraft computed for it: it is dropped at
+    /// `soft_ttl` so this side reports the failure before openraft abandons the call itself.
     async fn request<Req, Resp, Err, Cfg>(
         &mut self,
         uri: impl Display,
         req: Req,
+        option: &RPCOption,
     ) -> Result<Result<Resp, Err>, RPCError<Cfg>>
     where
         Cfg: openraft::RaftTypeConfig,
@@ -89,8 +93,10 @@ impl Network {
     {
         let url = format!("http://{}/{}", self.addr, uri);
 
-        let resp = self.client.post(url.clone()).json(&req).send().await.map_err(|e| {
-            if e.is_connect() {
+        let resp = self.client.post(url.clone()).timeout(option.soft_ttl()).json(&req).send().await.map_err(|e| {
+            // A peer that does not answer in time is treated like one that cannot be reached, so
+            // replication backs off instead of hammering it.
+            if e.is_connect() || e.is_timeout() {
                 RPCError::Unreachable(Unreachable::new(&e))
             } else {
                 RPCError::Network(NetworkError::new(&e))
@@ -118,10 +124,10 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C<T>>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
         let res = self
-            .request::<_, _, Infallible, C<T>>("raft/append", req)
+            .request::<_, _, Infallible, C<T>>("raft/append", req, &option)
             .await
             .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
@@ -130,9 +136,12 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
     async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C<T>>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<InstallSnapshotResponse<C<T>>, RPCError<C<T>, RaftError<C<T>, InstallSnapshotError>>> {
-        let res = self.request::<_, _, _, C<T>>("raft/snapshot", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, _, C<T>>("raft/snapshot", req, &option)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
             Err(e) => Err(RPCError::RemoteError(RemoteError::new(
@@ -145,9 +154,12 @@ impl<T: EzTypes> RaftNetworkV1<C<T>> for Network {
     async fn vote(
         &mut self,
         req: VoteRequest<C<T>>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<VoteResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self.request::<_, _, Infallible, C<T>>("raft/vote", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, Infallible, C<T>>("raft/vote", req, &option)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }
