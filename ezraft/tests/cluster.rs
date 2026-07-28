@@ -20,6 +20,7 @@ use ezraft::EzSnapshotMeta;
 use ezraft::EzStateMachine;
 use ezraft::EzStorage;
 use ezraft::EzTypes;
+use ezraft::Loaded;
 use ezraft::Persist;
 use serde::Deserialize;
 use serde::Serialize;
@@ -103,13 +104,16 @@ struct MemStorage {
 
 #[async_trait]
 impl EzStorage<Types> for MemStorage {
-    async fn load(&mut self) -> io::Result<(EzMeta, Option<EzSnapshot>)> {
+    async fn load(&mut self) -> io::Result<Loaded> {
         let disk = self.disk.lock().unwrap();
         let snapshot = disk.snapshot.as_ref().map(|(meta, data)| EzSnapshot {
             meta: meta.clone(),
             snapshot: Cursor::new(data.clone()),
         });
-        Ok((disk.meta.clone(), snapshot))
+        Ok(Loaded {
+            meta: disk.meta.clone(),
+            snapshot,
+        })
     }
 
     async fn persist(&mut self, op: Persist<Types>) -> io::Result<()> {

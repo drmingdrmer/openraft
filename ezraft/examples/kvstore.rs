@@ -42,6 +42,7 @@ use ezraft::EzSnapshotMeta;
 use ezraft::EzStateMachine;
 use ezraft::EzStorage;
 use ezraft::EzTypes;
+use ezraft::Loaded;
 use ezraft::Persist;
 use serde::Deserialize;
 use serde::Serialize;
@@ -165,7 +166,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl EzStorage<Types> for FileStorage {
-    async fn load(&mut self) -> io::Result<(EzMeta, Option<EzSnapshot>)> {
+    async fn load(&mut self) -> io::Result<Loaded> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
             Ok(data) => serde_json::from_slice(&data)?,
@@ -187,7 +188,7 @@ impl EzStorage<Types> for FileStorage {
             Err(e) => return Err(e),
         };
 
-        Ok((meta, snapshot))
+        Ok(Loaded { meta, snapshot })
     }
 
     async fn persist(&mut self, op: Persist<Types>) -> io::Result<()> {

@@ -12,8 +12,7 @@ use serde::de::DeserializeOwned;
 
 use crate::type_config::EzTypes;
 use crate::types::EzEntry;
-use crate::types::EzMeta;
-use crate::types::EzSnapshot;
+use crate::types::Loaded;
 use crate::types::Persist;
 
 /// Storage persistence trait
@@ -45,10 +44,11 @@ use crate::types::Persist;
 ///
 /// #[async_trait]
 /// impl EzStorage<AppTypes> for FileStorage {
-///     async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error> {
+///     async fn load(&mut self) -> Result<Loaded, io::Error> {
 ///         // 1. Load meta from base_dir/meta.json (use default if first run)
 ///         // 2. Optionally load snapshot from base_dir/snapshot.meta + snapshot.data
 ///         // Log entries are read separately via read_logs()
+///         Ok(Loaded { meta, snapshot })
 ///     }
 ///
 ///     async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
@@ -74,12 +74,12 @@ where
 {
     /// Load metadata and snapshot on startup
     ///
-    /// Returns persisted metadata (or default if first run) and optional snapshot.
-    /// Log entries are read separately via [`Self::read_logs`].
+    /// Returns the persisted [`Loaded`] state: metadata (or default if first run) and optional
+    /// snapshot. Log entries are read separately via [`Self::read_logs`].
     ///
     /// Called exactly once, before the node starts. The framework keeps the snapshot it gets
     /// here, so serving one to a lagging peer does not call back into this method.
-    async fn load(&mut self) -> Result<(EzMeta, Option<EzSnapshot>), io::Error>;
+    async fn load(&mut self) -> Result<Loaded, io::Error>;
 
     /// Persist a state update
     ///
