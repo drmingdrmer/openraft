@@ -87,9 +87,18 @@ where T: EzTypes
         // Load initial metadata and snapshot
         let (cached_meta, snapshot) = user_storage.load().await?;
 
-        // Initialize state machine state from snapshot or defaults
-        let (last_applied, last_membership) = match &snapshot {
-            Some(snap) => (snap.meta.last_log_id, snap.meta.last_membership.clone()),
+        let mut user_sm: Box<dyn EzStateMachine<T>> = Box::new(user_sm);
+
+        // Initialize state machine state from snapshot or defaults.
+        //
+        // The snapshot data must be restored here, not just its position: reporting
+        // `last_applied` at the snapshot makes openraft re-apply only the log tail after it, and
+        // skip installing this snapshot itself.
+        let (last_applied, last_membership) = match snapshot {
+            Some(snap) => {
+                user_sm.install_snapshot(&snap.snapshot.into_inner()).await?;
+                (snap.meta.last_log_id, snap.meta.last_membership)
+            }
             None => (None, StoredMembership::new(None, Membership::default())),
         };
 
@@ -99,7 +108,7 @@ where T: EzTypes
         };
 
         let sm_state = StateMachineState {
-            user_sm: Box::new(user_sm),
+            user_sm,
             last_applied,
             membership: last_membership,
         };
