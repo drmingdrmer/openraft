@@ -5,15 +5,15 @@
 
 use std::marker::PhantomData;
 
-use openraft::impls::leader_id_std::LeaderId;
-use openraft::impls::InlineBatch;
-use openraft::impls::OneshotResponder;
 use openraft::AppData;
 use openraft::AppDataResponse;
 use openraft::BasicNode;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
+use openraft::impls::InlineBatch;
+use openraft::impls::OneshotResponder;
+use openraft::impls::leader_id_std::LeaderId;
 use serde::Deserialize;
 use serde::Serialize;
 

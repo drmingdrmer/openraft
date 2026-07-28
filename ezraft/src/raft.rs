@@ -8,14 +8,14 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use openraft::BasicNode;
+use openraft::ChangeMembers;
+use openraft::Raft;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
 use openraft::errors::InitializeError;
 use openraft::errors::RaftError;
-use openraft::BasicNode;
-use openraft::ChangeMembers;
-use openraft::Raft;
 use serde::Serialize;
 use tokio::time::sleep;
 
