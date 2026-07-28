@@ -292,10 +292,13 @@ where T: EzTypes
 
     /// Check if this node is the leader
     ///
-    /// Returns `true` if this node is the current cluster leader.
+    /// Reports this node's own state, which is what a caller asking "am I the leader" wants. It
+    /// is not a guarantee that the answer is still true elsewhere: a deposed leader does not
+    /// find out until it hears from the new one. Nothing here needs that guarantee --
+    /// [`Self::write`] finds the leader on its own -- and code that does want a linearizable
+    /// read can call `ensure_linearizable` through [`Self::inner`].
     pub async fn is_leader(&self) -> bool {
-        use openraft::raft::ReadPolicy;
-        self.raft.ensure_linearizable(ReadPolicy::LeaseRead).await.is_ok()
+        self.raft.is_leader()
     }
 
     /// Get the current cluster metrics
