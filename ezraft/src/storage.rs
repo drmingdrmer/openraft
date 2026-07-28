@@ -309,7 +309,6 @@ where T: EzTypes
         // Update storage state
         {
             let mut state = self.storage.lock().await;
-            state.cached_meta.last_log_id = snapshot_meta.last_log_id.map(|id| id.to_type());
             let snapshot = Snapshot {
                 meta: snapshot_meta.clone(),
                 snapshot: Cursor::new(data.clone()),
@@ -317,6 +316,18 @@ where T: EzTypes
             let update = Persist::Snapshot(snapshot);
             state.storage.persist(update).await?;
         }
+
+        // The snapshot supersedes every log entry it covers, so the log positions move with it.
+        // Persist them here instead of leaving the cached copy for whoever writes meta next: a
+        // crash in between would leave a snapshot on disk that meta does not account for.
+        //
+        // Never move a position backwards - the local log may already be ahead of the snapshot.
+        let snapshot_log_id = snapshot_meta.last_log_id.map(|id| id.to_type());
+        self.save_meta(|m| {
+            m.last_log_id = m.last_log_id.max(snapshot_log_id);
+            m.last_purged = m.last_purged.max(snapshot_log_id);
+        })
+        .await?;
 
         // Update state machine state and restore user state from snapshot
         {
