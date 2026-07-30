@@ -1,0 +1,265 @@
+//! EzRaft KV Store Example
+//!
+//! A simple distributed key-value store built on EzRaft.
+//! Run multiple instances to form a cluster:
+//!
+//! ```bash
+//! # Terminal 1 (first node - creates cluster)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8080
+//!
+//! # Terminal 2 (joins via seed node)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8081 --seed 127.0.0.1:8080
+//!
+//! # Terminal 3 (joins via seed node)
+//! cargo run --example kvstore -- --addr 127.0.0.1:8082 --seed 127.0.0.1:8080
+//! ```
+//!
+//! Then drive it through the write API, which takes the `Request` type below as JSON,
+//! and read the state back directly - reads never need the log:
+//!
+//! ```bash
+//! curl -X POST 127.0.0.1:8080/api/write -H 'Content-Type: application/json' \
+//!     -d '{"Set": {"key": "hello", "value": "world"}}'
+//!
+//! curl 127.0.0.1:8080/api/read
+//! ```
+
+use std::collections::BTreeMap;
+use std::io;
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::path::PathBuf;
+
+use clap::Parser;
+use ezraft::EzApp;
+use ezraft::EzConfig;
+use ezraft::EzEntry;
+use ezraft::EzMeta;
+use ezraft::EzRaft;
+use ezraft::EzSnapshot;
+use ezraft::EzSnapshotMeta;
+use ezraft::EzStorage;
+use ezraft::Loaded;
+use ezraft::Persist;
+use serde::Deserialize;
+use serde::Serialize;
+use tokio::fs;
+use tracing_subscriber::EnvFilter;
+
+// Define application request types
+//
+// Reads are deliberately not requests: they are served from local state via
+// `GET /api/read` (or `EzRaft::read` in code) with no consensus round and no log
+// entry. The alternative - a `Get` variant applied through the log - is worth its
+// cost only when a read must be linearizable from any node, not just the leader.
+#[derive(Serialize, Deserialize, Debug, Clone, derive_more::Display)]
+pub enum Request {
+    #[display("Set({key})")]
+    Set { key: String, value: String },
+    #[display("Delete({key})")]
+    Delete { key: String },
+}
+
+// Define application response type
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Response {
+    pub value: Option<String>,
+}
+
+// The application: its state plus one method of business logic.
+// Snapshots are derived from the state via serde, hence the serde derives.
+#[derive(Default, Serialize, Deserialize)]
+struct KvApp {
+    data: BTreeMap<String, String>,
+}
+
+#[async_trait::async_trait]
+impl EzApp for KvApp {
+    type Request = Request;
+    type Response = Response;
+
+    async fn apply(&mut self, req: Request) -> Response {
+        match req {
+            Request::Set { key, value } => {
+                self.data.insert(key.clone(), value);
+                Response { value: None }
+            }
+            Request::Delete { key } => {
+                let value = self.data.remove(&key);
+                Response { value }
+            }
+        }
+    }
+}
+
+// File-based storage implementation
+struct FileStorage {
+    base_dir: PathBuf,
+}
+
+impl FileStorage {
+    async fn new(base_dir: PathBuf) -> io::Result<Self> {
+        fs::create_dir_all(&base_dir).await?;
+        Ok(Self { base_dir })
+    }
+
+    fn meta_path(&self) -> PathBuf {
+        self.base_dir.join("meta.json")
+    }
+
+    fn logs_dir(&self) -> PathBuf {
+        self.base_dir.join("logs")
+    }
+
+    fn log_path(&self, index: u64) -> PathBuf {
+        self.logs_dir().join(format!("log-{}", index))
+    }
+
+    fn snapshot_meta_path(&self) -> PathBuf {
+        self.base_dir.join("snapshot.meta")
+    }
+
+    fn snapshot_data_path(&self) -> PathBuf {
+        self.base_dir.join("snapshot.data")
+    }
+
+    /// Delete every log file whose index satisfies `remove`
+    async fn remove_logs(&self, remove: impl Fn(u64) -> bool) -> io::Result<()> {
+        let mut dir = match fs::read_dir(self.logs_dir()).await {
+            Ok(dir) => dir,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+
+        while let Some(entry) = dir.next_entry().await? {
+            let name = entry.file_name();
+            let index = name.to_str().and_then(|n| n.strip_prefix("log-")).and_then(|n| n.parse::<u64>().ok());
+
+            let Some(index) = index else {
+                return Err(io::Error::other(format!("unexpected file in log dir: {:?}", name)));
+            };
+
+            if remove(index) {
+                fs::remove_file(entry.path()).await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl EzStorage<KvApp> for FileStorage {
+    async fn load(&mut self) -> io::Result<Loaded> {
+        // Load meta (use default if not found)
+        let meta = match fs::read(&self.meta_path()).await {
+            Ok(data) => serde_json::from_slice(&data)?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => EzMeta::default(),
+            Err(e) => return Err(e),
+        };
+
+        // Load snapshot (optional)
+        let snapshot = match fs::read(&self.snapshot_meta_path()).await {
+            Ok(meta_data) => {
+                let snap_meta: EzSnapshotMeta = serde_json::from_slice(&meta_data)?;
+                let data = fs::read(&self.snapshot_data_path()).await?;
+                Some(EzSnapshot {
+                    meta: snap_meta,
+                    snapshot: Cursor::new(data),
+                })
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
+
+        Ok(Loaded { meta, snapshot })
+    }
+
+    async fn persist(&mut self, op: Persist<KvApp>) -> io::Result<()> {
+        match op {
+            Persist::Meta(meta) => {
+                fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
+            }
+            Persist::LogEntry(entry) => {
+                fs::create_dir_all(&self.logs_dir()).await?;
+                let (_, index) = entry.log_id;
+                fs::write(self.log_path(index), serde_json::to_vec(&entry)?).await?;
+            }
+            Persist::Snapshot(snapshot) => {
+                fs::write(&self.snapshot_meta_path(), serde_json::to_vec(&snapshot.meta)?).await?;
+                // Extract data from cursor
+                let mut cursor = snapshot.snapshot;
+                cursor.seek(SeekFrom::Start(0))?;
+                let mut data = Vec::new();
+                cursor.read_to_end(&mut data)?;
+                fs::write(&self.snapshot_data_path(), data).await?;
+            }
+            Persist::DeleteLogs { from, to } => self.remove_logs(|index| (from..to).contains(&index)).await?,
+        }
+        Ok(())
+    }
+
+    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvApp>>> {
+        let mut logs = Vec::new();
+
+        // Every index in the range must be there: a gap handed back to Raft would look like a
+        // shorter log rather than the missing entry it is.
+        for index in start..end {
+            let data = fs::read(&self.log_path(index)).await?;
+            logs.push(serde_json::from_slice(&data)?);
+        }
+
+        Ok(logs)
+    }
+}
+
+/// Command-line arguments for the KV store
+#[derive(clap::Parser)]
+struct Args {
+    /// HTTP bind address (e.g., "127.0.0.1:8080")
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    addr: String,
+
+    /// Seed node address to join existing cluster
+    #[arg(long)]
+    seed: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    // Without this, everything Raft reports about a cluster that is not working goes nowhere.
+    // Warnings and errors by default; set RUST_LOG=info (or debug) to follow what Raft is doing.
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .init();
+
+    let args = Args::parse();
+    let addr = args.addr;
+    let seed = args.seed;
+
+    // Create app and storage (use addr for directory name)
+    let base_dir = PathBuf::from(format!("./data/{}", addr.replace(':', "-")));
+
+    let app = KvApp::default();
+    let storage = FileStorage::new(base_dir).await?;
+
+    // Create EzRaft instance: the first node starts the cluster, the rest join it
+    let config = EzConfig::default();
+    let raft = match seed {
+        Some(seed) => EzRaft::join(&addr, seed, app, storage, config).await?,
+        None => EzRaft::create(&addr, app, storage, config).await?,
+    };
+
+    println!("Node {} listening on {}", raft.node_id(), addr);
+
+    // Start HTTP server
+    raft.serve().await?;
+
+    Ok(())
+}
