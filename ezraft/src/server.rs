@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 use crate::network::SnapshotTransfer;
 use crate::raft::EzRaft;
-use crate::type_config::EzTypes;
+use crate::trait_::EzApp;
 use crate::type_config::OpenRaftTypes;
 
 /// Type alias for OpenRaft types
@@ -29,13 +29,13 @@ type C<T> = OpenRaftTypes<T>;
 
 /// HTTP server wrapper for EzRaft
 pub struct EzServer<T>
-where T: EzTypes
+where T: EzApp
 {
     raft: EzRaft<T>,
 }
 
 impl<T> EzServer<T>
-where T: EzTypes
+where T: EzApp
 {
     pub fn new(raft: EzRaft<T>) -> Self {
         Self { raft }
@@ -206,7 +206,7 @@ where T: EzTypes
 
 /// Run the HTTP server (convenience function)
 pub(crate) async fn run<T>(raft: EzRaft<T>) -> std::io::Result<()>
-where T: EzTypes {
+where T: EzApp {
     EzServer::new(raft).run().await
 }
 

@@ -22,9 +22,8 @@ use tokio::time::sleep;
 use crate::config::EzConfig;
 use crate::network::EzNetworkFactory;
 use crate::storage::StorageAdapter;
-use crate::trait_::EzStateMachine;
+use crate::trait_::EzApp;
 use crate::trait_::EzStorage;
-use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
 
 /// Type alias for OpenRaft types (more readable than `OpenRaftTypes<T>`)
@@ -36,14 +35,14 @@ pub type ORRaft<T> = Raft<ORTypes<T>, Arc<StorageAdapter<T>>>;
 /// EzRaft - A simplified Raft interface
 ///
 /// This struct wraps OpenRaft's `Raft` and provides a simplified API.
-/// Users create an instance with their storage and state machine, then call
+/// Users create an instance with their app and storage, then call
 /// methods to initialize the cluster, write data, and serve HTTP requests.
 ///
 /// # Type Parameters
 ///
-/// - `T`: Type configuration (implements `EzTypes`)
+/// - `T`: The application (implements `EzApp`)
 pub struct EzRaft<T>
-where T: EzTypes
+where T: EzApp
 {
     /// Node ID
     node_id: u64,
@@ -59,7 +58,7 @@ where T: EzTypes
 }
 
 impl<T> Clone for EzRaft<T>
-where T: EzTypes
+where T: EzApp
 {
     fn clone(&self) -> Self {
         Self {
@@ -72,7 +71,7 @@ where T: EzTypes
 }
 
 impl<T> EzRaft<T>
-where T: EzTypes
+where T: EzApp
 {
     /// Start a new cluster with this node as its only member
     ///
@@ -82,22 +81,22 @@ where T: EzTypes
     /// # Arguments
     ///
     /// * `http_addr` - Address to bind HTTP server (e.g., "127.0.0.1:8080")
-    /// * `state_machine` - User's state machine implementation
+    /// * `app` - User's application (state machine)
     /// * `storage` - User's storage implementation
     /// * `config` - EzRaft configuration (use `EzConfig::default()` for sensible defaults)
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let raft = EzRaft::create("127.0.0.1:8080", sm, storage, config).await?;
+    /// let raft = EzRaft::create("127.0.0.1:8080", app, storage, config).await?;
     /// ```
     pub async fn create(
         http_addr: impl ToString,
-        state_machine: impl EzStateMachine<T>,
+        app: T,
         storage: impl EzStorage<T>,
         config: EzConfig,
     ) -> Result<Self, io::Error> {
-        Self::new(http_addr, state_machine, storage, config, None).await
+        Self::new(http_addr, app, storage, config, None).await
     }
 
     /// Join the cluster that `seed_addr` belongs to
@@ -110,28 +109,28 @@ where T: EzTypes
     ///
     /// * `http_addr` - Address to bind HTTP server (e.g., "127.0.0.1:8081")
     /// * `seed_addr` - Address of any node already in the cluster
-    /// * `state_machine` - User's state machine implementation
+    /// * `app` - User's application (state machine)
     /// * `storage` - User's storage implementation
     /// * `config` - EzRaft configuration (use `EzConfig::default()` for sensible defaults)
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let raft = EzRaft::join("127.0.0.1:8081", "127.0.0.1:8080", sm, storage, config).await?;
+    /// let raft = EzRaft::join("127.0.0.1:8081", "127.0.0.1:8080", app, storage, config).await?;
     /// ```
     pub async fn join(
         http_addr: impl ToString,
         seed_addr: impl ToString,
-        state_machine: impl EzStateMachine<T>,
+        app: T,
         storage: impl EzStorage<T>,
         config: EzConfig,
     ) -> Result<Self, io::Error> {
-        Self::new(http_addr, state_machine, storage, config, Some(seed_addr.to_string())).await
+        Self::new(http_addr, app, storage, config, Some(seed_addr.to_string())).await
     }
 
     async fn new(
         http_addr: impl ToString,
-        state_machine: impl EzStateMachine<T>,
+        app: T,
         storage: impl EzStorage<T>,
         config: EzConfig,
         seed_addr: Option<String>,
@@ -139,7 +138,7 @@ where T: EzTypes
         let http_addr = http_addr.to_string();
 
         // Create storage adapter that bridges user traits to OpenRaft
-        let adapter = StorageAdapter::new(storage, state_machine).await?;
+        let adapter = StorageAdapter::new(storage, app).await?;
         let adapter = Arc::new(adapter);
 
         // Determine node_id
@@ -462,7 +461,7 @@ const FORWARD_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// The leader is asked to do the write on this node's behalf, so the answer is the same one the
 /// caller would have got from writing to the leader directly.
 async fn forward_write<T>(leader_addr: &str, req: &T::Request) -> Result<T::Response, io::Error>
-where T: EzTypes {
+where T: EzApp {
     let client = reqwest::Client::builder()
         .no_proxy()
         .timeout(FORWARD_WRITE_TIMEOUT)

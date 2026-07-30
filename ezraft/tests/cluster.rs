@@ -11,15 +11,14 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use ezraft::EzApp;
 use ezraft::EzConfig;
 use ezraft::EzEntry;
 use ezraft::EzMeta;
 use ezraft::EzRaft;
 use ezraft::EzSnapshot;
 use ezraft::EzSnapshotMeta;
-use ezraft::EzStateMachine;
 use ezraft::EzStorage;
-use ezraft::EzTypes;
 use ezraft::Loaded;
 use ezraft::Persist;
 use serde::Deserialize;
@@ -38,12 +37,6 @@ struct Response {
     value: Option<String>,
 }
 
-struct Types;
-impl EzTypes for Types {
-    type Request = Request;
-    type Response = Response;
-}
-
 fn set(key: &str, value: &str) -> Request {
     Request::Set {
         key: key.into(),
@@ -55,35 +48,29 @@ fn get(key: &str) -> Request {
     Request::Get { key: key.into() }
 }
 
-/// KV state machine whose data is shared with the test, so assertions can
-/// compare the whole applied state instead of sampling it through reads.
-#[derive(Clone, Default)]
+/// KV app; the framework owns the value, so tests read the applied state
+/// back through `EzRaft::storage().sm_state` to compare the whole state
+/// instead of sampling it through reads.
+#[derive(Default, Serialize, Deserialize)]
 struct KvSm {
-    data: Arc<Mutex<BTreeMap<String, String>>>,
+    data: BTreeMap<String, String>,
 }
 
 #[async_trait]
-impl EzStateMachine<Types> for KvSm {
+impl EzApp for KvSm {
+    type Request = Request;
+    type Response = Response;
+
     async fn apply(&mut self, req: Request) -> Response {
-        let mut data = self.data.lock().unwrap();
         match req {
             Request::Set { key, value } => {
-                data.insert(key, value);
+                self.data.insert(key, value);
                 Response { value: None }
             }
             Request::Get { key } => Response {
-                value: data.get(&key).cloned(),
+                value: self.data.get(&key).cloned(),
             },
         }
-    }
-
-    async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
-        serde_json::to_vec(&*self.data.lock().unwrap()).map_err(io::Error::other)
-    }
-
-    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
-        *self.data.lock().unwrap() = serde_json::from_slice(data)?;
-        Ok(())
     }
 }
 
@@ -103,7 +90,7 @@ struct MemStorage {
 }
 
 #[async_trait]
-impl EzStorage<Types> for MemStorage {
+impl EzStorage<KvSm> for MemStorage {
     async fn load(&mut self) -> io::Result<Loaded> {
         let disk = self.disk.lock().unwrap();
         let snapshot = disk.snapshot.as_ref().map(|(meta, data)| EzSnapshot {
@@ -116,7 +103,7 @@ impl EzStorage<Types> for MemStorage {
         })
     }
 
-    async fn persist(&mut self, op: Persist<Types>) -> io::Result<()> {
+    async fn persist(&mut self, op: Persist<KvSm>) -> io::Result<()> {
         let mut disk = self.disk.lock().unwrap();
         match op {
             Persist::Meta(meta) => disk.meta = meta,
@@ -131,7 +118,7 @@ impl EzStorage<Types> for MemStorage {
         Ok(())
     }
 
-    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<Types>>> {
+    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvSm>>> {
         let disk = self.disk.lock().unwrap();
         (start..end)
             .map(|index| {
@@ -168,7 +155,7 @@ fn expected_map(range: std::ops::Range<u32>) -> BTreeMap<String, String> {
 #[tokio::test(flavor = "multi_thread")]
 async fn join_promotes_to_voter_and_cluster_survives_leader_death() -> io::Result<()> {
     let addr_a = free_addr();
-    let a = EzRaft::<Types>::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let a = EzRaft::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let a = a.clone();
         async move { a.serve().await }
@@ -180,14 +167,14 @@ async fn join_promotes_to_voter_and_cluster_survives_leader_death() -> io::Resul
         .map_err(io::Error::other)?;
 
     let addr_b = free_addr();
-    let b = EzRaft::<Types>::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let b = EzRaft::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let b = b.clone();
         async move { b.serve().await }
     });
 
     let addr_c = free_addr();
-    let c = EzRaft::<Types>::join(&addr_c, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let c = EzRaft::join(&addr_c, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let c = c.clone();
         async move { c.serve().await }
@@ -248,7 +235,7 @@ async fn join_promotes_to_voter_and_cluster_survives_leader_death() -> io::Resul
 #[tokio::test(flavor = "multi_thread")]
 async fn next_leader_promotes_orphaned_learner() -> io::Result<()> {
     let addr_a = free_addr();
-    let a = EzRaft::<Types>::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let a = EzRaft::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let a = a.clone();
         async move { a.serve().await }
@@ -260,14 +247,14 @@ async fn next_leader_promotes_orphaned_learner() -> io::Result<()> {
         .map_err(io::Error::other)?;
 
     let addr_b = free_addr();
-    let b = EzRaft::<Types>::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let b = EzRaft::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let b = b.clone();
         async move { b.serve().await }
     });
 
     let addr_c = free_addr();
-    let c = EzRaft::<Types>::join(&addr_c, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let c = EzRaft::join(&addr_c, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let c = c.clone();
         async move { c.serve().await }
@@ -288,7 +275,7 @@ async fn next_leader_promotes_orphaned_learner() -> io::Result<()> {
     // D joins but its server does not start: it cannot catch up, so it stays a
     // learner, holding its promotion open past the founding leader's death.
     let addr_d = free_addr();
-    let d = EzRaft::<Types>::join(&addr_d, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let d = EzRaft::join(&addr_d, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     let d_id = d.node_id();
     a.inner()
         .wait(WAIT)
@@ -336,7 +323,7 @@ async fn snapshot_survives_restart() -> io::Result<()> {
     let addr = free_addr();
     let storage = MemStorage::default();
 
-    let a = EzRaft::<Types>::create(&addr, KvSm::default(), storage.clone(), config()).await?;
+    let a = EzRaft::create(&addr, KvSm::default(), storage.clone(), config()).await?;
     a.inner()
         .wait(WAIT)
         .metrics(|m| m.current_leader == Some(0), "single node leads")
@@ -359,8 +346,8 @@ async fn snapshot_survives_restart() -> io::Result<()> {
     {
         let disk = storage.disk.lock().unwrap();
         let (meta, data) = disk.snapshot.as_ref().expect("snapshot persisted to storage");
-        let snapshot_state: BTreeMap<String, String> = serde_json::from_slice(data)?;
-        assert_eq!(expected_map(0..10), snapshot_state);
+        let snapshot_state: KvSm = serde_json::from_slice(data)?;
+        assert_eq!(expected_map(0..10), snapshot_state.data);
         assert!(meta.last_log_id.is_some());
     }
 
@@ -373,8 +360,7 @@ async fn snapshot_survives_restart() -> io::Result<()> {
     drop(a);
 
     // Restart on the same disk with an empty state machine.
-    let sm = KvSm::default();
-    let restarted = EzRaft::<Types>::create(&addr, sm.clone(), storage.clone(), config()).await?;
+    let restarted = EzRaft::create(&addr, KvSm::default(), storage.clone(), config()).await?;
     restarted
         .inner()
         .wait(WAIT)
@@ -391,7 +377,7 @@ async fn snapshot_survives_restart() -> io::Result<()> {
         .await
         .map_err(io::Error::other)?;
 
-    assert_eq!(expected_map(0..15), sm.data.lock().unwrap().clone());
+    assert_eq!(expected_map(0..15), restarted.storage().sm_state.lock().await.app.data);
 
     // And the restarted node serves reads over the rebuilt state.
     assert_eq!(
@@ -410,7 +396,7 @@ async fn snapshot_survives_restart() -> io::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn lagging_joiner_catches_up_from_snapshot() -> io::Result<()> {
     let addr_a = free_addr();
-    let a = EzRaft::<Types>::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let a = EzRaft::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let a = a.clone();
         async move { a.serve().await }
@@ -447,9 +433,8 @@ async fn lagging_joiner_catches_up_from_snapshot() -> io::Result<()> {
         .await
         .map_err(io::Error::other)?;
 
-    let b_sm = KvSm::default();
     let addr_b = free_addr();
-    let b = EzRaft::<Types>::join(&addr_b, &addr_a, b_sm.clone(), MemStorage::default(), config()).await?;
+    let b = EzRaft::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
     tokio::spawn({
         let b = b.clone();
         async move { b.serve().await }
@@ -466,7 +451,7 @@ async fn lagging_joiner_catches_up_from_snapshot() -> io::Result<()> {
         .map_err(io::Error::other)?;
 
     // The whole pre-purge state must have arrived through the snapshot.
-    assert_eq!(expected_map(0..10), b_sm.data.lock().unwrap().clone());
+    assert_eq!(expected_map(0..10), b.storage().sm_state.lock().await.app.data);
 
     // And the pair keeps working past the transfer.
     assert_eq!(Response { value: None }, b.write(set("k10", "v10")).await?);

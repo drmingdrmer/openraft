@@ -6,7 +6,7 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 
 [Raft](https://raft.github.io/) is a consensus algorithm for distributed systems. EzRaft simplifies building Raft-based applications by:
 
-- **Minimal user API**: 6 methods total (3 storage + 3 state machine) vs 21+ in OpenRaft
+- **Minimal user API**: 4 methods total (3 storage + 1 app) vs 21+ in OpenRaft
 - **Smart defaults**: 10/12 Raft types pre-configured, users specify only Request/Response
 - **Built-in networking**: HTTP layer included, no user code needed
 - **Type-safe**: Works directly with your types, not byte vectors
@@ -26,7 +26,7 @@ A beginner-friendly Raft consensus framework built on [OpenRaft](https://github.
 ## Quick Start
 
 ```rust
-use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzEntry, Loaded, Persist, EzTypes};
+use ezraft::{EzRaft, EzConfig, EzApp, EzStorage, EzEntry, Loaded, Persist};
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeMap;
 
@@ -40,37 +40,16 @@ pub enum Request {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response { pub value: Option<String> }
 
-// 2. Implement EzTypes trait
-struct AppTypes;
-impl EzTypes for AppTypes {
+// 2. Define your app: the state plus one method of business logic.
+//    Snapshots are derived from the state via serde.
+#[derive(Default, Serialize, Deserialize)]
+struct App { data: BTreeMap<String, String> }
+
+#[async_trait]
+impl EzApp for App {
     type Request = Request;
     type Response = Response;
-}
 
-// 3. Implement storage persistence (3 methods)
-struct AppStorage { base_dir: PathBuf }
-
-#[async_trait]
-impl EzStorage<AppTypes> for AppStorage {
-    async fn load(&mut self) -> Result<Loaded, io::Error> {
-        // Load meta (or default) and optional snapshot from disk
-        Ok(Loaded { meta, snapshot })
-    }
-
-    async fn persist(&mut self, op: Persist<AppTypes>) -> Result<(), io::Error> {
-        // Persist operation to disk
-    }
-
-    async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<AppTypes>>, io::Error> {
-        // Read log entries in range [start, end)
-    }
-}
-
-// 4. Implement state machine (3 methods)
-struct AppStateMachine { data: BTreeMap<String, String> }
-
-#[async_trait]
-impl EzStateMachine<AppTypes> for AppStateMachine {
     async fn apply(&mut self, req: Request) -> Response {
         match req {
             Request::Set { key, value } => {
@@ -79,32 +58,42 @@ impl EzStateMachine<AppTypes> for AppStateMachine {
             }
         }
     }
+}
 
-    async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
-        // Serialize state machine to bytes
+// 3. Implement storage persistence (3 methods)
+struct AppStorage { base_dir: PathBuf }
+
+#[async_trait]
+impl EzStorage<App> for AppStorage {
+    async fn load(&mut self) -> Result<Loaded, io::Error> {
+        // Load meta (or default) and optional snapshot from disk
+        Ok(Loaded { meta, snapshot })
     }
 
-    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
-        // Restore state machine from bytes
+    async fn persist(&mut self, op: Persist<App>) -> Result<(), io::Error> {
+        // Persist operation to disk
+    }
+
+    async fn read_logs(&mut self, start: u64, end: u64) -> Result<Vec<EzEntry<App>>, io::Error> {
+        // Read log entries in range [start, end)
     }
 }
 
-// 5. Use it
+// 4. Use it
 #[tokio::main]
 async fn main() -> Result<()> {
-    let state_machine = AppStateMachine { data: BTreeMap::new() };
     let storage = AppStorage { base_dir: "./data".into() };
 
     // First node (creates cluster)
-    let raft = EzRaft::<AppTypes>::create(
+    let raft = EzRaft::create(
         "127.0.0.1:8080",
-        state_machine,
+        App::default(),
         storage,
         EzConfig::default(),
     ).await?;
 
     // Every other node joins it:
-    // EzRaft::<AppTypes>::join("127.0.0.1:8081", "127.0.0.1:8080", sm, storage, config).await?
+    // EzRaft::join("127.0.0.1:8081", "127.0.0.1:8080", app, storage, config).await?
     raft.serve().await?;
 }
 ```
@@ -121,7 +110,7 @@ Handles persistence of Raft state (metadata, logs, snapshots).
 #[async_trait]
 pub trait EzStorage<T>: Send + Sync + 'static
 where
-    T: EzTypes,
+    T: EzApp,
 {
     async fn load(&mut self) -> Result<Loaded, io::Error>;
     async fn persist(&mut self, op: Persist<T>) -> Result<(), io::Error>;
@@ -133,25 +122,25 @@ where
 
 **You handle**: Serialization and I/O
 
-### EzStateMachine
+### EzApp
 
-Handles business logic (applying requests to state).
+The application itself: the implementing type is the replicated state, and
+`apply` is the business logic. Snapshots are derived from the state via serde,
+so there is nothing to implement for them.
 
 ```rust
 #[async_trait]
-pub trait EzStateMachine<T>: Send + Sync + 'static
-where
-    T: EzTypes,
-{
-    async fn apply(&mut self, req: T::Request) -> T::Response;
-    async fn build_snapshot(&self) -> io::Result<Vec<u8>>;
-    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()>;
+pub trait EzApp: Serialize + DeserializeOwned + Send + Sync + 'static {
+    type Request: ...;
+    type Response: ...;
+
+    async fn apply(&mut self, req: Self::Request) -> Self::Response;
 }
 ```
 
-**Framework handles**: Sequential application, snapshot scheduling
+**Framework handles**: Sequential application, snapshot build/restore and scheduling
 
-**You handle**: Business logic, state serialization
+**You handle**: Business logic
 
 ## Configuration
 
@@ -179,8 +168,8 @@ EzRaft includes built-in HTTP endpoints:
 
 | Aspect | OpenRaft | EzRaft |
 |--------|----------|--------|
-| Required traits | 7+ (RaftLogStorage, RaftStateMachine, etc.) | 2 (EzStorage, EzStateMachine) |
-| Required methods | 21+ | 6 |
+| Required traits | 7+ (RaftLogStorage, RaftStateMachine, etc.) | 2 (EzStorage, EzApp) |
+| Required methods | 21+ | 4 |
 | User-defined types | 12 (all generic parameters) | 2 (Request, Response) |
 | Network code | User implements (~100 lines) | Built-in (0 lines) |
 | Example complexity | ~400 lines | ~280 lines |

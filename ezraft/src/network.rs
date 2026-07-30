@@ -40,7 +40,7 @@ use reqwest::Client;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::type_config::EzTypes;
+use crate::trait_::EzApp;
 use crate::type_config::EzVote;
 use crate::type_config::OpenRaftTypes;
 use crate::types::EzSnapshotData;
@@ -70,7 +70,7 @@ impl EzNetworkFactory {
 }
 
 impl<T> RaftNetworkFactory<C<T>> for EzNetworkFactory
-where T: EzTypes
+where T: EzApp
 {
     type Network = Network;
 
@@ -134,7 +134,7 @@ impl Network {
 
 /// Implement RaftNetworkV2 for HTTP transport
 impl<T> RaftNetworkV2<C<T>> for Network
-where T: EzTypes
+where T: EzApp
 {
     type SnapshotData = EzSnapshotData;
 

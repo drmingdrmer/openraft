@@ -33,15 +33,14 @@ use std::io::SeekFrom;
 use std::path::PathBuf;
 
 use clap::Parser;
+use ezraft::EzApp;
 use ezraft::EzConfig;
 use ezraft::EzEntry;
 use ezraft::EzMeta;
 use ezraft::EzRaft;
 use ezraft::EzSnapshot;
 use ezraft::EzSnapshotMeta;
-use ezraft::EzStateMachine;
 use ezraft::EzStorage;
-use ezraft::EzTypes;
 use ezraft::Loaded;
 use ezraft::Persist;
 use serde::Deserialize;
@@ -66,21 +65,18 @@ pub struct Response {
     pub value: Option<String>,
 }
 
-// Define type configuration
-struct Types;
-impl EzTypes for Types {
-    type Request = Request;
-    type Response = Response;
-}
-
-// In-memory state machine
-#[derive(Default)]
-struct KvStateMachine {
+// The application: its state plus one method of business logic.
+// Snapshots are derived from the state via serde, hence the serde derives.
+#[derive(Default, Serialize, Deserialize)]
+struct KvApp {
     data: BTreeMap<String, String>,
 }
 
 #[async_trait::async_trait]
-impl EzStateMachine<Types> for KvStateMachine {
+impl EzApp for KvApp {
+    type Request = Request;
+    type Response = Response;
+
     async fn apply(&mut self, req: Request) -> Response {
         match req {
             Request::Set { key, value } => {
@@ -96,15 +92,6 @@ impl EzStateMachine<Types> for KvStateMachine {
                 Response { value }
             }
         }
-    }
-
-    async fn build_snapshot(&self) -> io::Result<Vec<u8>> {
-        serde_json::to_vec(&self.data).map_err(io::Error::other)
-    }
-
-    async fn install_snapshot(&mut self, data: &[u8]) -> io::Result<()> {
-        self.data = serde_json::from_slice(data)?;
-        Ok(())
     }
 }
 
@@ -165,7 +152,7 @@ impl FileStorage {
 }
 
 #[async_trait::async_trait]
-impl EzStorage<Types> for FileStorage {
+impl EzStorage<KvApp> for FileStorage {
     async fn load(&mut self) -> io::Result<Loaded> {
         // Load meta (use default if not found)
         let meta = match fs::read(&self.meta_path()).await {
@@ -191,7 +178,7 @@ impl EzStorage<Types> for FileStorage {
         Ok(Loaded { meta, snapshot })
     }
 
-    async fn persist(&mut self, op: Persist<Types>) -> io::Result<()> {
+    async fn persist(&mut self, op: Persist<KvApp>) -> io::Result<()> {
         match op {
             Persist::Meta(meta) => {
                 fs::write(&self.meta_path(), serde_json::to_vec_pretty(&meta)?).await?;
@@ -215,7 +202,7 @@ impl EzStorage<Types> for FileStorage {
         Ok(())
     }
 
-    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<Types>>> {
+    async fn read_logs(&mut self, start: u64, end: u64) -> io::Result<Vec<EzEntry<KvApp>>> {
         let mut logs = Vec::new();
 
         // Every index in the range must be there: a gap handed back to Raft would look like a
@@ -257,17 +244,17 @@ async fn main() -> io::Result<()> {
     let addr = args.addr;
     let seed = args.seed;
 
-    // Create state machine and storage (use addr for directory name)
+    // Create app and storage (use addr for directory name)
     let base_dir = PathBuf::from(format!("./data/{}", addr.replace(':', "-")));
 
-    let state_machine = KvStateMachine::default();
+    let app = KvApp::default();
     let storage = FileStorage::new(base_dir).await?;
 
     // Create EzRaft instance: the first node starts the cluster, the rest join it
     let config = EzConfig::default();
     let raft = match seed {
-        Some(seed) => EzRaft::<Types>::join(&addr, seed, state_machine, storage, config).await?,
-        None => EzRaft::<Types>::create(&addr, state_machine, storage, config).await?,
+        Some(seed) => EzRaft::join(&addr, seed, app, storage, config).await?,
+        None => EzRaft::create(&addr, app, storage, config).await?,
     };
 
     println!("Node {} listening on {}", raft.node_id(), addr);

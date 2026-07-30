@@ -17,7 +17,7 @@ use openraft::vote::leader_id_std::CommittedLeaderId;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::type_config::EzTypes;
+use crate::trait_::EzApp;
 use crate::type_config::EzVote;
 
 /// Log ID type (term, index)
@@ -29,7 +29,7 @@ pub type EzLogId = (u64, u64);
 pub type EzCommittedLeaderId = CommittedLeaderId<u64>;
 
 /// Entry payload with EzRaft's node id and node types
-type EzEntryPayload<T> = EntryPayload<<T as EzTypes>::Request, u64, BasicNode>;
+type EzEntryPayload<T> = EntryPayload<<T as EzApp>::Request, u64, BasicNode>;
 
 /// A Raft log entry with EzRaft's simplified log ID type
 ///
@@ -38,7 +38,7 @@ type EzEntryPayload<T> = EntryPayload<<T as EzTypes>::Request, u64, BasicNode>;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(bound = "")]
 pub struct EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     /// Log ID (term, index)
     pub log_id: EzLogId,
@@ -49,7 +49,7 @@ where T: EzTypes
 
 // Manually implement Clone to avoid T: Clone bound; only T::Request must be Clone
 impl<T> Clone for EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     fn clone(&self) -> Self {
         Self {
@@ -61,7 +61,7 @@ where T: EzTypes
 
 // Manually implement Debug to avoid T: Debug bound
 impl<T> std::fmt::Debug for EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EzEntry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
@@ -70,7 +70,7 @@ where T: EzTypes
 
 // Manually implement Display
 impl<T> std::fmt::Display for EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -83,7 +83,7 @@ where T: EzTypes
 
 // Implement RaftPayload trait
 impl<T> RaftPayload<u64, BasicNode> for EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     fn get_membership(&self) -> Option<Membership<u64, BasicNode>> {
         self.payload.get_membership()
@@ -92,7 +92,7 @@ where T: EzTypes
 
 // Implement openraft::RaftEntry trait so EzEntry works with OpenRaft
 impl<T> RaftEntry for EzEntry<T>
-where T: EzTypes
+where T: EzApp
 {
     type CommittedLeaderId = EzCommittedLeaderId;
     type D = T::Request;
@@ -166,7 +166,7 @@ pub struct Loaded {
 /// The framework calls [`crate::EzStorage::persist`] with these operations.
 #[derive(Debug, derive_more::Display)]
 pub enum Persist<T>
-where T: EzTypes
+where T: EzApp
 {
     /// Update Raft metadata (term, vote, log positions)
     #[display("Meta")]
@@ -201,13 +201,22 @@ where T: EzTypes
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+
     use super::*;
 
-    /// Deliberately not Clone: entries must clone for any `EzTypes` marker.
+    /// Deliberately not Clone: entries must clone for any `EzApp`.
+    #[derive(serde::Deserialize, serde::Serialize)]
     struct Marker;
-    impl EzTypes for Marker {
+
+    #[async_trait]
+    impl EzApp for Marker {
         type Request = String;
         type Response = String;
+
+        async fn apply(&mut self, req: String) -> String {
+            req
+        }
     }
 
     #[test]
