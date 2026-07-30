@@ -209,7 +209,7 @@ where T: EzTypes
         let from = last_log_id.map(|id| id.index).next_index();
         {
             let mut state = self.storage.lock().await;
-            state.storage.persist(Persist::TruncateLogs(from)).await?;
+            state.storage.persist(Persist::DeleteLogs { from, to: u64::MAX }).await?;
         }
 
         self.save_meta(|m| {
@@ -221,7 +221,13 @@ where T: EzTypes
     async fn purge(&mut self, log_id: LogIdOf<OpenRaftTypes<T>>) -> Result<(), std::io::Error> {
         {
             let mut state = self.storage.lock().await;
-            state.storage.persist(Persist::PurgeLogs(log_id.index)).await?;
+            state
+                .storage
+                .persist(Persist::DeleteLogs {
+                    from: 0,
+                    to: log_id.index + 1,
+                })
+                .await?;
         }
 
         self.save_meta(|m| m.last_purged = Some(log_id.to_type())).await

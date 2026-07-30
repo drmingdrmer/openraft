@@ -32,7 +32,7 @@ use crate::types::Persist;
 /// - **Ordering.** Operations are applied in the order [`persist`] receives them. A later one must
 ///   not become durable before an earlier one.
 /// - **Read-your-writes.** [`read_logs`] returns what [`persist`] last wrote, including the
-///   deletions requested by [`Persist::TruncateLogs`] and [`Persist::PurgeLogs`].
+///   deletions requested by [`Persist::DeleteLogs`].
 ///
 /// [`persist`]: Self::persist
 /// [`read_logs`]: Self::read_logs
@@ -56,8 +56,7 @@ use crate::types::Persist;
 ///             Persist::Meta(meta) => { /* write meta */ }
 ///             Persist::LogEntry(entry) => { /* write log entry */ }
 ///             Persist::Snapshot(snapshot) => { /* write snapshot.meta and snapshot.snapshot */ }
-///             Persist::TruncateLogs(from) => { /* delete entries at index >= from */ }
-///             Persist::PurgeLogs(upto) => { /* delete entries at index <= upto */ }
+///             Persist::DeleteLogs { from, to } => { /* delete entries with from <= index < to */ }
 ///         }
 ///     }
 ///

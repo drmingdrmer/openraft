@@ -210,8 +210,7 @@ impl EzStorage<Types> for FileStorage {
                 cursor.read_to_end(&mut data)?;
                 fs::write(&self.snapshot_data_path(), data).await?;
             }
-            Persist::TruncateLogs(from) => self.remove_logs(|index| index >= from).await?,
-            Persist::PurgeLogs(upto) => self.remove_logs(|index| index <= upto).await?,
+            Persist::DeleteLogs { from, to } => self.remove_logs(|index| (from..to).contains(&index)).await?,
         }
         Ok(())
     }

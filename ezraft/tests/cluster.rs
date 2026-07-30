@@ -126,8 +126,7 @@ impl EzStorage<Types> for MemStorage {
             Persist::Snapshot(snapshot) => {
                 disk.snapshot = Some((snapshot.meta, snapshot.snapshot.into_inner()));
             }
-            Persist::TruncateLogs(from) => disk.logs.retain(|&index, _| index < from),
-            Persist::PurgeLogs(upto) => disk.logs.retain(|&index, _| index > upto),
+            Persist::DeleteLogs { from, to } => disk.logs.retain(|&index, _| !(from..to).contains(&index)),
         }
         Ok(())
     }

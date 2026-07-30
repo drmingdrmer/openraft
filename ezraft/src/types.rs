@@ -175,7 +175,7 @@ where T: EzTypes
     /// Write a log entry
     ///
     /// Entries arrive in index order and never target an index that is already present: the
-    /// framework deletes conflicting entries with [`Persist::TruncateLogs`] first.
+    /// framework deletes conflicting entries with [`Persist::DeleteLogs`] first.
     #[display("LogEntry")]
     LogEntry(EzEntry<T>),
 
@@ -183,19 +183,20 @@ where T: EzTypes
     #[display("Snapshot")]
     Snapshot(EzSnapshot),
 
-    /// Delete every log entry from this index onwards
+    /// Delete every log entry in the half-open index range `[from, to)`
     ///
-    /// Sent when the entries conflict with the leader's log. They are not part of the
-    /// replicated log and must not be returned by [`crate::EzStorage::read_logs`] again.
-    #[display("TruncateLogs({_0})")]
-    TruncateLogs(u64),
-
-    /// Delete every log entry up to and including this index
-    ///
-    /// Sent once those entries are covered by a snapshot. This is the only signal that lets
-    /// storage reclaim space.
-    #[display("PurgeLogs({_0})")]
-    PurgeLogs(u64),
+    /// Both reasons a log shrinks arrive here: a tail range (`from..u64::MAX`) deletes entries
+    /// that conflict with the leader's log, and a head range (`0..n`) compacts entries already
+    /// covered by a snapshot - the only signal that lets storage reclaim space. The implementor
+    /// treats both the same: the entries are gone and must not be returned by
+    /// [`crate::EzStorage::read_logs`] again.
+    #[display("DeleteLogs({from}..{to})")]
+    DeleteLogs {
+        /// First deleted index
+        from: u64,
+        /// One past the last deleted index
+        to: u64,
+    },
 }
 
 #[cfg(test)]
