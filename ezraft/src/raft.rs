@@ -525,12 +525,16 @@ async fn request_join(seed_addr: &str, my_addr: &str) -> Result<u64, io::Error> 
             addr: my_addr.to_string(),
         };
 
-        let resp = client
-            .post(&url)
-            .json(&req)
-            .send()
-            .await
-            .map_err(|e| io::Error::other(format!("join request failed: {}", e)))?;
+        // A send failure is as transient as the rest: the seed may still be binding its HTTP
+        // socket, since serving starts concurrently with cluster formation.
+        let resp = match client.post(&url).json(&req).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                last_err = format!("join request to {} failed: {}", url, e);
+                sleep(JOIN_RETRY_INTERVAL).await;
+                continue;
+            }
+        };
 
         if !resp.status().is_success() {
             let status = resp.status();
