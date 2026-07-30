@@ -6,7 +6,6 @@
 use std::marker::PhantomData;
 
 use openraft::AppData;
-use openraft::AppDataResponse;
 use openraft::BasicNode;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
@@ -30,7 +29,10 @@ pub trait EzTypes: Send + Sync + 'static {
     type Request: AppData + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
 
     /// Application response type
-    type Response: AppDataResponse + Default + Send + Sync;
+    ///
+    /// Produced by the state machine's `apply` and carried back over the wire to whichever
+    /// node forwarded the write, hence the serde bounds.
+    type Response: Serialize + for<'de> Deserialize<'de> + Send + Sync + 'static;
 }
 
 /// Wrapper type that implements `RaftTypeConfig` for any `T: EzTypes`
@@ -98,7 +100,9 @@ impl<T> RaftTypeConfig for OpenRaftTypes<T>
 where T: EzTypes
 {
     type D = T::Request;
-    type R = T::Response;
+    // `None` answers framework-generated entries (blank, membership); every user request is
+    // answered with `Some` by the state machine.
+    type R = Option<T::Response>;
     type NodeId = u64;
     type Node = BasicNode;
     type Term = u64;

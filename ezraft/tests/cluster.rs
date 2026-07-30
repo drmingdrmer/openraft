@@ -33,7 +33,7 @@ enum Request {
     Get { key: String },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct Response {
     value: Option<String>,
 }

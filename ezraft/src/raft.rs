@@ -264,7 +264,9 @@ where T: EzTypes
 
         for _ in 0..WRITE_ATTEMPTS {
             let err = match self.raft.client_write(req.clone()).await {
-                Ok(resp) => return Ok(resp.data),
+                // A user write is always answered with `Some` by `apply`; `None` exists only
+                // for framework-generated entries.
+                Ok(resp) => return resp.data.ok_or_else(|| io::Error::other("write produced no response")),
                 Err(e) => e,
             };
 

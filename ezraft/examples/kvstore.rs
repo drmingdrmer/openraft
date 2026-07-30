@@ -61,7 +61,7 @@ pub enum Request {
 }
 
 // Define application response type
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {
     pub value: Option<String>,
 }

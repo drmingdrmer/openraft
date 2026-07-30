@@ -18,7 +18,7 @@
 //!     Set { key: String, value: String },
 //! }
 //!
-//! #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+//! #[derive(Serialize, Deserialize, Debug, Clone)]
 //! pub struct Response { pub value: Option<String> }
 //!
 //! // 2. Implement EzTypes trait

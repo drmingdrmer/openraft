@@ -311,12 +311,12 @@ where T: EzTypes
             sm.last_applied = Some(log_id);
 
             let resp = match entry.payload {
-                EntryPayload::Normal(req) => sm.user_sm.apply(req).await,
+                EntryPayload::Normal(req) => Some(sm.user_sm.apply(req).await),
                 EntryPayload::Membership(membership) => {
                     sm.membership = StoredMembership::new(Some(log_id), membership);
-                    T::Response::default()
+                    None
                 }
-                EntryPayload::Blank => T::Response::default(),
+                EntryPayload::Blank => None,
             };
 
             if let Some(responder) = responder {
