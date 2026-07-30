@@ -22,6 +22,11 @@ use serde::Serialize;
 /// Users only need to specify their request and response types.
 pub trait EzTypes: Send + Sync + 'static {
     /// Application request type
+    ///
+    /// Serde carries it over the wire, `Clone` keeps a copy for forwarding to the leader, and
+    /// [`AppData`] asks for `Debug + Display` because openraft prints requests in its logs and
+    /// errors. Derive `Display` (e.g. with `derive_more`) or write a short impl - see
+    /// `examples/kvstore.rs`.
     type Request: AppData + Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
 
     /// Application response type

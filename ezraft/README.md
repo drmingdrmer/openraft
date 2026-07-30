@@ -30,9 +30,12 @@ use ezraft::{EzRaft, EzConfig, EzStorage, EzStateMachine, EzEntry, Loaded, Persi
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeMap;
 
-// 1. Define your request/response types
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Request { Set { key: String, value: String } }
+// 1. Define your request/response types; openraft logs requests, hence the Display
+#[derive(Serialize, Deserialize, Debug, Clone, derive_more::Display)]
+pub enum Request {
+    #[display("Set({key})")]
+    Set { key: String, value: String },
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Response { pub value: Option<String> }
