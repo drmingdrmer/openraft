@@ -142,7 +142,9 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path tests-turmoil/Cargo.toml                                   --all-targets -- -D warnings
+	@# Run from inside the directory so cargo reads tests-turmoil/.cargo/config.toml,
+	@# which supplies the `--cfg tokio_unstable` the crate requires (see `detsim`).
+	cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
 	@# Bug: clippy --all-targets reports false warning about unused dep in
 	@# `[dev-dependencies]`:
 	@# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
