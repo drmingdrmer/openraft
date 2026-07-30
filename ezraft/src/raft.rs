@@ -324,7 +324,7 @@ where T: EzTypes
     /// find out until it hears from the new one. Nothing here needs that guarantee --
     /// [`Self::write`] finds the leader on its own -- and code that does want a linearizable
     /// read can call `ensure_linearizable` through [`Self::inner`].
-    pub async fn is_leader(&self) -> bool {
+    pub fn is_leader(&self) -> bool {
         self.raft.is_leader()
     }
 

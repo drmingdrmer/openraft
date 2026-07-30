@@ -212,7 +212,7 @@ async fn join_promotes_to_voter_and_cluster_survives_leader_death() -> io::Resul
     assert_eq!(Response { value: None }, a.write(set("k1", "v1")).await?);
 
     // Kill the leader; the two remaining voters still form a quorum.
-    assert!(a.is_leader().await);
+    assert!(a.is_leader());
     a.inner().shutdown().await.map_err(io::Error::other)?;
 
     b.inner()
