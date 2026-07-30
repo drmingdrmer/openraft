@@ -2,6 +2,18 @@
 //!
 //! This module provides the built-in HTTP networking that connects Raft nodes.
 //! Users don't need to implement anything - the framework handles all RPC communication.
+//!
+//! # Why the legacy v1 network API
+//!
+//! The transport is plain request/response JSON over HTTP, and the v1 API is exactly that
+//! shape: three serializable RPCs, with snapshot chunking defined by the protocol - the
+//! [`Adapter`] drives the sending side and `ChunkedSnapshotReceiver` the receiving side.
+//! Implementing `RaftNetworkV2` directly would mean designing a bespoke snapshot transfer
+//! (fragmenting, resume, cancellation) for no benefit at this crate's scale.
+//!
+//! The accepted cost: snapshot chunks ride in JSON, where bytes serialize as an array of
+//! numbers (roughly 4x on the wire). If snapshots outgrow that, the switch is to implement
+//! `RaftNetworkV2::full_snapshot` directly, e.g. as a raw-body streaming POST.
 
 use std::fmt::Display;
 use std::io;
