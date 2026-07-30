@@ -27,7 +27,7 @@ use crate::trait_::EzStorage;
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
 
-/// Type alias for OpenRaft types (more readable than ORTypes<T>)
+/// Type alias for OpenRaft types (more readable than `OpenRaftTypes<T>`)
 type ORTypes<T> = OpenRaftTypes<T>;
 
 /// The internal OpenRaft instance, with EzRaft's storage adapter as its state machine
