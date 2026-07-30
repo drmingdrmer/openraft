@@ -140,6 +140,7 @@ fn free_addr() -> String {
 fn config() -> EzConfig {
     EzConfig {
         heartbeat_interval: Duration::from_millis(100),
+        ..EzConfig::default()
     }
 }
 
@@ -460,6 +461,59 @@ async fn lagging_joiner_catches_up_from_snapshot() -> io::Result<()> {
             value: Some("v0".into())
         },
         b.write(get("k0")).await?
+    );
+
+    Ok(())
+}
+
+/// A demo-sized write load must drive the whole persist lifecycle on its own:
+/// with `snapshot_interval` configured, a snapshot reaches storage and the log
+/// entries it covers are deleted, all without a manual trigger.
+#[tokio::test(flavor = "multi_thread")]
+async fn automatic_snapshot_purges_old_logs() -> io::Result<()> {
+    let addr = free_addr();
+    let storage = MemStorage::default();
+
+    let config = EzConfig {
+        snapshot_interval: 5,
+        ..config()
+    };
+    let a = EzRaft::create(&addr, KvSm::default(), storage.clone(), config).await?;
+    a.inner()
+        .wait(WAIT)
+        .metrics(|m| m.current_leader == Some(0), "single node leads")
+        .await
+        .map_err(io::Error::other)?;
+
+    for i in 0..12 {
+        a.write(set(&format!("k{}", i), &format!("v{}", i))).await?;
+    }
+
+    let metrics = a
+        .inner()
+        .wait(WAIT)
+        .metrics(
+            |m| m.snapshot.is_some() && m.purged.is_some(),
+            "snapshot built and log purged by the interval policy alone",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    let disk = storage.disk.lock().unwrap();
+    let (meta, data) = disk.snapshot.as_ref().expect("snapshot persisted to storage");
+    assert!(meta.last_log_id.is_some());
+    let snapshot_state: KvSm = serde_json::from_slice(data)?;
+    assert!(!snapshot_state.data.is_empty());
+
+    // DeleteLogs must have reached storage: every entry at or below the purged
+    // index is gone, and entries above it survive.
+    let purged_index = metrics.purged.unwrap().index;
+    let min_kept = *disk.logs.keys().next().expect("entries above the purge point remain");
+    assert!(
+        min_kept > purged_index,
+        "min kept index {} must be above purged index {}",
+        min_kept,
+        purged_index
     );
 
     Ok(())

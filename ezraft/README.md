@@ -149,10 +149,12 @@ pub trait EzApp: Serialize + DeserializeOwned + Send + Sync + 'static {
 ```rust
 pub struct EzConfig {
     pub heartbeat_interval: Duration,  // Default: 500ms
+    pub snapshot_interval: u64,        // Log entries between snapshots. Default: 500
 }
 ```
 
-Election timeout is automatically calculated as 3-6x the heartbeat interval.
+Election timeout is automatically calculated as 3-6x the heartbeat interval,
+and the log-purge distance is derived from `snapshot_interval`.
 
 Most users can use `EzConfig::default()`.
 
