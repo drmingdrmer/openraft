@@ -243,6 +243,93 @@ async fn join_promotes_to_voter_and_cluster_survives_leader_death() -> io::Resul
     Ok(())
 }
 
+/// A promotion interrupted by the death of the node that admitted the joiner
+/// must be finished by the next leader: promotion belongs to the leader role,
+/// not to the task that handled the join.
+#[tokio::test(flavor = "multi_thread")]
+async fn next_leader_promotes_orphaned_learner() -> io::Result<()> {
+    let addr_a = free_addr();
+    let a = EzRaft::<Types>::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    tokio::spawn({
+        let a = a.clone();
+        async move { a.serve().await }
+    });
+    a.inner()
+        .wait(WAIT)
+        .metrics(|m| m.current_leader == Some(0), "founding node leads")
+        .await
+        .map_err(io::Error::other)?;
+
+    let addr_b = free_addr();
+    let b = EzRaft::<Types>::join(&addr_b, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    tokio::spawn({
+        let b = b.clone();
+        async move { b.serve().await }
+    });
+
+    let addr_c = free_addr();
+    let c = EzRaft::<Types>::join(&addr_c, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    tokio::spawn({
+        let c = c.clone();
+        async move { c.serve().await }
+    });
+
+    let voters = BTreeSet::from([0, b.node_id(), c.node_id()]);
+    for node in [&a, &b, &c] {
+        node.inner()
+            .wait(WAIT)
+            .metrics(
+                |m| *m.membership_config.membership().get_joint_config() == [voters.clone()],
+                "three voters before the fourth joins",
+            )
+            .await
+            .map_err(io::Error::other)?;
+    }
+
+    // D joins but its server does not start: it cannot catch up, so it stays a
+    // learner, holding its promotion open past the founding leader's death.
+    let addr_d = free_addr();
+    let d = EzRaft::<Types>::join(&addr_d, &addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    let d_id = d.node_id();
+    a.inner()
+        .wait(WAIT)
+        .metrics(
+            |m| m.membership_config.membership().learner_ids().any(|id| id == d_id),
+            "joiner registered as learner",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    a.inner().shutdown().await.map_err(io::Error::other)?;
+    b.inner()
+        .wait(WAIT)
+        .metrics(
+            |m| matches!(m.current_leader, Some(id) if id != 0),
+            "a surviving node takes over",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    // Only now does D serve and catch up. The node that admitted it is dead,
+    // so only the new leader can complete the promotion.
+    tokio::spawn({
+        let d = d.clone();
+        async move { d.serve().await }
+    });
+
+    let final_voters = BTreeSet::from([0, b.node_id(), c.node_id(), d_id]);
+    b.inner()
+        .wait(WAIT)
+        .metrics(
+            |m| m.membership_config.membership().voter_ids().collect::<BTreeSet<_>>() == final_voters,
+            "next leader promotes the orphaned learner",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    Ok(())
+}
+
 /// A snapshot must land on disk when built, and a restarted node must rebuild
 /// the full state from that snapshot plus the log entries after it.
 #[tokio::test(flavor = "multi_thread")]

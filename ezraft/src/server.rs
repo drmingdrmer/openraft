@@ -188,15 +188,9 @@ where T: EzTypes
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("add_learner failed: {}", e)))?;
 
-        // Promote in the background: the new node cannot replicate anything, and therefore
-        // cannot catch up, until this response tells it which node it is.
-        let raft = ez.raft.clone();
-        tokio::spawn(async move {
-            if let Err(e) = raft.promote_to_voter(node_id).await {
-                tracing::error!("failed to promote node {} to voter: {}", node_id, e);
-            }
-        });
-
+        // The reconcile loop promotes the learner once it catches up. The response must go out
+        // first regardless: the new node cannot replicate anything, and therefore cannot catch
+        // up, until it learns its node id.
         Ok(web::Json(Ok(node_id)))
     }
 }

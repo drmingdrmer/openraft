@@ -183,12 +183,55 @@ where T: EzTypes
             }
         }
 
-        Ok(Self {
+        let this = Self {
             node_id,
             addr: http_addr,
             storage: adapter,
             raft,
-        })
+        };
+
+        // Promotion belongs to whoever currently leads, so every node runs the loop; it acts
+        // only while this node is the leader.
+        tokio::spawn(this.clone().reconcile_learners());
+
+        Ok(this)
+    }
+
+    /// Promote each caught-up learner while this node leads
+    ///
+    /// EzRaft has no lasting learner state: a learner is a node that has joined and not been
+    /// promoted yet. The join handler only records the learner; promotion happens here, owned
+    /// by the leader role rather than by the node that handled the join, so a promotion
+    /// interrupted by a crash or a leader change is finished by whoever leads next instead of
+    /// dying with the task that started it.
+    async fn reconcile_learners(self) {
+        let promotable = |m: &openraft::RaftMetrics<ORTypes<T>>| -> Option<u64> {
+            let replication = m.replication.as_ref()?;
+            let membership = m.membership_config.membership();
+            membership.learner_ids().find(|id| {
+                let matched = replication.get(id).and_then(|log_id| log_id.as_ref()).map(|log_id| log_id.index);
+                matched >= m.last_log_index
+            })
+        };
+
+        loop {
+            let res =
+                self.raft.wait(None).metrics(|m| promotable(m).is_some(), "a learner is ready for promotion").await;
+
+            let Ok(metrics) = res else {
+                // The node is shutting down.
+                return;
+            };
+
+            let Some(node_id) = promotable(&metrics) else {
+                continue;
+            };
+
+            if let Err(e) = self.promote_to_voter(node_id).await {
+                tracing::error!("failed to promote node {} to voter: {}", node_id, e);
+                sleep(PROMOTE_RETRY_INTERVAL).await;
+            }
+        }
     }
 
     /// Write a request to the Raft log
@@ -233,8 +276,9 @@ where T: EzTypes
 
     /// Add a learner node to the cluster
     ///
-    /// Learners receive log replication but don't participate in voting.
-    /// This is useful for adding read-only nodes or preparing a node for membership.
+    /// A learner receives log replication but does not vote. In EzRaft a learner is always a
+    /// transient state - the first half of admitting a node, not a way to build read-only
+    /// replicas: [`Self::reconcile_learners`] promotes every learner once it has caught up.
     ///
     /// Returns as soon as replication to the new node is set up; the node catches up in the
     /// background. Waiting here would deadlock the join handler, whose caller cannot answer any
@@ -244,7 +288,7 @@ where T: EzTypes
     ///
     /// * `node_id` - ID of the new learner node
     /// * `addr` - Address of the new learner node
-    pub async fn add_learner(&self, node_id: u64, addr: String) -> Result<(), io::Error> {
+    pub(crate) async fn add_learner(&self, node_id: u64, addr: String) -> Result<(), io::Error> {
         let node = BasicNode::new(addr);
         self.raft.add_learner(node_id, node, false).await.map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -260,9 +304,10 @@ where T: EzTypes
     /// A cluster admits one membership change at a time, so when several nodes join at once
     /// their promotions take turns: one that finds another change in flight waits and retries.
     ///
-    /// Returns without changing anything if this node is no longer the leader; the new leader
-    /// owns the promotion from that point on.
-    pub async fn promote_to_voter(&self, node_id: u64) -> Result<(), io::Error> {
+    /// Returns without changing anything if the node is already a voter, or if this node is no
+    /// longer the leader - the new leader's [`Self::reconcile_learners`] owns the promotion
+    /// from that point on.
+    async fn promote_to_voter(&self, node_id: u64) -> Result<(), io::Error> {
         let caught_up = |m: &openraft::RaftMetrics<ORTypes<T>>| {
             let Some(replication) = m.replication.as_ref() else {
                 // Not the leader anymore, stop waiting.
@@ -283,6 +328,10 @@ where T: EzTypes
                 .map_err(|e| io::Error::other(e.to_string()))?;
 
             if metrics.current_leader != Some(self.node_id) {
+                return Ok(());
+            }
+
+            if metrics.membership_config.membership().voter_ids().any(|id| id == node_id) {
                 return Ok(());
             }
 
