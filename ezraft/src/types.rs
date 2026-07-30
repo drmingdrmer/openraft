@@ -35,7 +35,7 @@ type EzEntryPayload<T> = EntryPayload<<T as EzTypes>::Request, u64, BasicNode>;
 ///
 /// Wraps the entry's log ID (term, index) and payload.
 /// This is the native Entry type used throughout EzRaft.
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(bound = "")]
 pub struct EzEntry<T>
 where T: EzTypes
@@ -45,6 +45,18 @@ where T: EzTypes
 
     /// Entry payload (Normal request, Blank, or Membership change)
     pub payload: EzEntryPayload<T>,
+}
+
+// Manually implement Clone to avoid T: Clone bound; only T::Request must be Clone
+impl<T> Clone for EzEntry<T>
+where T: EzTypes
+{
+    fn clone(&self) -> Self {
+        Self {
+            log_id: self.log_id,
+            payload: self.payload.clone(),
+        }
+    }
 }
 
 // Manually implement Debug to avoid T: Debug bound
@@ -184,4 +196,31 @@ where T: EzTypes
     /// storage reclaim space.
     #[display("PurgeLogs({_0})")]
     PurgeLogs(u64),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deliberately not Clone: entries must clone for any `EzTypes` marker.
+    struct Marker;
+    impl EzTypes for Marker {
+        type Request = String;
+        type Response = String;
+    }
+
+    #[test]
+    fn ez_entry_clones_without_t_clone() {
+        let entry = EzEntry::<Marker> {
+            log_id: (7, 9),
+            payload: EntryPayload::Normal("hello".to_string()),
+        };
+
+        let clone = entry.clone();
+        assert_eq!((7, 9), clone.log_id);
+        let EntryPayload::Normal(req) = clone.payload else {
+            panic!("payload variant changed by clone");
+        };
+        assert_eq!("hello", req);
+    }
 }
