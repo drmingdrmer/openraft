@@ -241,7 +241,9 @@ where T: EzTypes
     ///
     /// Only a leader can accept a write. Calling this on a follower forwards the request to the
     /// leader over HTTP and returns the leader's answer, so a caller never has to track which
-    /// node is currently in charge.
+    /// node is currently in charge. Moments without a usable leader - an election in flight, a
+    /// just-elected leader that has not confirmed its lease - are waited out for up to ten
+    /// seconds before the write fails.
     ///
     /// # Arguments
     ///
@@ -258,20 +260,35 @@ where T: EzTypes
     /// let resp = raft.write(req).await?;
     /// ```
     pub async fn write(&self, req: T::Request) -> Result<T::Response, io::Error> {
-        let err = match self.raft.client_write(req.clone()).await {
-            Ok(resp) => return Ok(resp.data),
-            Err(e) => e,
-        };
+        let mut last_err = String::new();
 
-        let RaftError::APIError(ClientWriteError::ForwardToLeader(forward)) = &err else {
-            return Err(io::Error::other(err.to_string()));
-        };
+        for _ in 0..WRITE_ATTEMPTS {
+            let err = match self.raft.client_write(req.clone()).await {
+                Ok(resp) => return Ok(resp.data),
+                Err(e) => e,
+            };
 
-        // Forwarding to ourselves would repeat this call over HTTP forever.
-        match forward.leader_node.as_ref().map(|n| n.addr.as_str()) {
-            Some(leader) if leader != self.addr => forward_write::<T>(leader, &req).await,
-            _ => Err(io::Error::other(err.to_string())),
+            let RaftError::APIError(ClientWriteError::ForwardToLeader(forward)) = &err else {
+                return Err(io::Error::other(err.to_string()));
+            };
+
+            // Forwarding to ourselves would repeat this call over HTTP forever.
+            match forward.leader_node.as_ref().map(|n| n.addr.as_str()) {
+                Some(leader) if leader != self.addr => return forward_write::<T>(leader, &req).await,
+                // No usable leader: an election is in flight, or a just-elected leader has not
+                // confirmed its quorum lease yet. Both resolve within heartbeats, so wait them
+                // out instead of bothering the caller.
+                _ => {
+                    last_err = err.to_string();
+                    sleep(WRITE_RETRY_INTERVAL).await;
+                }
+            }
         }
+
+        Err(io::Error::other(format!(
+            "write gave up after {} attempts: {}",
+            WRITE_ATTEMPTS, last_err
+        )))
     }
 
     /// Add a learner node to the cluster
@@ -420,6 +437,12 @@ where T: EzTypes
         &self.storage
     }
 }
+
+/// How many times a write retries while the cluster has no usable leader
+const WRITE_ATTEMPTS: usize = 20;
+
+/// How long to wait before retrying a write
+const WRITE_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 
 /// How many times a promotion retries while another membership change is in flight
 const PROMOTE_ATTEMPTS: usize = 20;
