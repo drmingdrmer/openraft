@@ -404,3 +404,79 @@ async fn snapshot_survives_restart() -> io::Result<()> {
 
     Ok(())
 }
+
+/// A node that joins after the leader purged its log can only be brought up by
+/// a full snapshot over the network; the join must still end in a voter with
+/// the complete state.
+#[tokio::test(flavor = "multi_thread")]
+async fn lagging_joiner_catches_up_from_snapshot() -> io::Result<()> {
+    let addr_a = free_addr();
+    let a = EzRaft::<Types>::create(&addr_a, KvSm::default(), MemStorage::default(), config()).await?;
+    tokio::spawn({
+        let a = a.clone();
+        async move { a.serve().await }
+    });
+    a.inner()
+        .wait(WAIT)
+        .metrics(|m| m.current_leader == Some(0), "founding node leads")
+        .await
+        .map_err(io::Error::other)?;
+
+    for i in 0..10 {
+        a.write(set(&format!("k{}", i), &format!("v{}", i))).await?;
+    }
+
+    // Snapshot, then purge every covered entry: whoever joins now cannot be
+    // caught up by log replay.
+    a.inner().trigger().snapshot().await.map_err(io::Error::other)?;
+    let snapshot_index = a
+        .inner()
+        .wait(WAIT)
+        .metrics(|m| m.snapshot.is_some(), "snapshot built")
+        .await
+        .map_err(io::Error::other)?
+        .snapshot
+        .unwrap()
+        .index;
+    a.inner().trigger().purge_log(snapshot_index).await.map_err(io::Error::other)?;
+    a.inner()
+        .wait(WAIT)
+        .metrics(
+            |m| m.purged.map(|log_id| log_id.index) == Some(snapshot_index),
+            "log purged up to the snapshot",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    let b_sm = KvSm::default();
+    let addr_b = free_addr();
+    let b = EzRaft::<Types>::join(&addr_b, &addr_a, b_sm.clone(), MemStorage::default(), config()).await?;
+    tokio::spawn({
+        let b = b.clone();
+        async move { b.serve().await }
+    });
+
+    let voters = BTreeSet::from([0, b.node_id()]);
+    b.inner()
+        .wait(WAIT)
+        .metrics(
+            |m| *m.membership_config.membership().get_joint_config() == [voters.clone()],
+            "snapshot-fed joiner promoted to voter",
+        )
+        .await
+        .map_err(io::Error::other)?;
+
+    // The whole pre-purge state must have arrived through the snapshot.
+    assert_eq!(expected_map(0..10), b_sm.data.lock().unwrap().clone());
+
+    // And the pair keeps working past the transfer.
+    assert_eq!(Response { value: None }, b.write(set("k10", "v10")).await?);
+    assert_eq!(
+        Response {
+            value: Some("v0".into())
+        },
+        b.write(get("k0")).await?
+    );
+
+    Ok(())
+}

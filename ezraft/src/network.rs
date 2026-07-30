@@ -3,47 +3,48 @@
 //! This module provides the built-in HTTP networking that connects Raft nodes.
 //! Users don't need to implement anything - the framework handles all RPC communication.
 //!
-//! # Why the legacy v1 network API
+//! # Snapshot transfer
 //!
-//! The transport is plain request/response JSON over HTTP, and the v1 API is exactly that
-//! shape: three serializable RPCs, with snapshot chunking defined by the protocol - the
-//! [`Adapter`] drives the sending side and `ChunkedSnapshotReceiver` the receiving side.
-//! Implementing `RaftNetworkV2` directly would mean designing a bespoke snapshot transfer
-//! (fragmenting, resume, cancellation) for no benefit at this crate's scale.
+//! All RPCs, snapshot included, are plain request/response JSON over HTTP: a snapshot is
+//! small enough at this crate's scale to travel as one POST, which spares the protocol any
+//! chunking, resume, or transfer state - a failed transfer is simply sent again.
 //!
-//! The accepted cost: snapshot chunks ride in JSON, where bytes serialize as an array of
-//! numbers (roughly 4x on the wire). If snapshots outgrow that, the switch is to implement
-//! `RaftNetworkV2::full_snapshot` directly, e.g. as a raw-body streaming POST.
+//! The accepted cost: snapshot bytes ride in JSON, where they serialize as an array of
+//! numbers (roughly 4x on the wire). If snapshots outgrow that, `full_snapshot` is the place
+//! to switch to e.g. a raw-body streaming POST.
 
 use std::fmt::Display;
+use std::future::Future;
 use std::io;
 
 use openraft::AnyError;
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use openraft::error::Infallible;
-use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
-use openraft::error::RaftError;
-use openraft::error::RemoteError;
+use openraft::error::ReplicationClosed;
+use openraft::error::StreamingError;
 use openraft::error::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
+use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft_legacy::network_v1::Adapter;
-use openraft_legacy::network_v1::RaftNetwork as RaftNetworkV1;
+use openraft::type_config::alias::SnapshotOf;
+use openraft::type_config::alias::VoteOf;
 use reqwest::Client;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::type_config::EzTypes;
+use crate::type_config::EzVote;
 use crate::type_config::OpenRaftTypes;
 use crate::types::EzSnapshotData;
+use crate::types::EzSnapshotMeta;
 
 /// Type alias for OpenRaft types
 type C<T> = OpenRaftTypes<T>;
@@ -71,13 +72,13 @@ impl EzNetworkFactory {
 impl<T> RaftNetworkFactory<C<T>> for EzNetworkFactory
 where T: EzTypes
 {
-    type Network = Adapter<C<T>, Network, EzSnapshotData>;
+    type Network = Network;
 
-    async fn new_client(&mut self, target: u64, node: &BasicNode) -> Self::Network {
+    async fn new_client(&mut self, _target: u64, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
         let client = self.client.clone();
 
-        Network { addr, client, target }.into_v2()
+        Network { addr, client }
     }
 }
 
@@ -85,7 +86,6 @@ where T: EzTypes
 pub struct Network {
     addr: String,
     client: Client,
-    target: u64,
 }
 
 impl Network {
@@ -132,50 +132,56 @@ impl Network {
     }
 }
 
-/// Implement RaftNetwork (v1 API) for HTTP transport
-#[allow(clippy::blocks_in_conditions)]
-impl<T> RaftNetworkV1<C<T>> for Network
+/// Implement RaftNetworkV2 for HTTP transport
+impl<T> RaftNetworkV2<C<T>> for Network
 where T: EzTypes
 {
+    type SnapshotData = EzSnapshotData;
+
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C<T>>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self
-            .request::<_, _, Infallible, C<T>>("raft/append", req, &option)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+    ) -> Result<AppendEntriesResponse<C<T>>, RPCError<C<T>>> {
+        let res = self.request::<_, _, Infallible, C<T>>("raft/append", req, &option).await?;
         Ok(res.unwrap())
     }
 
-    async fn install_snapshot(
+    /// Send the whole snapshot in one request; the receiving side hands it to
+    /// [`Raft::install_full_snapshot`](openraft::Raft::install_full_snapshot).
+    async fn full_snapshot(
         &mut self,
-        req: InstallSnapshotRequest<C<T>>,
+        vote: VoteOf<C<T>>,
+        snapshot: SnapshotOf<C<T>, Self::SnapshotData>,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<C<T>>, RPCError<C<T>, RaftError<C<T>, InstallSnapshotError>>> {
-        let res = self
-            .request::<_, _, _, C<T>>("raft/snapshot", req, &option)
-            .await
-            .map_err(RPCError::with_raft_error)?;
-        match res {
-            Ok(resp) => Ok(resp),
-            Err(e) => Err(RPCError::RemoteError(RemoteError::new(
-                self.target,
-                RaftError::APIError(e),
-            ))),
+    ) -> Result<SnapshotResponse<C<T>>, StreamingError<C<T>>> {
+        let req = SnapshotTransfer {
+            vote,
+            meta: snapshot.meta,
+            data: snapshot.snapshot.into_inner(),
+        };
+        tokio::pin!(cancel);
+
+        tokio::select! {
+            closed = &mut cancel => Err(StreamingError::Closed(closed)),
+            res = self.request::<_, _, Infallible, C<T>>("raft/snapshot", req, &option) => Ok(res?.unwrap()),
         }
     }
 
-    async fn vote(
-        &mut self,
-        req: VoteRequest<C<T>>,
-        option: RPCOption,
-    ) -> Result<VoteResponse<C<T>>, RPCError<C<T>, RaftError<C<T>>>> {
-        let res = self
-            .request::<_, _, Infallible, C<T>>("raft/vote", req, &option)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+    async fn vote(&mut self, req: VoteRequest<C<T>>, option: RPCOption) -> Result<VoteResponse<C<T>>, RPCError<C<T>>> {
+        let res = self.request::<_, _, Infallible, C<T>>("raft/vote", req, &option).await?;
         Ok(res.unwrap())
     }
+}
+
+/// Wire format of the one-shot snapshot POST to `/raft/snapshot`
+///
+/// Carries exactly what [`Raft::install_full_snapshot`](openraft::Raft::install_full_snapshot)
+/// needs on the receiving side.
+#[derive(serde::Deserialize, serde::Serialize)]
+pub(crate) struct SnapshotTransfer {
+    pub vote: EzVote,
+    pub meta: EzSnapshotMeta,
+    pub data: Vec<u8>,
 }

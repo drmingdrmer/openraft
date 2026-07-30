@@ -15,7 +15,6 @@ repository.workspace = true
 
 [dependencies]
 openraft = { path = "../openraft", features = ["serde", "type-alias"] }
-openraft-legacy = { path = "../legacy" }
 
 actix-web = "4.0"
 async-trait = "0.1"

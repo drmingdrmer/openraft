@@ -4,19 +4,22 @@
 //! - Internal Raft RPC (append entries, vote)
 //! - Admin API (join, change membership, metrics)
 
+use std::io::Cursor;
+
 use actix_web::App;
 use actix_web::HttpServer;
 use actix_web::web;
 use actix_web::web::Data;
 use openraft::BasicNode;
 use openraft::ChangeMembers;
+use openraft::Snapshot;
 use openraft::errors::Infallible;
-use openraft::errors::InstallSnapshotError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::raft;
-use openraft_legacy::network_v1::ChunkedSnapshotReceiver;
+use openraft::raft::SnapshotResponse;
 use serde::Deserialize;
 
+use crate::network::SnapshotTransfer;
 use crate::raft::EzRaft;
 use crate::type_config::EzTypes;
 use crate::type_config::OpenRaftTypes;
@@ -99,20 +102,26 @@ where T: EzTypes
 
     /// Raft install snapshot RPC handler
     ///
-    /// A leader falls back to this when a follower lags behind the purged log.
+    /// A leader falls back to this when a follower lags behind the purged log. The snapshot
+    /// arrives whole in a single request.
     async fn handle_snapshot(
-        req: web::Json<raft::InstallSnapshotRequest<C<T>>>,
+        req: web::Json<SnapshotTransfer>,
         ez: Data<Self>,
-    ) -> Result<web::Json<Result<raft::InstallSnapshotResponse<C<T>>, InstallSnapshotError>>, actix_web::Error> {
+    ) -> Result<web::Json<Result<SnapshotResponse<C<T>>, Infallible>>, actix_web::Error> {
+        let SnapshotTransfer { vote, meta, data } = req.into_inner();
+        let snapshot = Snapshot {
+            meta,
+            snapshot: Cursor::new(data),
+        };
+
         let resp = ez
             .raft
             .inner()
-            .install_snapshot(req.into_inner())
+            .install_full_snapshot(vote, snapshot)
             .await
-            .decompose()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("install_snapshot failed: {}", e)))?;
 
-        Ok(web::Json(resp))
+        Ok(web::Json(Ok(resp)))
     }
 
     /// Application write API handler
