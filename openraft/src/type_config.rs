@@ -23,6 +23,7 @@ use crate::batch::Batch;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::errors::ErrorSource;
+use crate::membership::RaftMembership;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
@@ -123,6 +124,8 @@ pub trait RaftTypeConfig:
         change = "from `RaftVote<Self>` to `RaftVote<LeaderId = Self::LeaderId>`"
     )]
     type Vote: RaftVote<LeaderId = Self::LeaderId>;
+
+    type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node>;
 
     /// Raft log entry payload.
     #[since(version = "0.10.0", change = "added configurable log payload type")]
