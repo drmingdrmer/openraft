@@ -4,7 +4,6 @@ use display_more::DisplayOptionExt;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
@@ -28,6 +27,8 @@ use crate::errors::InitializeError;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::proposer::Candidate;
 use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
@@ -225,10 +226,11 @@ where
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initialize(&mut self, membership: Membership<C::NodeId, C::Node>) -> Result<(), InitializeError<C>> {
+    pub(crate) fn initialize(&mut self, membership: C::Membership) -> Result<(), InitializeError<C>> {
         self.check_initialize()?;
 
         self.check_members_contain_me(&membership)?;
+        membership.validate()?;
 
         // FollowingHandler requires vote to be committed.
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
@@ -967,7 +969,7 @@ where
 
     /// Requires the initializing node to be a campaigner in the initial configuration, because
     /// `RaftCore::handle_initialize()` starts an election on this node right after initialization.
-    fn check_members_contain_me(&self, m: &Membership<C::NodeId, C::Node>) -> Result<(), NotInMembers<C>> {
+    fn check_members_contain_me(&self, m: &C::Membership) -> Result<(), NotInMembers<C>> {
         if !m.is_campaigner(&self.config.id) {
             let e = NotInMembers {
                 node_id: self.config.id.clone(),

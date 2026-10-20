@@ -79,7 +79,8 @@ where
         self.raft.change_membership(node_ids, false).await.decompose().unwrap()
     }
 
-    pub async fn init(self: Arc<Self>, req: Vec<(C::NodeId, NodeInfo)>) -> Result<(), InitializeError<C>> {
+    pub async fn init(self: Arc<Self>, req: Vec<(C::NodeId, NodeInfo)>) -> Result<(), InitializeError<C>>
+    where C::Membership: From<BTreeMap<C::NodeId, NodeInfo>> {
         let mut nodes = BTreeMap::new();
         if req.is_empty() {
             nodes.insert(
@@ -126,7 +127,7 @@ where
         };
 
         let metrics = self.raft.metrics().borrow_watched().clone();
-        let Some(leader_node) = metrics.membership_config.membership().get_node(&leader_id) else {
+        let Some(leader_node) = metrics.membership_config.get_node(&leader_id) else {
             return Err(FollowerReadError {
                 message: format!("Leader node {} not found in membership", leader_id),
             });

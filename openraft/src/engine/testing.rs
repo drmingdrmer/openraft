@@ -44,7 +44,7 @@ where N: Node + Ord
     type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = crate::impls::Vote<Self::LeaderId>;
     type Membership = crate::impls::Membership<u64, N>;
-    type Payload = crate::EntryPayload<Self::D, Self::NodeId, Self::Node>;
+    type Payload = crate::EntryPayload<Self::D, Self::Membership>;
     type Entry = DefaultEntryOf<Self>;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>

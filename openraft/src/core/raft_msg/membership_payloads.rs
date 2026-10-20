@@ -1,7 +1,7 @@
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::entry::RaftPayload;
+use crate::membership::RaftMembership;
 use crate::type_config::alias::OneshotSenderOf;
 
 /// The base payloads a membership change offers for the entry `RaftCore` computes.
@@ -33,7 +33,7 @@ impl<C> MembershipPayloads<C>
 where C: RaftTypeConfig
 {
     /// Bind `membership` into the payload that matches its shape, and return that payload.
-    pub(crate) fn select(self, membership: Membership<C::NodeId, C::Node>) -> C::Payload {
+    pub(crate) fn select(self, membership: C::Membership) -> C::Payload {
         let payload = match self {
             Self::Uniform(uniform) => uniform,
             Self::JointOrUniform {

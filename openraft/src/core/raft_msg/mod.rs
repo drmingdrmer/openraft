@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt;
 
 use display_more::DisplayOptionExt;
@@ -12,7 +11,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 #[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStats;
-use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -91,7 +89,7 @@ where C: RaftTypeConfig
     },
 
     Initialize {
-        members: BTreeMap<C::NodeId, C::Node>,
+        members: C::Membership,
         tx: ResultSender<C, (), InitializeError<C>>,
     },
 
@@ -207,7 +205,7 @@ where C: RaftTypeConfig
                 write!(f, "GetLinearizer: {}", linearizer_option)
             }
             RaftMsg::Initialize { members, .. } => {
-                write!(f, "Initialize: {}", members.display())
+                write!(f, "Initialize: {}", members)
             }
             RaftMsg::ChangeMembership {
                 changes,

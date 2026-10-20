@@ -6,22 +6,19 @@ use std::fmt::Formatter;
 use openraft_macros::since;
 
 use crate::AppData;
-use crate::Membership;
-use crate::node::Node;
-use crate::node::NodeId;
+use crate::membership::RaftMembership;
 
 /// Log entry payload variants.
 #[since(
     version = "0.10.0",
-    change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, NID, N>`"
+    change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, Mem>`"
 )]
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<D, NID, N>
+pub enum EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     /// An empty payload committed by a new cluster leader.
     Blank,
@@ -30,14 +27,13 @@ where
     Normal(D),
 
     /// A change-membership log entry.
-    Membership(Membership<NID, N>),
+    Membership(Mem),
 }
 
-impl<D, NID, N> Clone for EntryPayload<D, NID, N>
+impl<D, Mem> Clone for EntryPayload<D, Mem>
 where
     D: AppData + Clone,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn clone(&self) -> Self {
         match self {
@@ -48,11 +44,10 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Debug for EntryPayload<D, NID, N>
+impl<D, Mem> fmt::Debug for EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -67,11 +62,10 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Display for EntryPayload<D, NID, N>
+impl<D, Mem> fmt::Display for EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -86,11 +80,10 @@ where
     }
 }
 
-impl<D, NID, N> EntryPayload<D, NID, N>
+impl<D, Mem> EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -101,15 +94,13 @@ where
     }
 }
 
-impl<AppData, NID, N> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, NID, N>
+impl<AppData, Mem> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, Mem>
 where
     AppData: crate::AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     type D = AppData;
-    type NodeId = NID;
-    type Node = N;
+    type Membership = Mem;
 
     fn blank() -> Self {
         EntryPayload::Blank
@@ -119,11 +110,11 @@ where
         EntryPayload::Normal(data)
     }
 
-    fn with_membership(self, membership: Membership<NID, N>) -> Self {
+    fn with_membership(self, membership: Mem) -> Self {
         EntryPayload::Membership(membership)
     }
 
-    fn get_membership(&self) -> Option<Membership<NID, N>> {
+    fn get_membership(&self) -> Option<Mem> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {

@@ -14,7 +14,6 @@ use tracing::Span;
 
 use crate::ChangeMembers;
 use crate::Instant;
-use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -894,14 +893,8 @@ where
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(crate) fn handle_initialize(
-        &mut self,
-        member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C>>,
-    ) {
-        tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
-
-        let membership = Membership::from(member_nodes);
+    pub(crate) fn handle_initialize(&mut self, membership: C::Membership, tx: ResultSender<C, (), InitializeError<C>>) {
+        tracing::debug!("{}: membership: {}", func_name!(), membership);
 
         let res = self.engine.initialize(membership);
 

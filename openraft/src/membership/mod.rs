@@ -39,8 +39,10 @@ pub use membership::Membership;
 pub use node_ref::NodeRef;
 pub use node_role::NodeRole;
 pub use raft_membership::RaftMembership;
+pub(crate) use raft_membership_ext::RaftMembershipExt;
 pub use stored_membership::StoredMembership;
 
 mod node_ref;
 mod node_role;
 mod raft_membership;
+mod raft_membership_ext;
