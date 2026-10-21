@@ -5,7 +5,6 @@
 use openraft_macros::since;
 
 use crate::ChangeMembers;
-use crate::Membership;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -283,7 +282,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn append_membership(
         &self,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         payload: C::Payload,
         preconditions: impl IntoIterator<Item = Precondition<C>>,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {

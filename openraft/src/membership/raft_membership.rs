@@ -4,11 +4,13 @@ use std::fmt::Display;
 use openraft_macros::since;
 use quorum_set::QuorumSet;
 
+use crate::ChangeMembers;
 use crate::Node;
 use crate::NodeId;
 use crate::base::OptionalFeatures;
 use crate::base::OptionalSend;
 use crate::base::OptionalSync;
+use crate::errors::MembershipError;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 
@@ -73,4 +75,35 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     #[since(version = "0.10.0")]
     fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
     where I: IntoIterator<Item = (Self::NodeId, Self::Node, NodeRole)>;
+
+    /// Returns an error if this configuration defines no quorum, or if a quorum ID has no node.
+    ///
+    /// OpenRaft calls it on a membership that an application supplies, before it uses the
+    /// membership's quorums.
+    #[since(version = "0.10.0")]
+    fn validate(&self) -> Result<(), MembershipError<Self::NodeId>>;
+
+    /// Returns `true` only when every read quorum of each configuration intersects every write
+    /// quorum of the other.
+    ///
+    /// OpenRaft appends `other` directly after `self` only when this returns `true`.
+    /// Returning `false` is always safe.
+    #[since(version = "0.10.0")]
+    fn is_direct_append_compatible_with(&self, other: &Self) -> bool;
+
+    /// Returns the next configuration on the way to the target of `change`.
+    ///
+    /// The result may be a joint configuration, a step that [`is_joint()`](Self::is_joint)
+    /// reports. An empty change on a joint configuration must return its target.
+    /// `retain` keeps the removed voters as learners.
+    #[since(version = "0.10.0")]
+    fn change(
+        &self,
+        change: ChangeMembers<Self::NodeId, Self::Node>,
+        retain: bool,
+    ) -> Result<Self, MembershipError<Self::NodeId>>;
+
+    /// Returns whether this configuration is an intermediate joint step of a change.
+    #[since(version = "0.10.0")]
+    fn is_joint(&self) -> bool;
 }

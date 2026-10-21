@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use crate::ChangeMembers;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
+use crate::errors::MembershipError;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
+use crate::quorum::QuorumIntersection;
 
 impl<NID, N> RaftMembership for Membership<NID, N>
 where
@@ -70,6 +73,57 @@ where
             membership.nodes.insert(node_id, node);
         }
         membership
+    }
+
+    fn validate(&self) -> Result<(), MembershipError<NID>> {
+        self.ensure_valid()?;
+        self.ensure_quorum_defined()?;
+        Ok(())
+    }
+
+    /// The predicate is symmetric, and it accepts a transition only when a voter set of one
+    /// membership and a voter set of the other have intersecting majorities, as
+    /// [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership holds a majority
+    /// of each of its voter sets, so every quorum of one membership then intersects every quorum
+    /// of the other.
+    ///
+    /// The rule is exact for two uniform memberships. When either membership has more than one
+    /// voter set, the rule is conservative: it rejects some transitions whose quorums do
+    /// intersect. See [`UnsupportedMembershipTransition`] for examples.
+    ///
+    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
+    fn is_direct_append_compatible_with(&self, other: &Self) -> bool {
+        if self.ensure_quorum_defined().is_err() {
+            return false;
+        }
+        if other.ensure_quorum_defined().is_err() {
+            return false;
+        }
+
+        let intersects = self.configs.intersects_with(&other.configs);
+        intersects == Some(true)
+    }
+
+    fn change(&self, change: ChangeMembers<NID, N>, retain: bool) -> Result<Self, MembershipError<NID>> {
+        tracing::debug!("{}: change: {:?}", func_name!(), change);
+
+        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
+
+        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
+        let target_voter_ids = configs.pop().unwrap();
+
+        let current = Membership::new_unchecked(self.configs.clone(), nodes);
+        let new_membership = current.next_coherent(target_voter_ids, retain);
+
+        tracing::debug!("new membership: {}", new_membership);
+
+        new_membership.ensure_valid()?;
+
+        Ok(new_membership)
+    }
+
+    fn is_joint(&self) -> bool {
+        self.configs.len() > 1
     }
 }
 

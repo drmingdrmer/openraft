@@ -1,10 +1,12 @@
 use core::fmt;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 use openraft_macros::since;
 
 use crate::ChangeMembers;
+use crate::EmptyNode;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::errors::NodeNotFound;
@@ -13,7 +15,6 @@ use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::QuorumBridge;
-use crate::quorum::QuorumIntersection;
 
 /// The membership configuration of the cluster.
 ///
@@ -62,6 +63,35 @@ where
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
         Membership::new_unchecked(vec![member_ids], b)
+    }
+}
+
+impl<NID, N> From<HashMap<NID, N>> for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn from(h: HashMap<NID, N>) -> Self {
+        let nodes = h.into_nodes();
+        Membership::from(nodes)
+    }
+}
+
+impl<NID> From<BTreeSet<NID>> for Membership<NID, ()>
+where NID: NodeId
+{
+    fn from(node_ids: BTreeSet<NID>) -> Self {
+        let nodes: BTreeMap<NID, ()> = node_ids.into_nodes();
+        Membership::from(nodes)
+    }
+}
+
+impl<NID> From<BTreeSet<NID>> for Membership<NID, EmptyNode>
+where NID: NodeId
+{
+    fn from(node_ids: BTreeSet<NID>) -> Self {
+        let nodes: BTreeMap<NID, EmptyNode> = node_ids.into_nodes();
+        Membership::from(nodes)
     }
 }
 
@@ -163,11 +193,6 @@ where
         &self.configs
     }
 
-    /// Returns true if this membership is in joint consensus, i.e. it has more than one config.
-    pub(crate) fn is_joint(&self) -> bool {
-        self.configs.len() > 1
-    }
-
     /// Returns an Iterator of all nodes(voters and learners).
     pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.nodes.iter()
@@ -217,20 +242,6 @@ where
     /// Returns whether `node_id` belongs to this membership.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
-    }
-
-    /// Returns the read quorum definition.
-    ///
-    /// This majority-based membership uses the same definition for read and write quorums.
-    pub(crate) fn read_quorum_set(&self) -> &Self {
-        self
-    }
-
-    /// Returns the write quorum definition.
-    ///
-    /// This majority-based membership uses the same definition for read and write quorums.
-    pub(crate) fn write_quorum_set(&self) -> &Self {
-        self
     }
 
     /// Returns whether `node_id` may start an election under this configuration.
@@ -359,53 +370,9 @@ where
         Ok(())
     }
 
-    /// Returns the first node id that both memberships know but describe with a different [`Node`].
-    ///
-    /// A node id that only one of the two memberships knows is skipped: adding a node and removing
-    /// a node are not metadata changes.
-    pub(crate) fn find_changed_node_metadata(&self, other: &Self) -> Option<NID> {
-        for (node_id, node) in self.nodes.iter() {
-            let Some(other_node) = other.nodes.get(node_id) else {
-                continue;
-            };
-
-            if other_node != node {
-                return Some(node_id.clone());
-            }
-        }
-
-        None
-    }
-
     // ---
     // Quorum related internal API
     // ---
-    /// Returns true if one membership can be appended directly on top of the other, as a single
-    /// log entry without an intermediate joint membership.
-    ///
-    /// The predicate is symmetric, and it accepts a transition only when a voter set of one
-    /// membership and a voter set of the other have intersecting majorities, as
-    /// [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership holds a majority
-    /// of each of its voter sets, so every quorum of one membership then intersects every quorum
-    /// of the other.
-    ///
-    /// The rule is exact for two uniform memberships. When either membership has more than one
-    /// voter set, the rule is conservative: it rejects some transitions whose quorums do
-    /// intersect. See [`UnsupportedMembershipTransition`] for examples.
-    ///
-    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
-    pub(crate) fn is_direct_append_compatible_with(&self, other: &Self) -> bool {
-        if self.ensure_quorum_defined().is_err() {
-            return false;
-        }
-        if other.ensure_quorum_defined().is_err() {
-            return false;
-        }
-
-        let intersects = self.configs.intersects_with(&other.configs);
-        intersects == Some(true)
-    }
-
     /// Returns the next coherent membership to change to, while the expected final membership is
     /// `goal`.
     ///
@@ -432,6 +399,8 @@ where
     ///     curr = next;
     /// }
     /// ```
+    ///
+    /// [`QuorumIntersection::intersects_with()`]: crate::quorum::QuorumIntersection::intersects_with
     pub(crate) fn next_coherent(&self, goal: BTreeSet<NID>, retain: bool) -> Self {
         let config = self.configs.bridge_to(goal);
 
@@ -449,30 +418,6 @@ where
         Membership::new_unchecked(config, nodes)
     }
 
-    /// Apply a change-membership request and return a new instance.
-    ///
-    /// It ensures that the returned instance is valid.
-    ///
-    /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
-    /// continue to receive log replication from the leader.
-    pub(crate) fn change(mut self, change: ChangeMembers<NID, N>, retain: bool) -> Result<Self, MembershipError<NID>> {
-        tracing::debug!("{}: change: {:?}", func_name!(), change);
-
-        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
-
-        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
-        let target_voter_ids = configs.pop().unwrap();
-
-        self.nodes = nodes;
-        let new_membership = self.next_coherent(target_voter_ids, retain);
-
-        tracing::debug!("new membership: {}", new_membership);
-
-        new_membership.ensure_valid()?;
-
-        Ok(new_membership)
-    }
-
     /// Compute the target membership configuration by applying a membership change.
     ///
     /// This method:
@@ -484,7 +429,7 @@ where
     ///
     /// Note: This is an intermediate step in membership changes. The result may need to be
     /// transformed into a coherent configuration before being applied.
-    fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
+    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         // `None` means the change does not touch the voter set, only `nodes`.

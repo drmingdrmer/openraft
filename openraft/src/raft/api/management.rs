@@ -6,7 +6,6 @@ use openraft_macros::since;
 
 use crate::ChangeMembers;
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -18,7 +17,7 @@ use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
-use crate::membership::IntoNodes;
+use crate::membership::RaftMembership;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
@@ -49,10 +48,10 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn initialize<T>(&self, members: T) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
-    where T: IntoNodes<C::NodeId, C::Node> + Debug {
+    where T: Into<C::Membership> + Debug {
         self.inner
             .call_core_oneshot(|tx| RaftMsg::Initialize {
-                members: members.into_nodes(),
+                members: members.into(),
                 tx,
             })
             .await
@@ -205,7 +204,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn append_membership(
         &self,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         payload: C::Payload,
         preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
@@ -297,7 +296,7 @@ where C: RaftTypeConfig
             return Err(());
         }
 
-        if metrics.membership_config.membership().get_node(node_id).is_none() {
+        if metrics.membership_config.get_node(node_id).is_none() {
             // This learner has been removed.
             return Ok(None);
         }
