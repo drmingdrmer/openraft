@@ -326,6 +326,43 @@ fn test_invalid_election_timeout_config_produces_expected_error() {
         election_timeout_min: 1000,
         heartbeat_interval: 1500
     });
+
+    // Equal bounds leave an empty range to sample an election timeout from.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 1000,
+        ..Default::default()
+    };
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::ElectionTimeout { min: 1000, max: 1000 });
+
+    // A heartbeat interval equal to the election minimum. Suppression is off, so that its own
+    // check cannot reject the setting instead.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 2000,
+        heartbeat_interval: 1000,
+        heartbeat_min_interval: None,
+        ..Default::default()
+    };
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::ElectionTimeoutLTHeartBeat {
+        election_timeout_min: 1000,
+        heartbeat_interval: 1000
+    });
+
+    // One millisecond inside both bounds is valid.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 1001,
+        heartbeat_interval: 999,
+        heartbeat_min_interval: None,
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(1000, config.election_timeout_min);
+    assert_eq!(1001, config.election_timeout_max);
+    assert_eq!(999, config.heartbeat_interval);
 }
 
 #[test]
