@@ -190,6 +190,10 @@ where
     /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
     /// if the sender is dropped before the target value is reached.
     ///
+    /// The wait does not mark the returned value as seen. If this receiver had not seen that value
+    /// when the wait began, a following [`changed()`](Self::changed) returns at once for the same
+    /// value; if the wait had to sleep until it arrived, `changed()` waits for a newer one.
+    ///
     /// # Requirements
     ///
     /// - `T` must implement `PartialOrd` for comparison and `Clone` to return the value
@@ -228,6 +232,11 @@ where
     ///
     /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
     /// if the sender is dropped before the condition is met.
+    ///
+    /// The wait does not mark the returned value as seen. If this receiver had not seen that value
+    /// when the wait began, a following [`changed()`](Self::changed) returns at once for the same
+    /// value; if the wait had to sleep until it arrived, `changed()` waits for a newer one.
+    /// `condition` can be called more than once for the same value.
     ///
     /// # Requirements
     ///
