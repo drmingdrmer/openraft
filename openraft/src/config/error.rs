@@ -7,6 +7,7 @@ use crate::impls::BoxedErrorSource;
 
 /// Error variants related to configuration.
 #[since]
+#[since(version = "0.10.2", change = "added zero snapshot chunk size error")]
 #[since(
     version = "0.10.2",
     change = "added an error for a channel size the runtime does not accept"
@@ -39,6 +40,11 @@ pub enum ConfigError {
     /// The `max_payload_entries` configuration must be greater than 0.
     #[error("max_payload_entries must be > 0")]
     MaxPayloadIs0,
+
+    /// The `snapshot_max_chunk_size` configuration must be greater than 0.
+    #[since(version = "0.10.2")]
+    #[error("snapshot_max_chunk_size must be > 0")]
+    SnapshotMaxChunkSizeIs0,
 
     /// The `log_stage_capacity` configuration must be greater than 0.
     #[since(version = "0.10.2")]

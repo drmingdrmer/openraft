@@ -295,6 +295,9 @@ pub struct Config {
     pub snapshot_policy: SnapshotPolicy,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
+    ///
+    /// It must be at least 1 and at most `isize::MAX`, the largest byte buffer this target can
+    /// allocate; validation rejects other values. The default is 3 MiB.
     #[cfg_attr(feature = "clap", clap(long, default_value = "3MiB", value_parser=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
 
@@ -968,6 +971,14 @@ impl Config {
         if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadIs0);
         }
+
+        // A transport reads each chunk into a byte buffer, whose capacity is at most `isize::MAX`.
+        // A chunk size of 0 would send empty chunks that never finish the snapshot.
+        if self.snapshot_max_chunk_size == 0 {
+            return Err(ConfigError::SnapshotMaxChunkSizeIs0);
+        }
+        let max_chunk_size = u64::try_from(isize::MAX).unwrap_or(u64::MAX);
+        check_fits("snapshot_max_chunk_size", self.snapshot_max_chunk_size, max_chunk_size)?;
 
         if self.log_stage_capacity == Some(0) {
             return Err(ConfigError::LogStageCapacityIs0);

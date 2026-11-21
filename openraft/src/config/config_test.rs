@@ -146,6 +146,42 @@ fn test_log_stage_capacity_configuration() {
 }
 
 #[test]
+fn test_snapshot_max_chunk_size_must_form_a_byte_buffer() {
+    let config = Config {
+        snapshot_max_chunk_size: 0,
+        ..Default::default()
+    };
+    assert_eq!(Err(ConfigError::SnapshotMaxChunkSizeIs0), config.validate().map(|_| ()));
+
+    let max = u64::try_from(isize::MAX).unwrap();
+    let config = Config {
+        snapshot_max_chunk_size: max + 1,
+        ..Default::default()
+    };
+    let expected = ConfigError::TooLarge {
+        field: "snapshot_max_chunk_size",
+        value: max + 1,
+        max,
+    };
+    assert_eq!(Err(expected), config.validate().map(|_| ()));
+
+    for size in [1, max, Config::default().snapshot_max_chunk_size] {
+        let config = Config {
+            snapshot_max_chunk_size: size,
+            ..Default::default()
+        };
+        let config = config.validate().unwrap();
+        assert_eq!(size, config.snapshot_max_chunk_size);
+    }
+
+    // On a 32-bit target `isize::MAX` is `i32::MAX`: a chunk size that would truncate to 0 there,
+    // such as 2^32, is rejected.
+    let max_32 = u64::try_from(i32::MAX).unwrap();
+    let truncated = check_fits("snapshot_max_chunk_size", 1 << 32, max_32);
+    assert!(matches!(truncated, Err(ConfigError::TooLarge { .. })), "{truncated:?}");
+}
+
+#[test]
 fn test_channel_sizes_must_fit_usize() {
     // On a 32-bit target, `usize::MAX` is `u32::MAX`: a larger channel size must be rejected, not
     // truncated, possibly to 0.

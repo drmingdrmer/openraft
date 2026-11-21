@@ -433,3 +433,24 @@ fn test_config_lifecycle_latency_capacity() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_config_snapshot_max_chunk_size() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--snapshot-max-chunk-size=1"])?;
+    assert_eq!(1, config.snapshot_max_chunk_size);
+
+    let zero = Config::build(&["foo", "--snapshot-max-chunk-size=0"]);
+    assert_eq!(Err(ConfigError::SnapshotMaxChunkSizeIs0), zero.map(|_| ()));
+
+    let max = u64::try_from(isize::MAX)?;
+    let too_large = format!("--snapshot-max-chunk-size={}", max + 1);
+    let too_large = Config::build(&["foo", &too_large]);
+    let expected = ConfigError::TooLarge {
+        field: "snapshot_max_chunk_size",
+        value: max + 1,
+        max,
+    };
+    assert_eq!(Err(expected), too_large.map(|_| ()));
+
+    Ok(())
+}
