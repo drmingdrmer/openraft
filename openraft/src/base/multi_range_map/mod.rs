@@ -20,7 +20,8 @@ where
     Bound: RangeMapBound,
     V: RangeMapValue,
 {
-    range_maps: Vec<RangeMap<Bound, V>>,
+    /// Boxed, so the size of a `MultiRangeMap` does not grow with `N`.
+    range_maps: Box<[RangeMap<Bound, V>; N]>,
 }
 
 impl<Bound, V, const N: usize> MultiRangeMap<Bound, V, N>
@@ -30,7 +31,7 @@ where
 {
     pub fn new(capacity: usize) -> Self {
         Self {
-            range_maps: (0..N).map(|_| RangeMap::new(capacity)).collect(),
+            range_maps: Box::new(std::array::from_fn(|_| RangeMap::new(capacity))),
         }
     }
 
