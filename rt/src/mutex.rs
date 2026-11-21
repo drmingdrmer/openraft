@@ -61,6 +61,43 @@ where T: OptionalSend + 'static
 ///
 /// This guard owns the lock through an `Arc<Mutex>`, allowing it to outlive
 /// the original reference and be moved, returned from functions, or stored in structs.
+///
+/// Dropping the guard releases the lock, so a guard that is never bound protects nothing. It is
+/// `#[must_use]`: with `unused_must_use` denied, discarding it does not compile.
+///
+/// ```compile_fail
+/// #![deny(unused_must_use)]
+///
+/// use std::sync::Arc;
+///
+/// use openraft_rt::Mutex;
+///
+/// async fn discard<M>(mutex: Arc<M>)
+/// where M: Mutex<u32> {
+///     mutex.lock_owned().await;
+/// }
+/// ```
+///
+/// Binding the guard, or dropping it explicitly, compiles:
+///
+/// ```
+/// #![deny(unused_must_use)]
+///
+/// use std::sync::Arc;
+///
+/// use openraft_rt::Mutex;
+///
+/// async fn bind<M>(mutex: Arc<M>)
+/// where M: Mutex<u32> {
+///     let mut guard = Arc::clone(&mutex).lock_owned().await;
+///     *guard += 1;
+///     drop(guard);
+///
+///     drop(mutex.lock_owned().await);
+/// }
+/// ```
+#[must_use = "dropping the guard releases the lock"]
+#[since(version = "0.10.2", change = "marked #[must_use]")]
 #[since(version = "0.10.2", change = "`Send`/`Sync` check the guard at every lifetime")]
 pub struct OwnedGuard<M, T>
 where
