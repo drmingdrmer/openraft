@@ -283,6 +283,15 @@ mod tests {
         assert_eq!(Some(&15), progress.accepted());
         assert_eq!(Some(&15), progress.submitted());
         assert_eq!(Some(&15), progress.flushed());
+
+        // A value between the cursors moves only the cursors behind it
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
+        progress.accept(20);
+        progress.submit(15);
+        progress.try_update_all(17);
+        assert_eq!(Some(&20), progress.accepted());
+        assert_eq!(Some(&17), progress.submitted());
+        assert_eq!(Some(&17), progress.flushed());
     }
 
     #[test]
