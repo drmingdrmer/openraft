@@ -34,8 +34,21 @@ pub trait Mpsc: Sized {
     /// Tokio-backed channels of Tokio, Monoio and the simulator panic when `buffer` is 0 or
     /// greater than `tokio::sync::Semaphore::MAX_PERMITS`. Compio accepts 0 and creates a
     /// rendezvous channel, whose send completes only when a receiver takes the value.
+    ///
+    /// [`check_buffer()`](Self::check_buffer) tells whether this runtime accepts a `buffer`.
     #[track_caller]
     fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>);
+
+    /// Checks whether [`channel()`](Self::channel) accepts this `buffer`.
+    ///
+    /// Returns why it does not, such as a `buffer` of 0 on a runtime whose channels need room for
+    /// one message, so that a caller can reject the size before `channel()` panics on it. The
+    /// default accepts every `buffer`; an adapter whose channel rejects some sizes overrides it.
+    #[since(version = "0.10.2")]
+    fn check_buffer(buffer: usize) -> Result<(), String> {
+        let _ = buffer;
+        Ok(())
+    }
 }
 
 /// Send values to the associated [`MpscReceiver`].

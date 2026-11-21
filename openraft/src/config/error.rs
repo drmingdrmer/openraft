@@ -5,6 +5,7 @@ use crate::impls::BoxedErrorSource;
 
 /// Error variants related to configuration.
 #[since]
+#[since(version = "0.10.2", change = "added an error for a value too large for the target")]
 #[since(version = "0.10.2", change = "added zero log-stage capacity error")]
 #[since(version = "0.10.0", change = "added quorum-loss inactivity validation error")]
 #[derive(Debug, thiserror::Error)]
@@ -37,6 +38,19 @@ pub enum ConfigError {
     #[since(version = "0.10.2")]
     #[error("log_stage_capacity must be > 0")]
     LogStageCapacityIs0,
+
+    /// A setting is larger than this target can hold, such as a size that does not fit in
+    /// `usize` on a 32-bit target.
+    #[since(version = "0.10.2")]
+    #[error("{field}({value}) must be <= {max} on this target")]
+    TooLarge {
+        /// The name of the setting.
+        field: &'static str,
+        /// The configured value.
+        value: u64,
+        /// The largest value this target accepts for the setting.
+        max: u64,
+    },
 
     /// Election timeout must be greater than heartbeat interval.
     #[error("election_timeout_min({election_timeout_min}) must be > heartbeat_interval({heartbeat_interval})")]

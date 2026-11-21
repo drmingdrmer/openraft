@@ -1,6 +1,7 @@
 use crate::Config;
 use crate::SnapshotPolicy;
 use crate::StepDownPolicy;
+use crate::config::config::check_fits;
 use crate::config::error::ConfigError;
 
 #[test]
@@ -142,6 +143,33 @@ fn test_log_stage_capacity_configuration() {
     };
     let config = config.validate().unwrap();
     assert_eq!(1, config.log_stage_capacity());
+}
+
+#[test]
+fn test_channel_sizes_must_fit_usize() {
+    // On a 32-bit target, `usize::MAX` is `u32::MAX`: a larger channel size must be rejected, not
+    // truncated, possibly to 0.
+    let max = u64::from(u32::MAX);
+    assert_eq!(Ok(()), check_fits("api_channel_size", max, max));
+    let too_large = check_fits("api_channel_size", max + 1, max);
+    let expected = ConfigError::TooLarge {
+        field: "api_channel_size",
+        value: max + 1,
+        max,
+    };
+    assert_eq!(Err(expected), too_large);
+
+    // `Config::validate` checks each channel size against `usize::MAX`. On a 64-bit target every
+    // `u64` fits; the runtime check in `Raft::new` rejects what its channels do not accept.
+    #[cfg(target_pointer_width = "64")]
+    {
+        let config = Config {
+            api_channel_size: Some(u64::MAX),
+            ..Default::default()
+        };
+        let config = config.validate().unwrap();
+        assert_eq!(usize::MAX, config.api_channel_size());
+    }
 }
 
 #[test]

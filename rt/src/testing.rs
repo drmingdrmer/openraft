@@ -108,6 +108,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_mpsc_send().await;
             Self::test_mpsc_send_to_closed_channel().await;
             Self::test_mpsc_backpressure().await;
+            Self::test_mpsc_check_buffer().await;
             Self::test_buffered_receiver_backlog().await;
             Self::test_buffered_receiver_empty_close().await;
             Self::test_buffered_receiver_drop_idle().await;
@@ -589,6 +590,20 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     /// Test bounded channel backpressure: `send()` blocks when buffer is full.
+    /// `check_buffer()` accepts the sizes that `channel()` builds: 1 on every runtime, and 0 only
+    /// where `channel(0)` builds a channel.
+    #[since(version = "0.10.2")]
+    pub async fn test_mpsc_check_buffer() {
+        assert_eq!(Ok(()), Rt::Mpsc::check_buffer(1));
+        let (tx, mut rx) = Rt::Mpsc::channel::<u32>(1);
+        tx.send(1).await.unwrap();
+        assert_eq!(Some(1), rx.recv().await);
+
+        if Rt::Mpsc::check_buffer(0).is_ok() {
+            let _channel = Rt::Mpsc::channel::<u32>(0);
+        }
+    }
+
     pub async fn test_mpsc_backpressure() {
         let buffer_size = 2;
         let (tx, mut rx) = Rt::Mpsc::channel::<i32>(buffer_size);
