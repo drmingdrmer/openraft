@@ -255,11 +255,16 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_payload_entries))]
     pub max_payload_entries: u64,
 
-    /// The maximum number of log entries per append I/O operation.
+    /// The maximum number of log entries that merging puts into one append I/O operation.
     ///
-    /// When multiple `AppendEntries` commands are queued, Openraft can merge them into
-    /// a single storage write to improve throughput. This setting limits the batch size
-    /// to prevent excessively large writes that could cause high storage latency.
+    /// When multiple `AppendEntries` commands are queued, Openraft can merge adjacent ones into a
+    /// single storage write to improve throughput. It merges the next command only while the total
+    /// stays within this limit, to prevent excessively large writes that could cause high storage
+    /// latency.
+    ///
+    /// It limits merging, not each storage write: a command that already holds more entries, such
+    /// as a multi-entry client write, is appended whole. With a limit of 1, a two-entry command is
+    /// still one two-entry append.
     ///
     /// This is separate from `max_payload_entries` which controls network replication payload size.
     /// Storage typically has higher throughput than network, so this value can be larger.
@@ -910,7 +915,7 @@ impl Config {
         self.broadcast_submitted_on_append.unwrap_or(false)
     }
 
-    /// Get the maximum number of log entries per append I/O operation.
+    /// Get the maximum number of log entries that merging puts into one append I/O operation.
     ///
     /// Defaults to 4096 if not specified.
     pub(crate) fn max_append_entries(&self) -> u64 {
