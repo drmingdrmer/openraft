@@ -1,3 +1,5 @@
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -11,8 +13,13 @@ use crate::StorageError;
 /// - `StorageError`: Underlying storage (log or state machine) encountered an error
 /// - `Panicked`: Raft core task panicked due to a programming error
 /// - `Stopped`: Raft was explicitly shut down via [`Raft::shutdown`]
+/// - `InvalidConfig`: [`Raft::new`] did not start Raft, because the runtime cannot provide what a
+///   [`Config`](crate::Config) field asks for
 ///
+/// [`Raft::new`]: crate::Raft::new
 /// [`Raft::shutdown`]: crate::Raft::shutdown
+#[since]
+#[since(version = "0.10.2", change = "added `InvalidConfig`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum Fatal<C>
@@ -29,4 +36,15 @@ where C: RaftTypeConfig
     /// Raft stopped normally.
     #[error("raft stopped")]
     Stopped,
+
+    /// Raft did not start: the runtime cannot provide what a [`Config`](crate::Config) field asks
+    /// for, such as a channel size that its channels do not accept.
+    #[since(version = "0.10.2")]
+    #[error("invalid config {field}: {reason}")]
+    InvalidConfig {
+        /// The name of the rejected `Config` field.
+        field: String,
+        /// Why the runtime rejected the value.
+        reason: String,
+    },
 }
