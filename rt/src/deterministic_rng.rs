@@ -20,6 +20,7 @@ use std::cell::Cell;
 use std::fmt::Debug;
 use std::future::Future;
 use std::io;
+use std::pin::pin;
 use std::time::Duration;
 
 use rand::SeedableRng;
@@ -217,11 +218,15 @@ where RT: AsyncRuntime
 
     fn block_on<F, T>(&mut self, future: F) -> T
     where F: Future<Output = T> {
-        DETSIM_SEED.sync_scope(Cell::new(self.seed), || {
-            let result = self.inner.block_on(future);
-            self.seed = DETSIM_SEED.with(|c| c.get());
-            result
-        })
+        // The seed is set only while the root future is polled: a task that the inner runtime
+        // polls on its own cannot draw from it, and when `RT` is itself a `DeterministicRng`,
+        // this scope is inside the inner one, so this instance's seed is the one in effect.
+        let mut root = pin!(DETSIM_SEED.scope(Cell::new(self.seed), future));
+        let output = self.inner.block_on(root.as_mut());
+        if let Some(seed) = root.as_mut().take_value() {
+            self.seed = seed.get();
+        }
+        output
     }
 
     fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
