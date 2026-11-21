@@ -130,8 +130,10 @@ where
 {
     /// Tries to convert a [`MpscWeakSender`] into an [`MpscSender`].
     ///
-    /// This will return `Some` if there are other `Sender` instances alive and
-    /// the channel wasn't previously dropped, otherwise `None` is returned.
+    /// This returns `Some` while another [`MpscSender`] of the channel is alive, and `None` once
+    /// the last one has been dropped. Getting a sender says nothing about the receiver: when it
+    /// has been dropped, [`send()`](MpscSender::send) on the upgraded sender returns
+    /// [`SendError`] with the value.
     #[track_caller]
     fn upgrade(&self) -> Option<MU::Sender<T>>;
 }
