@@ -143,6 +143,38 @@ fn test_log_stage_capacity_configuration() {
     };
     let config = config.validate().unwrap();
     assert_eq!(1, config.log_stage_capacity());
+
+    let config = Config::default().validate().unwrap();
+    assert_eq!(1024, config.log_stage_capacity());
+
+    // On a 32-bit target `usize::MAX` is `u32::MAX`: 2^32 would truncate to 0, so it is rejected.
+    let max_32 = u64::from(u32::MAX);
+    let truncated = check_fits("log_stage_capacity", 1 << 32, max_32);
+    let expected = ConfigError::TooLarge {
+        field: "log_stage_capacity",
+        value: 1 << 32,
+        max: max_32,
+    };
+    assert_eq!(Err(expected), truncated);
+}
+
+/// `log_stage_capacity` must fit `usize`: on a 32-bit target, 2^32 is rejected instead of being
+/// truncated to 0, which would reach `RangeMap::new(0)` when `RuntimeStats` is built.
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn test_log_stage_capacity_must_fit_usize() {
+    let config = Config {
+        log_stage_capacity: Some(1 << 32),
+        ..Default::default()
+    };
+    let error = config.validate().map(|_| ()).unwrap_err();
+    assert!(
+        matches!(error, ConfigError::TooLarge {
+            field: "log_stage_capacity",
+            ..
+        }),
+        "{error:?}"
+    );
 }
 
 #[test]

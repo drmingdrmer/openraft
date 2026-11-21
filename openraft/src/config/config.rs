@@ -415,7 +415,8 @@ pub struct Config {
     /// committed, applied) maintains a fixed-capacity ring buffer of this size.
     /// Only used when the `runtime-stats` feature is enabled.
     ///
-    /// Must be greater than 0. Defaults to 1024 if not specified.
+    /// Must be greater than 0, and fit in `usize` on this target; validation rejects other
+    /// values. Defaults to 1024 if not specified.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
@@ -923,7 +924,7 @@ impl Config {
     ///
     /// Defaults to 1024 if not specified.
     pub(crate) fn log_stage_capacity(&self) -> usize {
-        self.log_stage_capacity.unwrap_or(1024) as usize
+        saturating_usize(self.log_stage_capacity.unwrap_or(1024))
     }
 
     /// Whether to publish submitted logs after each append; defaults to `false`.
@@ -1006,6 +1007,13 @@ impl Config {
 
         if self.log_stage_capacity == Some(0) {
             return Err(ConfigError::LogStageCapacityIs0);
+        }
+
+        // A capacity that does not fit `usize` would be truncated, on a 32-bit target possibly to
+        // 0, which the zero check above would then miss.
+        if let Some(capacity) = self.log_stage_capacity {
+            let max_usize = u64::try_from(usize::MAX).unwrap_or(u64::MAX);
+            check_fits("log_stage_capacity", capacity, max_usize)?;
         }
 
         // A channel size that does not fit `usize` would be truncated, possibly to 0. Whether the
