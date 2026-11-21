@@ -709,12 +709,15 @@ pub struct Config {
     /// unless you know what you are doing.
     ///
     /// Although log state reversion is typically seen as a bug, enabling it can be
-    /// useful for testing or other special scenarios.
-    /// For instance, in an even number nodes cluster, erasing a node's data and then
-    /// rebooting it(log reverts to empty) will not result in data loss.
+    /// useful for testing or other special scenarios. It only lets the replication progress reset:
+    /// it adds no quorum-safety check and no recovery, so it does not make erasing a node's data
+    /// safe. For the narrow case where erasing one voter cannot lose committed data, see the
+    /// [FAQ][wipe-one-node].
     ///
     /// For one-shot log reversion, use
     /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
+    ///
+    /// [wipe-one-node]: crate::docs::faq#can-i-wipe-out-the-data-of-one-node-and-wait-for-the-leader-to-replicate-all-data-to-it-again
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,
