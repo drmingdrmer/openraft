@@ -81,6 +81,29 @@ fn take_and_advance_seed() -> u64 {
 /// [`SmallRng`]. Each instance has its own seed counter, stored in
 /// task-local storage via `block_on`, so multiple instances produce
 /// independent deterministic sequences.
+///
+/// # Where a seed is set
+///
+/// [`thread_rng()`](AsyncRuntime::thread_rng) draws from the seed of the current task and panics
+/// where none is set. `block_on()` sets this instance's seed for its root future,
+/// [`spawn()`](AsyncRuntime::spawn) derives a seed for the spawned task, and [`Self::scope`] sets
+/// a given seed for a future. A closure passed to
+/// [`spawn_blocking()`](AsyncRuntime::spawn_blocking) runs on another thread without a seed: take
+/// the generator in the seeded task and move it into the closure.
+///
+/// ```
+/// use openraft_rt::AsyncRuntime;
+/// use openraft_rt::deterministic_rng::DeterministicRng;
+/// use rand::RngExt;
+///
+/// async fn draw_in_blocking_work<RT>() -> u64
+/// where RT: AsyncRuntime
+/// {
+///     let mut rng = DeterministicRng::<RT>::thread_rng();
+///     let draw = DeterministicRng::<RT>::spawn_blocking(move || rng.random::<u64>());
+///     draw.await.unwrap()
+/// }
+/// ```
 #[since(version = "0.10.2", change = "`block_on()` sets its seed only for the root future")]
 pub struct DeterministicRng<RT>
 where RT: AsyncRuntime
