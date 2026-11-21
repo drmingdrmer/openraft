@@ -550,28 +550,29 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let tx = Arc::new(tx);
 
         let n_senders = 10_usize;
-        let recv_expected = (0..n_senders).collect::<Vec<_>>();
 
-        for idx in 0..n_senders {
-            let tx = tx.clone();
-            // no need to wait for senders here, we wait by recv()ing
-            let _handle = Rt::spawn(async move {
-                tx.send(idx).await.unwrap();
-            });
+        let handles = (0..n_senders)
+            .map(|idx| {
+                let tx = tx.clone();
+                Rt::spawn(async move { tx.send(idx).await })
+            })
+            .collect::<Vec<_>>();
+        // Only the spawned tasks hold senders now, so the channel closes once they all end, even
+        // when one fails before it sends.
+        drop(tx);
+
+        let mut received = Vec::with_capacity(n_senders);
+        while let Some(value) = rx.recv().await {
+            received.push(value);
         }
 
-        let mut recv = Vec::with_capacity(n_senders);
-        while let Some(recv_number) = rx.recv().await {
-            recv.push(recv_number);
-
-            if recv.len() == n_senders {
-                break;
-            }
+        for handle in handles {
+            let sent = handle.await.unwrap();
+            sent.unwrap();
         }
 
-        recv.sort();
-
-        assert_eq!(recv_expected, recv);
+        received.sort();
+        assert_eq!((0..n_senders).collect::<Vec<_>>(), received);
     }
 
     /// Test that `send()` returns `SendError` when receiver is dropped.
