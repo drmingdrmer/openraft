@@ -859,10 +859,10 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_watch_send_error_no_receiver() {
-        let (tx, rx) = Rt::Watch::channel(());
+        let (tx, rx) = Rt::Watch::channel(1_u64);
         drop(rx);
-        let send_result = tx.send(());
-        assert!(send_result.is_err());
+        let sent = tx.send(2);
+        assert_eq!(Err(crate::watch::SendError(2)), sent);
     }
 
     pub async fn test_watch_send_if_modified() {
