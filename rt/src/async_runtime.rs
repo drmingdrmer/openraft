@@ -250,10 +250,12 @@ pub trait AsyncRuntime: Debug + 'static {
 
     /// Run a blocking function on a separate thread.
     ///
-    /// The default implementation spawns a new OS thread for each call. When `f` panics, the
-    /// returned future resolves to an error that reports the panic and its message.
+    /// The default implementation spawns a new OS thread for each call. When the thread cannot
+    /// be created, the returned future resolves to the error of the operating system. When `f`
+    /// panics, it resolves to an error that reports the panic and its message.
     /// Runtime implementations may override this with their own thread pool
     /// (e.g., tokio's `spawn_blocking`) for better resource management.
+    #[since(version = "0.10.2", change = "the default returns a thread-creation error")]
     #[since(version = "0.10.2", change = "the default reports a panic of `f` as an error")]
     fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
     where
@@ -261,19 +263,10 @@ pub trait AsyncRuntime: Debug + 'static {
         T: Send + 'static,
     {
         let (tx, rx) = futures_channel::oneshot::channel();
-        std::thread::spawn(move || {
+        let spawned = std::thread::Builder::new().spawn(move || {
             tx.send(std::panic::catch_unwind(AssertUnwindSafe(f))).ok();
         });
-        async {
-            match rx.await {
-                Ok(Ok(value)) => Ok(value),
-                Ok(Err(payload)) => Err(io::Error::other(format!(
-                    "spawn_blocking worker panicked: {}",
-                    panic_message(payload.as_ref())
-                ))),
-                Err(_) => Err(io::Error::other("spawn_blocking worker sent no result")),
-            }
-        }
+        blocking_output(spawned.map(drop), rx)
     }
 
     /// Try to poll a value from the channel within the given deadline.
@@ -340,6 +333,23 @@ pub trait AsyncRuntime: Debug + 'static {
     }
 }
 
+/// The output of a blocking worker: the error that kept its thread from starting, or else what
+/// the worker sends through `rx`.
+async fn blocking_output<T>(
+    spawned: io::Result<()>,
+    rx: futures_channel::oneshot::Receiver<std::thread::Result<T>>,
+) -> Result<T, io::Error> {
+    spawned?;
+    match rx.await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(payload)) => Err(io::Error::other(format!(
+            "spawn_blocking worker panicked: {}",
+            panic_message(payload.as_ref())
+        ))),
+        Err(_) => Err(io::Error::other("spawn_blocking worker sent no result")),
+    }
+}
+
 /// The message of a panic payload: the payload of `panic!` is a `&'static str` or a `String`.
 fn panic_message(payload: &(dyn Any + Send)) -> &str {
     if let Some(msg) = payload.downcast_ref::<&'static str>() {
@@ -348,5 +358,26 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
         msg
     } else {
         "the panic payload is not a string"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use futures_util::FutureExt;
+
+    use super::blocking_output;
+
+    /// A thread-creation error is returned at once, without waiting for a worker result.
+    #[test]
+    fn test_blocking_output_returns_the_spawn_error() {
+        let (_tx, rx) = futures_channel::oneshot::channel::<std::thread::Result<u32>>();
+        let spawned = Err(io::Error::from(io::ErrorKind::WouldBlock));
+
+        let got = blocking_output(spawned, rx).now_or_never();
+
+        let err = got.expect("the spawn error should not wait for the worker").unwrap_err();
+        assert_eq!(io::ErrorKind::WouldBlock, err.kind());
     }
 }
