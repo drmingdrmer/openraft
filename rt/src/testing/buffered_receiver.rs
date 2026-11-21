@@ -63,10 +63,14 @@ where Rt: AsyncRuntime
             sent.unwrap().unwrap();
         }
         drop(tx);
-        let mut received = Vec::new();
-        while let Some(value) = rx.recv().await {
-            received.push(value);
-        }
+        let drain = async {
+            let mut received = Vec::new();
+            while let Some(value) = rx.recv().await {
+                received.push(value);
+            }
+            received
+        };
+        let received = Rt::timeout(TIMEOUT, drain).await.unwrap();
         let expected: Vec<_> = (0..BACKLOG).collect();
         assert_eq!(expected, received);
         let closed = rx.try_recv();
