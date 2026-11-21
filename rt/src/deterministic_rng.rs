@@ -20,8 +20,10 @@ use std::cell::Cell;
 use std::fmt::Debug;
 use std::future::Future;
 use std::io;
+use std::pin::pin;
 use std::time::Duration;
 
+use openraft_macros::since;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
@@ -79,6 +81,7 @@ fn take_and_advance_seed() -> u64 {
 /// [`SmallRng`]. Each instance has its own seed counter, stored in
 /// task-local storage via `block_on`, so multiple instances produce
 /// independent deterministic sequences.
+#[since(version = "0.10.2", change = "`block_on()` sets its seed only for the root future")]
 pub struct DeterministicRng<RT>
 where RT: AsyncRuntime
 {
@@ -217,11 +220,15 @@ where RT: AsyncRuntime
 
     fn block_on<F, T>(&mut self, future: F) -> T
     where F: Future<Output = T> {
-        DETSIM_SEED.sync_scope(Cell::new(self.seed), || {
-            let result = self.inner.block_on(future);
-            self.seed = DETSIM_SEED.with(|c| c.get());
-            result
-        })
+        // The seed is set only while the root future is polled: a task that the inner runtime
+        // polls on its own cannot draw from it, and when `RT` is itself a `DeterministicRng`,
+        // this scope is inside the inner one, so this instance's seed is the one in effect.
+        let mut root = pin!(DETSIM_SEED.scope(Cell::new(self.seed), future));
+        let output = self.inner.block_on(root.as_mut());
+        if let Some(seed) = root.as_mut().take_value() {
+            self.seed = seed.get();
+        }
+        output
     }
 
     fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
