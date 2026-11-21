@@ -972,11 +972,13 @@ impl Config {
         //
         // A `heartbeat_min_interval` of 0 disables suppression and leaves the heartbeat cadence
         // unchanged, so the constraint does not apply to it.
+        //
+        // Widen both operands before addition so the sum cannot overflow.
         let heartbeat_min_interval = self.heartbeat_min_interval();
         let suppression_enabled = heartbeat_min_interval > 0;
-        let max_heartbeat_gap = heartbeat_min_interval + self.heartbeat_interval;
+        let max_heartbeat_gap = u128::from(heartbeat_min_interval) + u128::from(self.heartbeat_interval);
 
-        if suppression_enabled && self.election_timeout_min <= max_heartbeat_gap {
+        if suppression_enabled && u128::from(self.election_timeout_min) <= max_heartbeat_gap {
             return Err(ConfigError::HeartbeatMinIntervalTooLarge {
                 election_timeout_min: self.election_timeout_min,
                 heartbeat_interval: self.heartbeat_interval,

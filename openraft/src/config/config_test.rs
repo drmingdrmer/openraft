@@ -507,6 +507,27 @@ fn test_invalid_heartbeat_min_interval_produces_expected_error() {
     assert_eq!(500, config.heartbeat_interval);
 }
 
+/// The heartbeat gap is computed in `u128`, so a huge `heartbeat_min_interval` is rejected with the
+/// usual error instead of overflowing: a debug build panicked, and a release build wrapped the sum
+/// to 49 and accepted it.
+#[test]
+fn test_heartbeat_min_interval_overflow_returns_an_error() {
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        heartbeat_interval: 50,
+        heartbeat_min_interval: Some(u64::MAX),
+        ..Default::default()
+    };
+
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::HeartbeatMinIntervalTooLarge {
+        election_timeout_min: 150,
+        heartbeat_interval: 50,
+        heartbeat_min_interval: u64::MAX,
+    });
+}
+
 /// Suppression disabled leaves the heartbeat cadence unchanged, so `election_timeout_min` only has
 /// to exceed `heartbeat_interval`.
 #[test]
