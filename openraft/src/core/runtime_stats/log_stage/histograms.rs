@@ -18,21 +18,23 @@ use base2histogram::PercentileStats;
 /// to take zero time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogStageHistograms {
-    /// From `client_write()` to `RaftCore` dequeuing the request: API channel queueing.
+    /// From the proposal timestamp until `RaftCore` admits the write, assigns log IDs,
+    /// builds entries, and queues the storage append. For client writes this includes
+    /// API channel queueing and batching as well as admission and append preparation.
     pub proposed_to_received: Histogram,
-    /// From `RaftCore` dequeuing the request to submitting the entry to log storage.
+    /// From the end of write admission and append preparation to the log store append call.
     pub received_to_submitted: Histogram,
-    /// From submitting the entry to log storage until storage persists it: storage I/O latency.
+    /// From log storage submission until `RaftCore` handles the I/O completion notification.
+    /// This includes storage I/O and completion delivery and processing, not just I/O latency.
     pub submitted_to_persisted: Histogram,
-    /// From persistence to the local commit of the entry.
+    /// From `RaftCore` handling I/O completion to starting `SaveCommittedAndApply` locally.
     pub persisted_to_committed: Histogram,
-    /// From the local commit to apply completion.
+    /// From the start of `SaveCommittedAndApply` until `RaftCore` handles the apply result.
     pub committed_to_applied: Histogram,
-    /// Per-entry latency from proposal to apply completion.
+    /// Per-entry latency from proposal until `RaftCore` handles the apply result.
     ///
     /// When a follower first observes an entry at log storage submission,
-    /// this measures from local submission to apply completion, not from the
-    /// client's proposal.
+    /// this measures from local submission, not from the client's proposal.
     pub proposed_to_applied: Histogram,
 }
 
