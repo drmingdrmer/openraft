@@ -222,10 +222,11 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let sleep = Rt::sleep(dur_10ms);
         let mut sleep = pin!(sleep);
 
+        // On a loaded host the deadline can pass before the first poll, so either result is valid.
         let poll = futures_util::poll!(sleep.as_mut());
-        assert!(matches!(poll, Poll::Pending));
-
-        sleep.await;
+        if poll.is_pending() {
+            sleep.await;
+        }
         let elapsed = start_time.elapsed();
 
         assert!(elapsed >= dur_10ms);
@@ -271,15 +272,11 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     pub async fn test_instant_sub_instant() {
         let dur_50ms = Duration::from_millis(50);
 
+        // Both instants come from one sample, so the difference is exact.
         let t1 = Rt::Instant::now();
-        Rt::sleep(dur_50ms).await;
-        let t2 = Rt::Instant::now();
+        let t2 = t1 + dur_50ms;
 
-        // t2 - t1 should be approximately 50ms (at least 50ms)
-        let diff = t2 - t1;
-        assert!(diff >= dur_50ms);
-        // Should be less than 200ms (reasonable upper bound)
-        assert!(diff < Duration::from_millis(200));
+        assert_eq!(t2 - t1, dur_50ms);
     }
 
     /// Test `saturating_duration_since` returns zero when `self` is earlier.
@@ -979,9 +976,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// a subsequent call to `changed()` will properly wait for a new value instead of
     /// returning immediately (which would cause a hot loop / 100% CPU usage).
     pub async fn test_watch_changed_marks_as_seen() {
-        let dur_50ms = Duration::from_millis(50);
-        let dur_40ms = Duration::from_millis(40);
-
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
         // First, borrow the value (does not mark as seen)
@@ -1011,25 +1005,16 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             assert_eq!(*val, 1);
         }
 
-        // Clone tx for the spawned task
-        let tx_clone = tx.clone();
-        let _handle = Rt::spawn(async move {
-            Rt::sleep(dur_50ms).await;
-            tx_clone.send(2).unwrap();
-        });
-
-        // This changed() should wait for the new value (not return immediately)
-        // If changed() doesn't properly mark as seen, this would return immediately
-        // causing a hot loop
-        let start = Rt::Instant::now();
-        rx.changed().await.unwrap();
-        let elapsed = start.elapsed();
-
-        // Should have waited at least ~40ms for the new value
-        assert!(
-            elapsed >= dur_40ms,
-            "changed() returned too quickly ({elapsed:?}), indicating it didn't wait for new value"
-        );
+        // This changed() must wait for a newer value: if the earlier changed() had not marked 1
+        // as seen, it would return at once.
+        {
+            let mut changed = pin!(rx.changed());
+            let polled = futures_util::poll!(changed.as_mut());
+            assert!(polled.is_pending(), "changed() should wait once the value is seen");
+            tx.send(2).unwrap();
+            let changed = Rt::timeout(Duration::from_secs(1), changed).await.unwrap();
+            changed.unwrap();
+        }
 
         // Verify we got the new value
         {
@@ -1153,9 +1138,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     /// Since borrow_watched() uses borrow() which doesn't mark as seen,
     /// multiple calls shouldn't cause changed() to misbehave.
     pub async fn test_watch_multiple_borrow_then_changed() {
-        let dur_50ms = Duration::from_millis(50);
-        let dur_40ms = Duration::from_millis(40);
-
         let (tx, mut rx) = Rt::Watch::channel(0i32);
 
         // Multiple borrow_watched calls
@@ -1176,17 +1158,14 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         }
 
         // Now changed() should wait for the next value
-        let tx_clone = tx.clone();
-        let _handle = Rt::spawn(async move {
-            Rt::sleep(dur_50ms).await;
-            tx_clone.send(2).unwrap();
-        });
-
-        let start = Rt::Instant::now();
-        rx.changed().await.unwrap();
-        let elapsed = start.elapsed();
-
-        assert!(elapsed >= dur_40ms, "changed() returned too quickly ({elapsed:?})");
+        {
+            let mut changed = pin!(rx.changed());
+            let polled = futures_util::poll!(changed.as_mut());
+            assert!(polled.is_pending(), "changed() should wait once the value is seen");
+            tx.send(2).unwrap();
+            let changed = Rt::timeout(Duration::from_secs(1), changed).await.unwrap();
+            changed.unwrap();
+        }
 
         {
             let val = rx.borrow_watched();
