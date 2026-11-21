@@ -187,33 +187,22 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         }
     }
 
-    /// Test `thread_rng()` returns a working random number generator.
+    /// The runtime's RNG can sample values, and `random_range()` stays within its bounds.
+    ///
+    /// This is only a smoke check: the RNG of a runtime is not seeded, so its sequence cannot be
+    /// checked. [`DetsimSuite`] checks the sequence of a seeded RNG.
     pub async fn test_thread_rng() {
         use rand::RngExt;
 
         let mut rng = Rt::thread_rng();
 
-        // Generate some random numbers to verify the RNG works
-        let r1: u32 = rng.random();
-        let r2: u32 = rng.random();
-        let r3: u32 = rng.random();
+        let _: u32 = rng.random();
+        let _: bool = rng.random();
 
-        // While theoretically possible for all to be equal, it's astronomically unlikely
-        // This just verifies the RNG is functioning and producing values
-        let all_same = r1 == r2 && r2 == r3;
-        assert!(
-            !all_same || r1 != 0,
-            "RNG should produce varying values (got {r1}, {r2}, {r3})"
-        );
-
-        // Test range generation
         for _ in 0..100 {
             let value: u32 = rng.random_range(0..100);
             assert!(value < 100, "random_range should respect upper bound");
         }
-
-        // Test bool generation works
-        let _: bool = rng.random();
     }
 
     pub async fn test_sleep() {
@@ -1725,6 +1714,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     pub fn test_all() {
         Self::test_thread_rng_determinism();
+        Self::test_thread_rng_seeded_sequence();
         Self::test_thread_rng_sequence_advances();
         Self::test_spawn_seed_differs_from_parent();
         Self::test_two_spawned_tasks_differ();
@@ -1749,6 +1739,28 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
         let run3 = collect(456);
         assert_ne!(run1, run3, "different seeds should produce different sequences");
+    }
+
+    /// Under a seed, the first `thread_rng()` of the root draws the sequence of a `SmallRng`
+    /// seeded with that seed.
+    ///
+    /// The control's draws differ from each other, so a generator that repeats its first draw
+    /// fails the comparison.
+    fn test_thread_rng_seeded_sequence() {
+        use rand::RngExt;
+        use rand::SeedableRng;
+        use rand::rngs::SmallRng;
+
+        let mut control = SmallRng::seed_from_u64(42);
+        let expected: [u64; 3] = [control.random(), control.random(), control.random()];
+        assert_ne!(expected[0], expected[1]);
+        assert_ne!(expected[0], expected[2]);
+
+        let drawn: [u64; 3] = Self::new_runtime(42).block_on(async {
+            let mut rng = Det::<Rt>::thread_rng();
+            [rng.random(), rng.random(), rng.random()]
+        });
+        assert_eq!(expected, drawn, "the seeded RNG should draw the control's sequence");
     }
 
     /// Consecutive `thread_rng()` calls produce different values.
