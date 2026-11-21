@@ -1,15 +1,13 @@
 use std::collections::VecDeque;
-use std::future::Future;
-use std::future::pending;
+use std::future::poll_fn;
 use std::pin::pin;
+use std::task::Poll;
 
 use crate::AsyncRuntime;
 use crate::Mpsc;
 use crate::MpscReceiver;
 use crate::MpscSender;
 use crate::OptionalSend;
-use crate::Select2;
-use crate::SendError;
 
 pub(super) struct BufferingTask<R, T>
 where
@@ -18,6 +16,14 @@ where
 {
     source: Option<R>,
     queued: VecDeque<T>,
+}
+
+/// What completed in one turn of [`BufferingTask::run`].
+enum Event<R, T> {
+    /// The send of the oldest queued command finished; `false` when the output receiver is gone.
+    Sent(bool),
+    /// The source receive finished, with the source returned and its command, `None` once closed.
+    Received(R, Option<T>),
 }
 
 impl<R, T> BufferingTask<R, T>
@@ -32,46 +38,58 @@ where
         }
     }
 
-    pub(super) async fn run<Rt>(mut self, sender: <Rt::Mpsc as Mpsc>::Sender<T>)
+    /// Forward commands from the source to `sender`, buffering them while the output is full.
+    ///
+    /// The send of the oldest queued command and the receive of the next source command stay in
+    /// flight until each completes: dropping a receive that is already pending could lose a
+    /// command it has taken from the source. The send is polled first when both are ready.
+    pub(super) async fn run<Rt>(self, sender: <Rt::Mpsc as Mpsc>::Sender<T>)
     where Rt: AsyncRuntime {
-        while let Some(command) = self.next().await {
-            let send = sender.send(command);
-            let forwarded = self.forward::<Rt, _>(send).await;
-            if !forwarded {
-                return;
-            }
-        }
-    }
+        let Self { source, mut queued } = self;
+        let send = |command: T| sender.send(command);
 
-    async fn next(&mut self) -> Option<T> {
-        if let Some(command) = self.queued.pop_front() {
-            return Some(command);
-        }
-        let source = self.source.as_mut()?;
-        source.recv().await
-    }
+        let mut sending = pin!(None.map(send));
+        let mut receiving = pin!(source.map(Self::receive));
 
-    async fn forward<Rt, F>(&mut self, send: F) -> bool
-    where
-        Rt: AsyncRuntime,
-        F: Future<Output = Result<(), SendError<T>>> + OptionalSend,
-    {
-        let mut send = pin!(send);
         loop {
-            let receive = Self::receive(&mut self.source);
-            let selected = Rt::select2(send.as_mut(), receive).await;
-            match selected {
-                Select2::First(sent) => return sent.is_ok(),
-                Select2::Second(Some(command)) => self.queued.push_back(command),
-                Select2::Second(None) => self.source = None,
+            if sending.is_none() {
+                match queued.pop_front() {
+                    Some(command) => sending.set(Some(send(command))),
+                    None if receiving.is_none() => return,
+                    None => {}
+                }
+            }
+
+            let event = poll_fn(|cx| {
+                if let Some(send) = sending.as_mut().as_pin_mut()
+                    && let Poll::Ready(sent) = send.poll(cx)
+                {
+                    return Poll::Ready(Event::Sent(sent.is_ok()));
+                }
+                if let Some(receive) = receiving.as_mut().as_pin_mut()
+                    && let Poll::Ready((source, command)) = receive.poll(cx)
+                {
+                    return Poll::Ready(Event::Received(source, command));
+                }
+                Poll::Pending
+            })
+            .await;
+
+            match event {
+                Event::Sent(true) => sending.set(None),
+                Event::Sent(false) => return,
+                Event::Received(source, Some(command)) => {
+                    queued.push_back(command);
+                    receiving.set(Some(Self::receive(source)));
+                }
+                Event::Received(_closed, None) => receiving.set(None),
             }
         }
     }
 
-    async fn receive(source: &mut Option<R>) -> Option<T> {
-        let Some(source) = source else {
-            return pending().await;
-        };
-        source.recv().await
+    /// Receive the next command, and give the source back with it.
+    async fn receive(mut source: R) -> (R, Option<T>) {
+        let command = source.recv().await;
+        (source, command)
     }
 }
