@@ -43,6 +43,13 @@ where
     ///
     /// If the receiving half of the channel is closed, this
     /// function returns an error. The error includes the value passed to `send`.
+    ///
+    /// Dropping the returned future after it has been polled can race with delivery: on Compio
+    /// the message can still reach the receiver, while Tokio, Monoio and the simulator drop it.
+    /// A caller that sends the message again after a timeout or a lost selection can therefore
+    /// deliver it twice. To finish the same send after another branch wins, keep the future and
+    /// poll it again. A [`SendError`] is different: the message was not sent, and the error
+    /// returns it.
     #[track_caller]
     fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> + OptionalSend;
 
