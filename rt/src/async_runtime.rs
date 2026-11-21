@@ -3,10 +3,12 @@
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
 
+use std::any::Any;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
 use std::io;
+use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use futures_util::FutureExt;
@@ -248,9 +250,11 @@ pub trait AsyncRuntime: Debug + 'static {
 
     /// Run a blocking function on a separate thread.
     ///
-    /// The default implementation spawns a new OS thread for each call.
+    /// The default implementation spawns a new OS thread for each call. When `f` panics, the
+    /// returned future resolves to an error that reports the panic and its message.
     /// Runtime implementations may override this with their own thread pool
     /// (e.g., tokio's `spawn_blocking`) for better resource management.
+    #[since(version = "0.10.2", change = "the default reports a panic of `f` as an error")]
     fn spawn_blocking<F, T>(f: F) -> impl Future<Output = Result<T, io::Error>> + Send
     where
         F: FnOnce() -> T + Send + 'static,
@@ -258,9 +262,18 @@ pub trait AsyncRuntime: Debug + 'static {
     {
         let (tx, rx) = futures_channel::oneshot::channel();
         std::thread::spawn(move || {
-            tx.send(f()).ok();
+            tx.send(std::panic::catch_unwind(AssertUnwindSafe(f))).ok();
         });
-        async { rx.await.map_err(|_| io::Error::other("spawn_blocking task cancelled")) }
+        async {
+            match rx.await {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(payload)) => Err(io::Error::other(format!(
+                    "spawn_blocking worker panicked: {}",
+                    panic_message(payload.as_ref())
+                ))),
+                Err(_) => Err(io::Error::other("spawn_blocking worker sent no result")),
+            }
+        }
     }
 
     /// Try to poll a value from the channel within the given deadline.
@@ -324,5 +337,16 @@ pub trait AsyncRuntime: Debug + 'static {
             Select2::First(_) => None,
             Select2::Second(output) => Some(output),
         })
+    }
+}
+
+/// The message of a panic payload: the payload of `panic!` is a `&'static str` or a `String`.
+fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    if let Some(msg) = payload.downcast_ref::<&'static str>() {
+        msg
+    } else if let Some(msg) = payload.downcast_ref::<String>() {
+        msg
+    } else {
+        "the panic payload is not a string"
     }
 }
