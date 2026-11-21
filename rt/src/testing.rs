@@ -125,7 +125,9 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             #[cfg(feature = "single-threaded")]
             Self::test_mpsc_try_peek_non_send().await;
             Self::test_mpsc_peek_waits_for_item().await;
+            Self::test_mpsc_peek_wakes_on_send().await;
             Self::test_mpsc_peek_closed().await;
+            Self::test_mpsc_peek_wakes_on_close().await;
 
             Self::test_watch_init_value().await;
             Self::test_watch_overwrite_init_value().await;
@@ -765,6 +767,29 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         assert_eq!(received, Some(10));
     }
 
+    /// A pending peek is woken by a send, and then returns the sent item.
+    async fn test_mpsc_peek_wakes_on_send() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        {
+            let woken = Arc::new(WakeFlag::default());
+            let waker = Waker::from(Arc::clone(&woken));
+            let mut cx = Context::from_waker(&waker);
+            let mut peek = pin!(rx.peek());
+            let polled = peek.as_mut().poll(&mut cx);
+            assert!(polled.is_pending(), "a peek on an empty live channel should be pending");
+            let sent = tx.send(10).await;
+            sent.unwrap();
+            assert!(woken.is_set(), "a send should wake the pending peek");
+            let peeked = Rt::timeout(Duration::from_secs(1), peek).await.unwrap();
+            assert_eq!(peeked, Some(&10));
+        }
+        let received = rx.recv().await;
+        assert_eq!(received, Some(10));
+        let empty = rx.try_recv();
+        assert_eq!(empty, Err(TryRecvError::Empty));
+    }
+
     async fn test_mpsc_peek_closed() {
         let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
         let mut rx = rx.peekable();
@@ -776,6 +801,22 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let received = rx.recv().await;
         assert_eq!(received, Some(10));
         let closed = rx.peek().await;
+        assert_eq!(closed, None);
+    }
+
+    /// A pending peek is woken when the last sender is dropped, and then returns `None`.
+    async fn test_mpsc_peek_wakes_on_close() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let woken = Arc::new(WakeFlag::default());
+        let waker = Waker::from(Arc::clone(&woken));
+        let mut cx = Context::from_waker(&waker);
+        let mut peek = pin!(rx.peek());
+        let polled = peek.as_mut().poll(&mut cx);
+        assert!(polled.is_pending(), "a peek on an empty live channel should be pending");
+        drop(tx);
+        assert!(woken.is_set(), "dropping the last sender should wake the pending peek");
+        let closed = Rt::timeout(Duration::from_secs(1), peek).await.unwrap();
         assert_eq!(closed, None);
     }
 
