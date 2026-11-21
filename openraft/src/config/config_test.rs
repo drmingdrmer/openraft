@@ -146,6 +146,41 @@ fn test_log_stage_capacity_configuration() {
 }
 
 #[test]
+fn test_snapshot_logs_since_last_must_be_positive() {
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(0),
+        ..Default::default()
+    };
+    assert_eq!(
+        Err(ConfigError::SnapshotLogsSinceLastIs0),
+        config.validate().map(|_| ())
+    );
+
+    for policy in [SnapshotPolicy::LogsSinceLast(1), SnapshotPolicy::Never] {
+        let config = Config {
+            snapshot_policy: policy.clone(),
+            ..Default::default()
+        };
+        let config = config.validate().unwrap();
+        assert_eq!(policy, config.snapshot_policy);
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_snapshot_logs_since_last_zero_from_serde_fails_validation() -> anyhow::Result<()> {
+    let mut value = serde_json::to_value(Config::default())?;
+    value["snapshot_policy"] = serde_json::json!({ "LogsSinceLast": 0 });
+    let config: Config = serde_json::from_value(value)?;
+    assert_eq!(SnapshotPolicy::LogsSinceLast(0), config.snapshot_policy);
+    assert_eq!(
+        Err(ConfigError::SnapshotLogsSinceLastIs0),
+        config.validate().map(|_| ())
+    );
+    Ok(())
+}
+
+#[test]
 fn test_snapshot_max_chunk_size_must_form_a_byte_buffer() {
     let config = Config {
         snapshot_max_chunk_size: 0,

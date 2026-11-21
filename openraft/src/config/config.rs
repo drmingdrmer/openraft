@@ -107,6 +107,11 @@ fn default_removed_leader_step_down() -> StepDownPolicy {
 pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
+    ///
+    /// The threshold must be at least 1, and validation rejects 0. `LogsSinceLast(1)` attempts a
+    /// snapshot once the committed log grows past the last snapshot or attempt; an attempt that
+    /// completes or is refused at a committed position is not repeated there. To turn automatic
+    /// snapshots off, use [`Never`](Self::Never).
     LogsSinceLast(u64),
 
     /// Openraft will never trigger a snapshot building.
@@ -970,6 +975,12 @@ impl Config {
 
         if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadIs0);
+        }
+
+        // A threshold of 0 would start another build at the same committed position each time the
+        // previous one completes or is refused.
+        if self.snapshot_policy == SnapshotPolicy::LogsSinceLast(0) {
+            return Err(ConfigError::SnapshotLogsSinceLastIs0);
         }
 
         // A transport reads each chunk into a byte buffer, whose capacity is at most `isize::MAX`.

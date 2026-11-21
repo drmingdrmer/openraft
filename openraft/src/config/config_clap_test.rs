@@ -77,6 +77,9 @@ fn test_config_snapshot_policy() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--snapshot-policy=since_last:3"])?;
     assert_eq!(SnapshotPolicy::LogsSinceLast(3), config.snapshot_policy);
 
+    let zero = Config::build(&["foo", "--snapshot-policy=since_last:0"]);
+    assert_eq!(Err(ConfigError::SnapshotLogsSinceLastIs0), zero.map(|_| ()));
+
     let args = ["foo", "--snapshot-policy=bar:3"];
     let error = Config::build(&args).unwrap_err();
     let ConfigError::ParseError { source, args: returned } = error else {
