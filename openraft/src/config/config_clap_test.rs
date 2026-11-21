@@ -77,8 +77,14 @@ fn test_config_snapshot_policy() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--snapshot-policy=since_last:3"])?;
     assert_eq!(SnapshotPolicy::LogsSinceLast(3), config.snapshot_policy);
 
-    let res = Config::build(&["foo", "--snapshot-policy=bar:3"]);
-    assert!(res.is_err());
+    let args = ["foo", "--snapshot-policy=bar:3"];
+    let error = Config::build(&args).unwrap_err();
+    let ConfigError::ParseError { source, args: returned } = error else {
+        panic!("expected ConfigError::ParseError, got: {error:?}");
+    };
+    assert_eq!(args, returned.as_slice());
+    let reason = source.to_string();
+    assert!(reason.contains("snapshot policy string is invalid"), "{reason}");
 
     Ok(())
 }
@@ -101,8 +107,14 @@ fn test_config_removed_leader_step_down() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--removed-leader-step-down=500"])?;
     assert_eq!(StepDownPolicy::After(500), config.removed_leader_step_down);
 
-    let res = Config::build(&["foo", "--removed-leader-step-down=bar"]);
-    assert!(res.is_err());
+    let args = ["foo", "--removed-leader-step-down=bar"];
+    let error = Config::build(&args).unwrap_err();
+    let ConfigError::ParseError { source, args: returned } = error else {
+        panic!("expected ConfigError::ParseError, got: {error:?}");
+    };
+    assert_eq!(args, returned.as_slice());
+    let reason = source.to_string();
+    assert!(reason.contains("invalid digit found in string"), "{reason}");
 
     Ok(())
 }
