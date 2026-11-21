@@ -6,10 +6,10 @@ use crate::config::error::ConfigError;
 
 #[test]
 fn test_config_defaults() {
-    let cfg = Config::default();
+    let cfg = Config::default().validate().unwrap();
 
-    assert!(cfg.election_timeout_min >= 150);
-    assert!(cfg.election_timeout_max <= 300);
+    assert_eq!(150, cfg.election_timeout_min);
+    assert_eq!(300, cfg.election_timeout_max);
 
     assert_eq!(50, cfg.heartbeat_interval);
     assert_eq!(300, cfg.max_payload_entries);
