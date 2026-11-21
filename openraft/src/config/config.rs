@@ -221,7 +221,12 @@ pub struct Config {
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     ///
     /// A leader's heartbeat timer fires this interval after the previous round of heartbeats, and
-    /// the next round goes out then.
+    /// the next round goes out then. Replication also uses it as the deadline of an RPC.
+    ///
+    /// It must be at least 1, and validation rejects 0, even with heartbeats turned off: a runtime
+    /// switch can turn them on later. To turn automatic heartbeats off, use
+    /// [`enable_heartbeat`](Self::enable_heartbeat) or
+    /// [`RuntimeConfigHandle::heartbeat()`](crate::raft::RuntimeConfigHandle::heartbeat).
     #[since(
         version = "0.10.1",
         change = "heartbeats go out at their deadline, not at the next tick"
@@ -954,6 +959,12 @@ impl Config {
                 election_timeout_min: self.election_timeout_min,
                 heartbeat_interval: self.heartbeat_interval,
             });
+        }
+
+        // An interval of 0 would make the heartbeat timer due at once after every round, and give
+        // replication RPCs a deadline of 0.
+        if self.heartbeat_interval == 0 {
+            return Err(ConfigError::HeartbeatIntervalIs0);
         }
 
         // A round of heartbeats goes out every `heartbeat_interval`, so heartbeats to a suppressed

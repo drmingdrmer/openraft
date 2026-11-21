@@ -146,6 +146,40 @@ fn test_log_stage_capacity_configuration() {
 }
 
 #[test]
+fn test_heartbeat_interval_must_be_positive() {
+    for enable_heartbeat in [true, false] {
+        let config = Config {
+            heartbeat_interval: 0,
+            enable_heartbeat,
+            ..Default::default()
+        };
+        let result = config.validate().map(|_| ());
+        assert_eq!(
+            Err(ConfigError::HeartbeatIntervalIs0),
+            result,
+            "enable_heartbeat={enable_heartbeat}"
+        );
+    }
+
+    let config = Config {
+        heartbeat_interval: 1,
+        election_timeout_min: 2,
+        election_timeout_max: 3,
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(1, config.heartbeat_interval);
+
+    // A `heartbeat_min_interval` of 0 still turns heartbeat suppression off.
+    let config = Config {
+        heartbeat_min_interval: Some(0),
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(0, config.heartbeat_min_interval());
+}
+
+#[test]
 fn test_snapshot_logs_since_last_must_be_positive() {
     let config = Config {
         snapshot_policy: SnapshotPolicy::LogsSinceLast(0),

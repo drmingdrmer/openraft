@@ -457,3 +457,14 @@ fn test_config_snapshot_max_chunk_size() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_config_heartbeat_interval() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--heartbeat-interval=1"])?;
+    assert_eq!(1, config.heartbeat_interval);
+
+    let zero = Config::build(&["foo", "--heartbeat-interval=0"]);
+    assert_eq!(Err(ConfigError::HeartbeatIntervalIs0), zero.map(|_| ()));
+
+    Ok(())
+}
