@@ -35,7 +35,7 @@ fn test_build() -> anyhow::Result<()> {
         "--election-timeout-min=10",
         "--election-timeout-max=20",
         "--heartbeat-interval=5",
-        "--install-snapshot-timeout=200",
+        "--install-snapshot-timeout=231",
         "--max-payload-entries=201",
         "--snapshot-policy=since_last:202",
         "--replication-lag-threshold=203",
@@ -51,7 +51,7 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(20, config.election_timeout_max);
     assert_eq!(5, config.heartbeat_interval);
 
-    assert_eq!(200, config.install_snapshot_timeout);
+    assert_eq!(231, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
     assert_eq!(SnapshotPolicy::LogsSinceLast(202), config.snapshot_policy);
     assert_eq!(203, config.replication_lag_threshold);
@@ -61,8 +61,11 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(Some(208), config.api_channel_size);
     assert_eq!(Some(209), config.notification_channel_size);
 
-    // Test config methods
-    assert_eq!(Duration::from_millis(200), config.install_snapshot_timeout());
+    // Test config methods. 231 differs from the default of 200, so a builder that ignored the
+    // option would fail here.
+    let timeout = config.install_snapshot_timeout();
+    let expected_timeout = Duration::from_millis(231);
+    assert_eq!(expected_timeout, timeout);
     Ok(())
 }
 
