@@ -94,8 +94,11 @@ fn default_removed_leader_step_down() -> StepDownPolicy {
 
 /// Log compaction and snapshot policy.
 ///
-/// This governs when periodic snapshots will be taken, as well as the conditions which
-/// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
+/// This governs when periodic snapshots will be taken. It does not decide when a leader sends a
+/// follower a snapshot instead of log entries: the leader does that when the entries the follower
+/// needs are already purged. See [snapshot replication].
+///
+/// [snapshot replication]: crate::docs::protocol::replication::snapshot_replication
 ///
 /// Additional policies may become available in the future.
 #[derive(Clone, Debug)]
@@ -266,13 +269,15 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub max_append_entries: Option<u64>,
 
-    /// The distance behind in log replication a follower must fall before it is considered lagging
+    /// How far behind the leader's last log a new learner may be when a blocking
+    /// [`Raft::add_learner`](crate::Raft::add_learner) returns.
     ///
-    /// - Followers that fall behind this index are replicated with a snapshot.
-    /// - Followers that fall within this index are replicated with log entries.
+    /// With `blocking` set, `add_learner` waits until the learner has replicated the membership log
+    /// that adds it, and is at most this many log entries behind the leader's last log.
     ///
-    /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise
-    /// transmitting a snapshot may not fix the lagging.
+    /// It does not decide whether a follower gets log entries or a snapshot. The leader sends a
+    /// snapshot when the entries a follower needs are already purged; see
+    /// [snapshot replication](crate::docs::protocol::replication::snapshot_replication).
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.replication_lag_threshold))]
     pub replication_lag_threshold: u64,
 
