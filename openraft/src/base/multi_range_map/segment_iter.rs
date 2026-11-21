@@ -24,7 +24,7 @@ where
     merged_boundaries: Box<dyn Iterator<Item = Bound> + 'a>,
 
     /// Per-range-map peekable iterators yielding `(right_boundary, value)` pairs.
-    right_value_iters: Vec<Peekable<vec_deque::Iter<'a, (Bound, V)>>>,
+    right_value_iters: [Peekable<vec_deque::Iter<'a, (Bound, V)>>; N],
 
     /// Left boundary of the next segment to emit.
     left: Bound,
@@ -35,13 +35,12 @@ where
     Bound: RangeMapBound + 'a,
     V: RangeMapValue,
 {
-    pub(crate) fn new(begin: Bound, range_maps: &'a [RangeMap<Bound, V>]) -> Self {
-        debug_assert_eq!(range_maps.len(), N, "range_maps.len() must equal N");
-        debug_assert!(!range_maps.is_empty(), "range_maps must be non-empty");
+    pub(crate) fn new(begin: Bound, range_maps: &'a [RangeMap<Bound, V>; N]) -> Self {
+        debug_assert!(N > 0, "range_maps must be non-empty");
 
         let min_end = range_maps.iter().map(|rm| rm.end().unwrap_or(begin)).min().unwrap();
 
-        let right_value_iters = range_maps.iter().map(|rm| rm.entries_after(begin).peekable()).collect::<Vec<_>>();
+        let right_value_iters = range_maps.each_ref().map(|rm| rm.entries_after(begin).peekable());
 
         let merged_boundaries: Box<dyn Iterator<Item = Bound> + 'a> = Box::new(
             range_maps
