@@ -332,6 +332,14 @@ impl VoteRequestKind {
             VoteRequestKind::PreVote => "pre-vote",
         }
     }
+
+    /// The RPC that a [`Timeout`] of this request names.
+    fn rpc_type(self) -> RPCTypes {
+        match self {
+            VoteRequestKind::Vote => RPCTypes::Vote,
+            VoteRequestKind::PreVote => RPCTypes::PreVote,
+        }
+    }
 }
 
 impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
@@ -1662,7 +1670,7 @@ where
 
                     Err(_timeout) => {
                         let timeout_err = Timeout::<C> {
-                            action: RPCTypes::Vote,
+                            action: kind.rpc_type(),
                             id,
                             target: target.clone(),
                             timeout: ttl,
@@ -2957,15 +2965,18 @@ where
 mod tests {
     use std::fmt;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use maplit::btreemap;
     use maplit::btreeset;
     use openraft_rt_tokio::TokioRuntime;
 
+    use super::VoteRequestKind;
     use super::apply_membership_to_payload;
     use crate::Membership;
     use crate::core::raft_msg::membership_payloads::MembershipPayloads;
     use crate::entry::RaftPayload;
+    use crate::errors::Timeout;
     use crate::impls::ChangeMembers;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MembershipStateOf;
@@ -3128,5 +3139,22 @@ mod tests {
 
         let returned = unused_rx.try_recv().unwrap();
         assert_eq!(None, returned);
+    }
+
+    /// A timed-out Vote or Pre-Vote request names its own RPC.
+    #[test]
+    fn vote_request_timeout_names_its_rpc() {
+        let timeout = |kind: VoteRequestKind| {
+            let err = Timeout::<TestConfig> {
+                action: kind.rpc_type(),
+                id: 1,
+                target: 2,
+                timeout: Duration::from_millis(5),
+            };
+            err.to_string()
+        };
+
+        assert_eq!(timeout(VoteRequestKind::Vote), "timeout after 5ms when Vote 1->2");
+        assert_eq!(timeout(VoteRequestKind::PreVote), "timeout after 5ms when PreVote 1->2");
     }
 }
