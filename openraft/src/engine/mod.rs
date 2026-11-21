@@ -27,7 +27,6 @@
 //!  <-------: command to run
 //! ```
 
-mod command_kind;
 mod command_name;
 mod command_scheduler;
 mod election_deadline;
@@ -72,7 +71,6 @@ pub(crate) use command::Command;
 pub(crate) use command::Condition;
 pub(crate) use command::Respond;
 pub(crate) use command::ValueSender;
-pub(crate) use command_kind::CommandKind;
 pub use command_name::CommandName;
 pub use command_name::SMCommandName;
 pub(crate) use election_deadline::ElectionDeadline;

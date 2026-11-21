@@ -9,7 +9,6 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::core::sm;
-use crate::engine::CommandKind;
 use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
@@ -353,36 +352,6 @@ where
             Command::TruncateLog { .. }               => CommandName::TruncateLog,
             Command::StateMachine { command }          => CommandName::StateMachine(command.name()),
             Command::Respond { .. }                   => CommandName::Respond,
-        }
-    }
-
-    #[allow(dead_code)]
-    #[rustfmt::skip]
-    pub(crate) fn kind(&self) -> CommandKind {
-        match self {
-            Command::CloseReplicationStreams          => CommandKind::Main,
-            Command::FailPendingReads                 => CommandKind::Main,
-            Command::RebuildReplicationStreams { .. } => CommandKind::Main,
-            Command::Respond { .. }                   => CommandKind::Respond,
-            // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
-
-            Command::UpdateIOProgress { .. }          => CommandKind::Log,
-            Command::AppendEntries { .. }             => CommandKind::Log,
-            Command::SaveVote { .. }                  => CommandKind::Log,
-            Command::TruncateLog { .. }               => CommandKind::Log,
-
-            Command::PurgeLog { .. }                  => CommandKind::Log,
-
-            Command::ReplicateCommitted { .. }        => CommandKind::Network,
-            Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
-            Command::Replicate { .. }                 => CommandKind::Network,
-            Command::ReplicateSnapshot { .. }         => CommandKind::Network,
-            Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
-            Command::SendVote { .. }                  => CommandKind::Network,
-            Command::SendPreVote { .. }               => CommandKind::Network,
-
-            Command::SaveCommittedAndApply { .. }     => CommandKind::StateMachine,
-            Command::StateMachine { .. }              => CommandKind::StateMachine,
         }
     }
 
