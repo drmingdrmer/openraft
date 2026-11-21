@@ -303,9 +303,12 @@ pub trait AsyncRuntime: Debug + 'static {
     /// Wrap a future with a cancellation handle.
     ///
     /// The returned future yields `Some(output)` when the supplied future completes, or `None`
-    /// when the handle is signalled or dropped. Cancellation is polled first when both are ready.
+    /// when the handle is signalled or dropped. Cancellation is polled first when both are ready,
+    /// and a cancellation that happened before a poll keeps that poll from polling the supplied
+    /// future, even when the runtime's channel would report it only later.
     /// The caller polls or spawns the returned future; borrowed futures are supported.
     /// Use [`Self::cancellable_by`] when a cancellation future is already available.
+    #[since(version = "0.10.2", change = "cancelling before a poll keeps the work unpolled")]
     #[since(version = "0.10.1")]
     fn cancellable<F>(
         future: F,
