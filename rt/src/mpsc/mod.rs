@@ -29,6 +29,11 @@ pub trait Mpsc: Sized {
 
     /// Creates a bounded mpsc channel for communicating between asynchronous tasks with
     /// backpressure.
+    ///
+    /// A `buffer` of at least 1, within the limit of the runtime, works on every runtime. The
+    /// Tokio-backed channels of Tokio, Monoio and the simulator panic when `buffer` is 0 or
+    /// greater than `tokio::sync::Semaphore::MAX_PERMITS`. Compio accepts 0 and creates a
+    /// rendezvous channel, whose send completes only when a receiver takes the value.
     #[track_caller]
     fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>);
 }
