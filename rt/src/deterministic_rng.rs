@@ -104,6 +104,14 @@ fn take_and_advance_seed() -> u64 {
 ///     draw.await.unwrap()
 /// }
 /// ```
+///
+/// # Reusing an instance
+///
+/// A `block_on()` that returns saves the advanced seed, so the next call continues the sequence.
+/// A root future that panics saves nothing: after the panic is caught, the next `block_on()`
+/// starts again from the seed the failed call started with and repeats its draws. A harness that
+/// reuses an instance after a failed case should call [`Self::set_seed`] with the seed it wants
+/// for the next case.
 #[since(version = "0.10.2", change = "`block_on()` sets its seed only for the root future")]
 pub struct DeterministicRng<RT>
 where RT: AsyncRuntime
