@@ -158,7 +158,9 @@ where
     /// - If the newest value has already been marked seen, then the method sleeps until a new
     ///   message is sent by the [`WatchSender`], or until the [`WatchSender`] is dropped.
     ///
-    /// This method returns an error if and only if the [`WatchSender`] is dropped.
+    /// This method returns [`RecvError`] once every [`WatchSender`] is dropped and this receiver
+    /// has seen the final value: a final value that this receiver has not seen is still reported
+    /// as a change first.
     async fn changed(&mut self) -> Result<(), RecvError>;
 
     /// Returns a reference to the most recently sent value
