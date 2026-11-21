@@ -26,17 +26,13 @@ where T: PartialOrd + fmt::Debug
 
     /// Attempts to update the value if it's greater than the current value.
     ///
+    /// An empty container accepts any value. A value that is equal to, smaller than, or
+    /// incomparable with the current one is rejected.
+    ///
     /// Returns `Ok(Option<T>)` with the old value on success,
     /// or `Err(Option<&T>)` with a reference to the current stored value if rejected.
     pub(crate) fn try_update(&mut self, new_value: T) -> Result<Option<T>, Option<&T>> {
-        self.try_update_option(Some(new_value))
-    }
-
-    /// Attempts to update with an optional value.
-    ///
-    /// Compares `new_value` with the stored value. If greater, updates and returns the old value.
-    /// Otherwise returns `Err(Option<&T>)` with a reference to the current stored value.
-    pub(crate) fn try_update_option(&mut self, new_value: Option<T>) -> Result<Option<T>, Option<&T>> {
+        let new_value = Some(new_value);
         if new_value > self.value {
             Ok(std::mem::replace(&mut self.value, new_value))
         } else {
@@ -110,49 +106,18 @@ mod tests {
     }
 
     #[test]
+    fn test_try_update_incomparable_rejected() {
+        let mut m = MonotonicIncrease::new(Some(1.0));
+        assert_eq!(m.try_update(f64::NAN), Err(Some(&1.0)));
+        assert_eq!(m.value(), Some(&1.0));
+    }
+
+    #[test]
     fn test_into_inner() {
         let m = MonotonicIncrease::new(Some(42));
         assert_eq!(m.into_inner(), Some(42));
 
         let m = MonotonicIncrease::new(None::<i32>);
         assert_eq!(m.into_inner(), None);
-    }
-
-    #[test]
-    fn test_try_update_option_with_none() {
-        let mut m = MonotonicIncrease::new(Some(10));
-        assert_eq!(m.try_update_option(None), Err(Some(&10)));
-        assert_eq!(m.value(), Some(&10));
-    }
-
-    #[test]
-    fn test_try_update_option_from_none() {
-        let mut m = MonotonicIncrease::new(None);
-        assert_eq!(m.try_update_option(Some(10)), Ok(None));
-        assert_eq!(m.value(), Some(&10));
-    }
-
-    #[test]
-    fn test_try_update_option_increasing() {
-        let mut m = MonotonicIncrease::new(Some(5));
-        assert_eq!(m.try_update_option(Some(10)), Ok(Some(5)));
-        assert_eq!(m.value(), Some(&10));
-
-        assert_eq!(m.try_update_option(Some(20)), Ok(Some(10)));
-        assert_eq!(m.value(), Some(&20));
-    }
-
-    #[test]
-    fn test_try_update_option_equal_rejected() {
-        let mut m = MonotonicIncrease::new(Some(10));
-        assert_eq!(m.try_update_option(Some(10)), Err(Some(&10)));
-        assert_eq!(m.value(), Some(&10));
-    }
-
-    #[test]
-    fn test_try_update_option_decreasing_rejected() {
-        let mut m = MonotonicIncrease::new(Some(10));
-        assert_eq!(m.try_update_option(Some(5)), Err(Some(&10)));
-        assert_eq!(m.value(), Some(&10));
     }
 }
