@@ -92,7 +92,7 @@ where C: RaftTypeConfig
         self.commit_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_commit_progress: update commit to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
@@ -107,7 +107,7 @@ where C: RaftTypeConfig
         self.snapshot_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_snapshot_progress: update snapshot to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
@@ -122,7 +122,7 @@ where C: RaftTypeConfig
         self.apply_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_apply_progress: update applied to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
