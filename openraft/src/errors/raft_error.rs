@@ -98,7 +98,17 @@ where
         }
     }
 
-    /// Return a reference to ForwardToLeader if Self::APIError contains it.
+    /// Return the leader hint of the API error, if it has one.
+    ///
+    /// It returns what [`TryAsRef<ForwardToLeader>`] of `E` returns. The hint tells only where to
+    /// send the next request; check the API error before retrying. A [`ClientWriteError`] has a
+    /// hint both for [`ForwardToLeader`], which rejected the write before its entry was appended,
+    /// and for [`LogEntryDiscarded`], whose write may still commit.
+    ///
+    /// [`TryAsRef<ForwardToLeader>`]: crate::TryAsRef
+    /// [`ClientWriteError`]: crate::errors::ClientWriteError
+    /// [`ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
     pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<C>>
     where E: TryAsRef<ForwardToLeader<C>> {
         match self {
@@ -107,7 +117,17 @@ where
         }
     }
 
-    /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
+    /// Convert the API error into a [`ForwardToLeader`], if the [`TryInto`] of `E` accepts it.
+    ///
+    /// Any other error is dropped, and `None` is returned; read the error first if its outcome
+    /// matters. Of a [`ClientWriteError`], only [`ClientWriteError::ForwardToLeader`] converts.
+    /// [`ClientWriteError::LogEntryDiscarded`] does not, as its write may still commit, so this
+    /// returns `None` for it while [`forward_to_leader()`](Self::forward_to_leader) returns its
+    /// hint.
+    ///
+    /// [`ClientWriteError`]: crate::errors::ClientWriteError
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
     pub fn into_forward_to_leader(self) -> Option<ForwardToLeader<C>>
     where E: TryInto<ForwardToLeader<C>> {
         match self {
