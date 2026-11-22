@@ -139,8 +139,13 @@ where C: RaftTypeConfig
 
     /// Transfer Leader to another node.
     ///
-    /// If this node is `to`, reset Leader lease and start election.
-    /// Otherwise, just reset Leader lease so that the node `to` can become Leader.
+    /// A request whose `from` is not this node's current vote is stale and ignored: it changes no
+    /// lease, so a transfer from an old Leader cannot undo the lease of a newer one.
+    ///
+    /// For a matching request, this node drops its published read lease and disables its vote
+    /// lease, so that it no longer rejects votes on behalf of the Leader that is handing over. Only
+    /// the node `to` then requests an election, with the transfer's authority, and only if its log
+    /// reaches `last_log_id`; it becomes Leader only if the election succeeds.
     HandleTransferLeader {
         /// The vote of the Leader that is transferring the leadership.
         from: VoteOf<C>,
