@@ -21,6 +21,7 @@ use crate::errors::NodeNotFound;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::Operation;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
@@ -56,6 +57,15 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
+
+        // `RaftCore` responds once this I/O is flushed.
+        assert_eq!(
+            Some(&IOId::new_log_io(
+                Vote::new_with_default_term(1).to_committed(),
+                Some(log_id0)
+            )),
+            eng.state.accepted_log_io()
+        );
 
         assert_eq!(
             vec![
@@ -100,6 +110,15 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m12(), eng.state.membership_state.effective().membership());
+
+        // `RaftCore` responds once this I/O is flushed.
+        assert_eq!(
+            Some(&IOId::new_log_io(
+                Vote::new_with_default_term(1).to_committed(),
+                Some(log_id0)
+            )),
+            eng.state.accepted_log_io()
+        );
 
         assert_eq!(
             vec![
@@ -167,6 +186,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     tracing::info!("--- [{{1}}, {{}}] has no quorum; node 1 stays a voter, or NotInMembers fires first");
@@ -181,6 +201,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     tracing::info!("--- voter 2 has no node");
@@ -195,6 +216,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     Ok(())
