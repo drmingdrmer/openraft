@@ -1,4 +1,5 @@
-use rt::Instant;
+use std::pin::pin;
+use std::task::Poll;
 
 use super::*;
 use crate::async_runtime::MpscSender;
@@ -416,30 +417,196 @@ fn test_try_recv_batch_up_to_max_capacity() {
     });
 }
 
+/// How long a batch in the linger tests waits for more writes.
+const LINGER: Duration = Duration::from_millis(100);
+
+/// Runs a test body on a current-thread Tokio runtime whose clock starts paused.
+///
+/// The clock then moves when the body calls `tokio::time::advance()`, or by itself when every task
+/// waits for a timer. So the tests poll a receive to `Pending` instead of awaiting it, and then
+/// advance the clock. The body fails if it does not finish within a minute of the paused clock,
+/// which the runtime reaches at once if the body hangs.
+fn run_paused<F>(body: F)
+where F: Future<Output = ()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .start_paused(true)
+        .build()
+        .expect("build a current-thread runtime with a paused clock");
+    let finished = runtime.block_on(async { tokio::time::timeout(Duration::from_secs(60), body).await });
+    finished.expect("the test body hung");
+}
+
+/// Returns the payload data and the write option of a `ClientWrite`, after checking that it holds
+/// one responder slot per payload.
+fn write_contents(msg: RaftMsg<C>) -> (Vec<u64>, WriteOption<C>) {
+    let RaftMsg::ClientWrite {
+        payloads,
+        responders,
+        write_option,
+        ..
+    } = msg
+    else {
+        panic!("expected ClientWrite");
+    };
+    assert_eq!(responders.len(), payloads.len());
+    (extract_payload_data(&payloads), write_option)
+}
+
+/// A batch that is not full waits for more writes until the deadline set by its first write. A
+/// write that arrives during the wait joins the batch without moving that deadline, and the batch
+/// is returned when the deadline is reached, not before.
 #[test]
-fn test_try_recv_flush_batch_after_linger() {
-    const BATCH_CAPACITY: u64 = 100;
-    const LINGER: Duration = Duration::from_secs(1);
-
-    C::run(async {
-        let (tx, rx) = C::mpsc(BATCH_CAPACITY as usize);
-        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, LINGER);
-
-        let now = C::now();
+fn test_try_recv_flushes_at_the_deadline_of_the_first_write() {
+    run_paused(async {
+        let (tx, rx) = C::mpsc(16);
+        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, 100, LINGER);
 
         let leader = Some(committed_leader_id(1, 1));
         tx.send(client_write(0, leader)).await.unwrap();
 
-        let msg = receiver.try_recv().await.unwrap().unwrap();
-        let RaftMsg::ClientWrite {
-            payloads, responders, ..
-        } = msg
-        else {
-            panic!("expected ClientWrite");
-        };
+        let start = C::now();
+        let mut recv = pin!(receiver.try_recv());
+        let polled = futures_util::poll!(recv.as_mut());
+        assert!(polled.is_pending(), "a batch that is not full waits for more writes");
 
-        assert_eq!(1, payloads.len());
-        assert_eq!(1, responders.len());
-        assert_eq!(Duration::ZERO, LINGER.saturating_sub(now.elapsed()))
+        tokio::time::advance(LINGER / 2).await;
+        tx.send(client_write(1, leader)).await.unwrap();
+        let polled = futures_util::poll!(recv.as_mut());
+        assert!(
+            polled.is_pending(),
+            "the second write joins the batch, which keeps waiting"
+        );
+
+        tokio::time::advance(LINGER / 2 - Duration::from_millis(1)).await;
+        let polled = futures_util::poll!(recv.as_mut());
+        assert!(polled.is_pending(), "the deadline of the first write is 1ms away");
+
+        tokio::time::advance(Duration::from_millis(1)).await;
+        let polled = futures_util::poll!(recv.as_mut());
+        let Poll::Ready(received) = polled else {
+            panic!("the batch is returned at the deadline of its first write");
+        };
+        let (data, option) = write_contents(received.unwrap().unwrap());
+        assert_eq!(data, vec![0, 1]);
+        assert_eq!(option, leader_option(leader));
+        assert_eq!(C::now() - start, LINGER);
+    });
+}
+
+/// A batch that fills up is returned at once, before its deadline.
+#[test]
+fn test_try_recv_returns_a_full_batch_before_the_deadline() {
+    run_paused(async {
+        let (tx, rx) = C::mpsc(16);
+        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, 3, LINGER);
+
+        let leader = Some(committed_leader_id(1, 1));
+        tx.send(client_write(0, leader)).await.unwrap();
+
+        let start = C::now();
+        let mut recv = pin!(receiver.try_recv());
+        let polled = futures_util::poll!(recv.as_mut());
+        assert!(polled.is_pending(), "one write of a capacity of three waits for more");
+
+        tokio::time::advance(LINGER / 2).await;
+        tx.send(client_write(1, leader)).await.unwrap();
+        tx.send(client_write(2, leader)).await.unwrap();
+        let polled = futures_util::poll!(recv.as_mut());
+        let Poll::Ready(received) = polled else {
+            panic!("a full batch is returned without waiting for its deadline");
+        };
+        let (data, option) = write_contents(received.unwrap().unwrap());
+        assert_eq!(data, vec![0, 1, 2]);
+        assert_eq!(option, leader_option(leader));
+        assert_eq!(C::now() - start, LINGER / 2);
+    });
+}
+
+/// A message that is not a write ends a waiting batch at once, and is the next message received.
+#[test]
+fn test_try_recv_non_write_ends_a_waiting_batch() {
+    run_paused(async {
+        let (tx, rx) = C::mpsc(16);
+        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, 100, LINGER);
+
+        let leader = Some(committed_leader_id(1, 1));
+        tx.send(client_write(0, leader)).await.unwrap();
+
+        let start = C::now();
+        {
+            let mut recv = pin!(receiver.try_recv());
+            let polled = futures_util::poll!(recv.as_mut());
+            assert!(polled.is_pending(), "a batch that is not full waits for more writes");
+
+            tokio::time::advance(LINGER / 2).await;
+            tx.send(RaftMsg::WithRaftState { req: Box::new(|_| {}) }).await.unwrap();
+            let polled = futures_util::poll!(recv.as_mut());
+            let Poll::Ready(received) = polled else {
+                panic!("a message that is not a write ends the batch before its deadline");
+            };
+            let (data, option) = write_contents(received.unwrap().unwrap());
+            assert_eq!(data, vec![0]);
+            assert_eq!(option, leader_option(leader));
+            assert_eq!(C::now() - start, LINGER / 2);
+        }
+
+        let next = receiver.try_recv().await.unwrap().unwrap();
+        assert!(
+            matches!(next, RaftMsg::WithRaftState { .. }),
+            "the message that ended the batch is next"
+        );
+        let rest = receiver.try_recv().await.unwrap();
+        assert!(rest.is_none());
+    });
+}
+
+/// A write whose option does not merge ends a waiting batch at once, and starts the next batch,
+/// which waits until its own deadline.
+#[test]
+fn test_try_recv_unmergeable_write_ends_a_waiting_batch() {
+    run_paused(async {
+        let (tx, rx) = C::mpsc(16);
+        let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, 100, LINGER);
+
+        let leader1 = Some(committed_leader_id(1, 1));
+        let leader2 = Some(committed_leader_id(2, 1));
+        tx.send(client_write(0, leader1)).await.unwrap();
+
+        let start = C::now();
+        {
+            let mut recv = pin!(receiver.try_recv());
+            let polled = futures_util::poll!(recv.as_mut());
+            assert!(polled.is_pending(), "a batch that is not full waits for more writes");
+
+            tokio::time::advance(LINGER / 2).await;
+            tx.send(client_write(1, leader2)).await.unwrap();
+            let polled = futures_util::poll!(recv.as_mut());
+            let Poll::Ready(received) = polled else {
+                panic!("a write that does not merge ends the batch before its deadline");
+            };
+            let (data, option) = write_contents(received.unwrap().unwrap());
+            assert_eq!(data, vec![0]);
+            assert_eq!(option, leader_option(leader1));
+            assert_eq!(C::now() - start, LINGER / 2);
+        }
+
+        let second_start = C::now();
+        let mut recv = pin!(receiver.try_recv());
+        let polled = futures_util::poll!(recv.as_mut());
+        assert!(
+            polled.is_pending(),
+            "the write that ended the first batch starts a waiting one"
+        );
+
+        tokio::time::advance(LINGER).await;
+        let polled = futures_util::poll!(recv.as_mut());
+        let Poll::Ready(received) = polled else {
+            panic!("the second batch is returned at its own deadline");
+        };
+        let (data, option) = write_contents(received.unwrap().unwrap());
+        assert_eq!(data, vec![1]);
+        assert_eq!(option, leader_option(leader2));
+        assert_eq!(C::now() - second_start, LINGER);
     });
 }
