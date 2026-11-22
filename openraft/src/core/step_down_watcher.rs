@@ -1,8 +1,11 @@
 //! Step-down watcher: a task that steps down a Leader that is removed from a committed
 //! membership config.
 
+use std::pin::pin;
 use std::time::Duration;
 
+use futures_util::future::Either;
+use futures_util::future::select;
 use tracing::Instrument;
 
 use crate::Config;
@@ -105,26 +108,51 @@ where C: RaftTypeConfig
 
     /// Step down this node if it is a Leader that is removed from a committed membership config:
     ///
-    /// - Wait for `step_down_delay`, then re-check the condition: it may no longer hold, e.g., a
-    ///   newer membership config that contains this node is committed.
+    /// - Wait for `step_down_delay` after the removal is observed. The delay belongs to that
+    ///   removal: the vote and the committed membership config that removes this node. It ends
+    ///   early when this node is no longer a removed Leader, such as when a newer membership config
+    ///   that contains it is committed, and it starts again when the removal is another one, such
+    ///   as a second removal after a readmission, or the same config under a new vote. Other
+    ///   metrics updates leave the deadline as it is.
     /// - Transfer leadership to the most up-to-date voter.
     /// - Wait for `transfer_wait`, then revert this node to a learner. This is the guaranteed
     ///   fallback in case the transfer takes no effect; the command is fenced by the vote and the
-    ///   membership config log id observed above, thus it is dropped if a new Leader is already
+    ///   membership config log id of the removal, thus it is dropped if a new Leader is already
     ///   established or the membership config has changed.
-    async fn try_step_down(&self) {
+    async fn try_step_down(&mut self) {
         // Clone the metrics out of the watch channel: the borrowed reference is not `Send`,
         // and holding it across an `await` would block the metrics updater.
-        let server_metrics = self.rx_server_metrics.borrow_watched().clone();
+        let mut server_metrics = self.rx_server_metrics.borrow_watched().clone();
         if !is_removed_leader(&server_metrics) {
             return;
         }
 
-        C::sleep(self.step_down_delay).await;
+        let mut deadline = C::now() + self.step_down_delay;
+        loop {
+            let closed = {
+                let sleep = pin!(C::sleep_until(deadline));
+                let changed = pin!(self.rx_server_metrics.changed());
+                matches!(select(sleep, changed).await, Either::Right((Err(_), _)))
+            };
+            if closed {
+                tracing::info!("RaftCore terminated during the step-down delay, quit step_down_watcher");
+                return;
+            }
 
-        let server_metrics = self.rx_server_metrics.borrow_watched().clone();
-        if !is_removed_leader(&server_metrics) {
-            return;
+            // Re-check after any wake-up: a change and the deadline may come at once.
+            let latest = self.rx_server_metrics.borrow_watched().clone();
+            if !is_removed_leader(&latest) {
+                return;
+            }
+            if !is_same_removal(&server_metrics, &latest) {
+                tracing::info!("another removal of this Leader is observed, restart the step-down delay");
+                server_metrics = latest;
+                deadline = C::now() + self.step_down_delay;
+                continue;
+            }
+            if C::now() >= deadline {
+                break;
+            }
         }
 
         let metrics = self.rx_metrics.borrow_watched().clone();
@@ -186,6 +214,13 @@ where C: RaftTypeConfig {
     metrics.committed_membership_config == metrics.membership_config
 }
 
+/// Decide whether two snapshots observe the same removal of this Leader: the same vote, and the
+/// same committed membership config, which removes it.
+fn is_same_removal<C>(a: &RaftServerMetrics<C>, b: &RaftServerMetrics<C>) -> bool
+where C: RaftTypeConfig {
+    a.vote == b.vote && a.committed_membership_config.log_id() == b.committed_membership_config.log_id()
+}
+
 /// Choose the transfer-leader target: the voter with the greatest matching log id, which needs
 /// the least catching up.
 fn transfer_target<C>(metrics: &RaftMetrics<C>) -> Option<C::NodeId>
@@ -200,19 +235,31 @@ where C: RaftTypeConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use maplit::btreemap;
     use maplit::btreeset;
 
+    use super::StepDownWatcher;
     use super::is_removed_leader;
     use super::transfer_target;
+    use crate::Config;
     use crate::Membership;
+    use crate::StepDownPolicy;
+    use crate::Vote;
+    use crate::async_runtime::MpscReceiver;
+    use crate::async_runtime::MpscSender;
+    use crate::async_runtime::watch::WatchSender;
     use crate::core::ServerState;
+    use crate::core::raft_msg::RaftMsg;
+    use crate::core::raft_msg::external_command::ExternalCommand;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::metrics::RaftMetrics;
     use crate::metrics::RaftServerMetrics;
+    use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::StoredMembershipOf;
 
     /// Voters 2,3; node 1 is removed.
@@ -295,5 +342,124 @@ mod tests {
         });
 
         assert_eq!(Some(2), transfer_target(&m));
+    }
+
+    /// Server metrics of Leader node 1 with the vote of `term`, whose effective and committed
+    /// membership config is `mem` at `log_index`.
+    fn leader_at(term: u64, log_index: u64, mem: Membership<u64, ()>) -> RaftServerMetrics<UTConfig> {
+        let mut m = server_metrics(mem.clone());
+        m.vote = Vote::new_committed(term, 1);
+        m.membership_config = stored(log_index, mem.clone());
+        m.committed_membership_config = stored(log_index, mem);
+        m
+    }
+
+    /// Run `body` on a current-thread runtime with a paused clock, which moves only when every
+    /// task waits for a timer. It fails if `body` does not finish within a minute of that clock.
+    ///
+    /// `body` runs in a `LocalSet`, which `C::spawn()` needs with the `single-threaded` feature.
+    fn run_paused<F>(body: F)
+    where F: Future<Output = ()> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .expect("build a current-thread runtime with a paused clock");
+        let local = tokio::task::LocalSet::new();
+        let finished = local.block_on(&runtime, async {
+            tokio::time::timeout(Duration::from_secs(60), body).await
+        });
+        finished.expect("the test body hung");
+    }
+
+    /// Run the watcher with `After(1000)` and a 50 ms `heartbeat_interval`. Node 1 is a removed
+    /// Leader at 0 ms, in term 2 at membership log index 3, and the server metrics change to each
+    /// of `updates` at its time in ms. No replication metrics name a transfer target, so the only
+    /// command is the fallback: it must come at `fallback_at` ms, fenced by the vote of `term` and
+    /// the membership config at `log_index`, and no other command may follow.
+    fn assert_fallback_at(
+        updates: Vec<(u64, RaftServerMetrics<UTConfig>)>,
+        fallback_at: u64,
+        term: u64,
+        log_index: u64,
+    ) {
+        run_paused(async move {
+            let config = Config {
+                removed_leader_step_down: StepDownPolicy::After(1_000),
+                heartbeat_interval: 50,
+                ..Default::default()
+            };
+            let start = tokio::time::Instant::now();
+            let at = |ms: u64| start + Duration::from_millis(ms);
+
+            let (tx_server, rx_server) = UTConfig::<()>::watch_channel(leader_at(2, 3, m23()));
+            let (_tx_metrics, rx_metrics) = UTConfig::<()>::watch_channel(RaftMetrics::new_initial(1));
+            let (tx_api, mut rx_api) = UTConfig::<()>::mpsc::<RaftMsg<UTConfig>>(16);
+            StepDownWatcher::<UTConfig>::spawn(rx_server, rx_metrics, tx_api.downgrade(), &config);
+
+            for (ms, metrics) in updates {
+                tokio::time::sleep_until(at(ms)).await;
+                tx_server.send(metrics).unwrap();
+            }
+
+            tokio::time::sleep_until(at(fallback_at - 1)).await;
+            assert!(rx_api.try_recv().is_err(), "no command before {fallback_at} ms");
+
+            tokio::time::sleep_until(at(fallback_at + 1)).await;
+            let msg = rx_api.try_recv().expect("the fallback command");
+            let RaftMsg::ExternalCommand {
+                cmd:
+                    ExternalCommand::RefreshServerState {
+                        vote,
+                        membership_log_id,
+                    },
+            } = msg
+            else {
+                panic!("expected the fallback command, got: {msg}");
+            };
+            assert_eq!(Some(Vote::new_committed(term, 1)), vote);
+            assert_eq!(Some(log_id(2, 1, log_index)), membership_log_id);
+
+            tokio::time::sleep_until(at(fallback_at + 5_000)).await;
+            assert!(rx_api.try_recv().is_err(), "no other command");
+        });
+    }
+
+    #[test]
+    fn test_step_down_waits_the_delay_of_the_removal() {
+        assert_fallback_at(vec![], 1_050, 2, 3);
+    }
+
+    /// A metrics update that keeps the vote and the removing membership config keeps the deadline.
+    #[test]
+    fn test_unrelated_update_keeps_the_delay() {
+        let mut update = leader_at(2, 3, m23());
+        update.current_leader = Some(1);
+        assert_fallback_at(vec![(600, update)], 1_050, 2, 3);
+    }
+
+    /// A readmission ends the first removal's delay, and the second removal waits its own.
+    #[test]
+    fn test_second_removal_after_readmission_waits_its_own_delay() {
+        let readmitted = leader_at(
+            2,
+            4,
+            Membership::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1}),
+        );
+        let removed_again = leader_at(2, 5, m23());
+        assert_fallback_at(vec![(300, readmitted), (600, removed_again)], 1_650, 2, 5);
+    }
+
+    /// A second removal waits its own delay even if the watcher never sees the readmission between
+    /// them, because the removing membership config changed.
+    #[test]
+    fn test_coalesced_second_removal_waits_its_own_delay() {
+        assert_fallback_at(vec![(600, leader_at(2, 5, m23()))], 1_650, 2, 5);
+    }
+
+    /// The same removal under a new vote waits a delay of its own.
+    #[test]
+    fn test_removal_under_a_new_vote_waits_its_own_delay() {
+        assert_fallback_at(vec![(600, leader_at(3, 3, m23()))], 1_650, 3, 3);
     }
 }
