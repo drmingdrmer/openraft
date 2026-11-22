@@ -102,8 +102,18 @@ where C: RaftTypeConfig
         membership_log_id: Option<LogIdOf<C>>,
     },
 
-    /// Run the timer check that an internal tick runs: the election timeout and, on a leader,
-    /// the heartbeat deadline.
+    /// Check the deadlines that a manual tick checks: on a leader, send a heartbeat if one is due,
+    /// then start an election if one is due.
+    ///
+    /// The heartbeat check is the one that the internal [`Notification::Tick`] runs. Internal
+    /// elections do not need a tick: they start on their own deadline notification,
+    /// [`Notification::ElectionDeadlineReached`]. The election check is kept here for backward
+    /// compatibility, because [`Trigger::tick`] has always started a due election within the same
+    /// call.
+    ///
+    /// [`Notification::Tick`]: crate::core::notification::Notification::Tick
+    /// [`Notification::ElectionDeadlineReached`]: crate::core::notification::Notification::ElectionDeadlineReached
+    /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     Tick,
 }
 
