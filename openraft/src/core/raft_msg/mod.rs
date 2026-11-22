@@ -98,8 +98,8 @@ where C: RaftTypeConfig
 
         /// Payloads whose membership OpenRaft replaces with the computed membership.
         ///
-        /// `RaftCore` computes the membership, so it also picks the payload that matches the
-        /// shape of that membership.
+        /// `RaftCore` computes the membership, so it also picks the payload for the entry that
+        /// holds it: an intermediate joint entry, or the target of the change.
         payloads: MembershipPayloads<C>,
 
         /// If `retain` is `true`, then the voters that are not in the new
