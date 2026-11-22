@@ -273,18 +273,24 @@ where
 
     /// Decide what the next stream should carry.
     ///
-    /// A payload still unfinished is resumed only while its plan is [`RaftCore`]'s current one.
-    /// Otherwise adopt the plan published since, as when a reverted log makes a `LogsSince` payload
-    /// obsolete: resuming the payload would send entries that may no longer exist. With nothing to
-    /// run, block until [`RaftCore`] hands over work.
+    /// A payload still unfinished is resumed unless [`RaftCore`] has published a plan since this
+    /// task last adopted one. Then adopt that plan, as when a reverted log makes a `LogsSince`
+    /// payload obsolete: resuming the payload would send entries that may no longer exist. With
+    /// nothing to run, block until [`RaftCore`] hands over work.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
-        if self.next_action.is_some() {
-            // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
-            // would leave the change notification pending, and `drain_events()` would
-            // later observe it and replay the same command, re-running an
-            // already-acknowledged payload.
+        // Every plan RaftCore publishes carries a new inflight id, and this task marks each value
+        // of `replicate_rx` it reads as seen, so an unseen value is a plan published since the
+        // task last adopted one. Comparing inflight ids alone is not enough: a commit probe has
+        // none, and the channel may still hold a plan this task already ran and RaftCore has
+        // finished since. A closed channel is left to `drain_events()`, which ends the task.
+        if self.next_action.is_some()
+            && let Some(Ok(())) = self.event_watcher.replicate_rx.changed().now_or_never()
+        {
+            // `borrow_and_update()` also marks as seen a plan published after `changed()`
+            // returned; otherwise `drain_events()` would later deliver the plan adopted here
+            // a second time, re-running an already-acknowledged payload.
             let current = self.event_watcher.replicate_rx.borrow_and_update().clone();
             if let Some(current) = current
                 && self.inflight_id != Some(current.inflight_id)
