@@ -78,15 +78,19 @@ where C: RaftTypeConfig
 
         progress: replication::Progress<C>,
 
-        /// The `InflightId` of the replication request that produced this response.
+        /// The `InflightId` of the tracked operation that this progress answers, if any.
         ///
-        /// - `Some(id)`: This response corresponds to a replication request that carries log
-        ///   payload. The `id` is used to match the response to the correct inflight state,
-        ///   allowing the leader to update `matching` or handle conflicts properly.
+        /// - `Some(id)`: The progress answers an operation that the leader tracks as inflight: a
+        ///   probe, a log stream, or a snapshot transfer. The leader acknowledges the operation, or
+        ///   handles its conflict, only while it is still the inflight one with this `id`, so a
+        ///   response to a superseded operation changes nothing. A request of a log stream carries
+        ///   the stream's `id` even when it holds no entries, such as one that only advances the
+        ///   commit index.
         ///
-        /// - `None`: This response is from an RPC without log payload (e.g., a heartbeat to
-        ///   synchronize commit index). Such RPCs don't have corresponding inflight records, so no
-        ///   inflight state update is needed.
+        /// - `None`: The progress answers an RPC that no inflight operation tracks: a heartbeat, or
+        ///   an update of the commit index sent on its own. It acknowledges no inflight operation
+        ///   and matches no conflict to one. But when log reversion is allowed, a conflict below
+        ///   the known matching log still resets the matching log and ends a log stream.
         inflight_id: Option<InflightId>,
     },
 
