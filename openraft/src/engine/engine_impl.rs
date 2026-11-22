@@ -252,7 +252,8 @@ where
         let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
         let payload = C::Payload::membership(membership);
         let entry = C::Entry::new(log_id, payload);
-        self.following_handler().do_append_entries(vec![entry]);
+        // Accept the append's I/O first: `RaftCore` responds once that I/O is flushed.
+        self.following_handler().append_entries(None, vec![entry]);
 
         Ok(())
     }
