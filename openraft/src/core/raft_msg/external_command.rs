@@ -25,18 +25,23 @@ use crate::type_config::alias::VoteOf;
 pub(crate) enum ExternalCommand<C>
 where C: RaftTypeConfig
 {
-    /// Initiate an election immediately.
+    /// Initiate an election, unless this node is a Leader or cannot campaign.
+    ///
+    /// A Leader ignores it, and so does a node that is not a campaigner in its effective or
+    /// committed membership config.
     ///
     /// With `pre_vote = false`, a real election starts at once: the term is incremented and the
     /// node votes for itself, bypassing both `enable_elect` and Pre-Vote. The term climbs even
     /// when the node cannot win, which can step down a healthy leader of a lower term once it
     /// observes the higher term.
     ///
-    /// With `pre_vote = true`, a Pre-Vote round runs first: it probes whether a quorum *would*
-    /// grant a vote at `term + 1` without changing any state, and runs the real election only
-    /// if a quorum would. A node that cannot currently win — e.g. while a healthy leader still
-    /// holds its lease — leaves the term untouched, so an incautious trigger does not disrupt a
-    /// live leader.
+    /// With `pre_vote = true`, a Pre-Vote round first asks whether a quorum *would* grant a vote
+    /// at `term + 1`, and the real election starts only once a quorum grants it. The round neither
+    /// increments the term nor saves a vote, so a node that cannot win leaves its term untouched,
+    /// and an incautious trigger does not disrupt a live leader. The round is skipped while this
+    /// node still sees an unexpired leader lease. A rejection that carries a higher vote updates
+    /// this node's vote to it, as any higher vote does, and one with a longer log delays the next
+    /// election.
     Elect { pre_vote: bool },
 
     /// Send a heartbeat message, only if the node is leader, or it will be ignored.
