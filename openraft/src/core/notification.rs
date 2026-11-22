@@ -34,8 +34,13 @@ where C: RaftTypeConfig
 
     /// Response to a Pre-Vote request sent by a pre-candidate.
     ///
-    /// Unlike [`VoteResponse`](Self::VoteResponse), receiving this does not change any persistent
-    /// state; it only advances the pre-vote tally that decides whether to start a real election.
+    /// Handling the Pre-Vote request changes no persistent state, but handling this response can.
+    /// A response to the current pre-vote round goes to the engine: a grant advances the tally, and
+    /// a quorum of grants starts a real election, which saves a new vote. A rejection that carries
+    /// a higher vote makes this node adopt that vote and save it as a non-committed vote. A
+    /// response to an earlier round is ignored. See the [Pre-Vote protocol].
+    ///
+    /// [Pre-Vote protocol]: crate::docs::protocol::pre_vote
     PreVoteResponse {
         target: C::NodeId,
         resp: VoteResponse<C>,
