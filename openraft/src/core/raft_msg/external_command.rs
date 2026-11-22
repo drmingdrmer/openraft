@@ -45,11 +45,16 @@ where C: RaftTypeConfig
     /// Initiate to build a snapshot on this node.
     Snapshot,
 
-    /// Purge logs covered by a snapshot up to a specified index.
+    /// Purge logs covered by a snapshot up to and including the log at index `upto`.
     ///
-    /// Openraft respects the [`max_in_snapshot_log_to_keep`] config when purging.
+    /// Unlike the purge that follows a snapshot, this ignores the [`max_in_snapshot_log_to_keep`]
+    /// config. It purges no log after the last log in the current snapshot, and does nothing
+    /// without a snapshot or when an earlier purge already covers `upto`. On a leader, a log that a
+    /// replication task still reads is purged only once the task is done with it, see
+    /// [`Trigger::purge_log`].
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    /// [`Trigger::purge_log`]: crate::raft::trigger::Trigger::purge_log
     PurgeLog { upto: u64 },
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
