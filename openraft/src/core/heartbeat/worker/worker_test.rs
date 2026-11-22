@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
@@ -13,6 +14,7 @@ use futures_util::StreamExt;
 use super::HeartbeatWorker;
 use crate::Config;
 use crate::OptionalSend;
+use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchSender;
@@ -36,10 +38,12 @@ use crate::raft::AppendResult;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedVoteOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
+use crate::type_config::async_runtime::hook_runtime::HookRuntime;
 use crate::vote::raft_vote::RaftVoteExt;
 
 type C = UTConfig;
@@ -521,5 +525,158 @@ fn test_higher_vote_waits_for_a_full_notification_channel() {
         let second = C::timeout(TEST_TIMEOUT, rx_notification.recv()).await.unwrap().unwrap();
         assert_higher_vote(&second);
         C::timeout(TEST_TIMEOUT, join).await.unwrap().unwrap();
+    });
+}
+
+/// A type config on [`HookRuntime`]: Tokio, with a watch receiver that can run a hook right after
+/// `changed()`, to place a send between the worker's change notification and its read.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+struct HookConfig;
+
+impl RaftTypeConfig for HookConfig {
+    type D = u64;
+    type R = ();
+    type NodeId = u64;
+    type Node = ();
+    type Term = u64;
+    type LeaderId = UTLeaderId;
+    type Vote = Vote<Self::LeaderId>;
+    type Membership = crate::impls::Membership<Self::NodeId, Self::Node>;
+    type MembershipEdit = crate::impls::ChangeMembers<Self::NodeId, Self::Node>;
+    type Payload = crate::impls::EntryPayload<Self::D, Self::Membership>;
+    type Entry = crate::impls::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>;
+    type AsyncRuntime = HookRuntime;
+    type Responder<T>
+        = crate::impls::OneshotResponder<Self, T>
+    where T: OptionalSend + 'static;
+    type Batch<T>
+        = crate::impls::InlineBatch<T>
+    where T: OptionalSend + 'static;
+    type ErrorSource = AnyError;
+}
+
+/// A network that records each heartbeat request and answers it with one success.
+struct RecordingNetwork {
+    sent: Arc<Mutex<Vec<AppendEntriesRequest<HookConfig>>>>,
+}
+
+impl NetStreamAppend<HookConfig> for RecordingNetwork {
+    fn stream_append<'s, S>(
+        &'s mut self,
+        mut input: S,
+        _option: RPCOption,
+    ) -> BoxFuture<
+        's,
+        Result<BoxStream<'s, Result<AppendResult<HookConfig>, RPCError<HookConfig>>>, RPCError<HookConfig>>,
+    >
+    where
+        S: Stream<Item = AppendEntriesRequest<HookConfig>> + OptionalSend + Unpin + 'static,
+    {
+        let sent = self.sent.clone();
+        let output = futures_util::stream::poll_fn(move |cx| match input.poll_next_unpin(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Some(request)) => {
+                sent.lock().unwrap().push(request);
+                Poll::Ready(Some(Ok(Ok(None))))
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+        });
+        let output: BoxStream<'s, _> = Box::pin(output);
+        Box::pin(async move { Ok(output) })
+    }
+}
+
+fn hook_event(round: u64, matching: u64) -> HeartbeatEvent<HookConfig> {
+    HeartbeatEvent {
+        time: SendStamp::new(HookConfig::now(), round),
+        matching: Some(crate::testing::log_id::<HookConfig>(1, 1, matching)),
+        cluster_committed: Some(crate::testing::log_id::<HookConfig>(1, 1, matching - 1)),
+    }
+}
+
+/// The vote, the previous log id, the commit and the entry count of a heartbeat request.
+type RequestFields = (
+    VoteOf<HookConfig>,
+    Option<LogIdOf<HookConfig>>,
+    Option<LogIdOf<HookConfig>>,
+    usize,
+);
+
+fn request_fields(request: &AppendEntriesRequest<HookConfig>) -> RequestFields {
+    (
+        request.vote,
+        request.prev_log_id,
+        request.leader_commit,
+        request.entries.len(),
+    )
+}
+
+/// The fields of the heartbeat request that leader 1 in term 1 sends for `event`.
+fn expected_request(event: &HeartbeatEvent<HookConfig>) -> RequestFields {
+    let vote = Vote::<UTLeaderId>::new_committed(1, 1);
+    (vote, event.matching, event.cluster_committed, 0)
+}
+
+/// An event that arrives between the worker's change notification and its read is sent once:
+/// the worker marks the event it reads as seen, so it then waits for a new event instead of sending
+/// the same one again.
+#[test]
+fn test_event_sent_before_the_read_is_sent_once() {
+    HookConfig::run(async {
+        let (tx_notification, _rx_notification) = HookConfig::mpsc(16);
+        let (event_tx, rx) = HookConfig::watch_channel(None);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+
+        let event_b = hook_event(2, 4);
+        let hook_tx = event_tx.clone();
+        let hook_b = event_b.clone();
+        rx.after_changed(move || {
+            hook_tx.send(Some(hook_b)).unwrap();
+        });
+
+        let config = Config {
+            heartbeat_interval: SCRIPTED_HEARTBEAT_MS,
+            ..Config::default()
+        };
+        let worker = HeartbeatWorker {
+            id: 1,
+            leader_vote: Vote::<UTLeaderId>::new(1, 1).to_committed(),
+            stream_id: StreamId::new(1),
+            rx,
+            network: RecordingNetwork { sent: sent.clone() },
+            target: 2,
+            node: (),
+            config: Arc::new(config),
+            tx_notification,
+        };
+        let (_cancel, future) = worker.run();
+        let mut future = std::pin::pin!(future);
+
+        tracing::info!("--- A wakes the worker, and B is sent before the worker reads the event");
+        {
+            event_tx.send(Some(hook_event(1, 3))).unwrap();
+            let pending = future.as_mut().now_or_never();
+            assert_eq!(None, pending, "the worker waits for the next event");
+            let requests: Vec<_> = sent.lock().unwrap().drain(..).map(|r| request_fields(&r)).collect();
+            assert_eq!(
+                vec![expected_request(&event_b)],
+                requests,
+                "B is sent once, and A never"
+            );
+        }
+
+        tracing::info!("--- C is the next event, and the worker sends it once");
+        {
+            let event_c = hook_event(3, 5);
+            event_tx.send(Some(event_c.clone())).unwrap();
+            let pending = future.as_mut().now_or_never();
+            assert_eq!(None, pending, "the worker waits for the next event");
+            let requests: Vec<_> = sent.lock().unwrap().drain(..).map(|r| request_fields(&r)).collect();
+            assert_eq!(vec![expected_request(&event_c)], requests);
+        }
+
+        drop(event_tx);
+        let finished = future.as_mut().now_or_never();
+        assert_eq!(Some(()), finished, "closing the event channel stops the worker");
     });
 }

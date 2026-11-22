@@ -97,7 +97,10 @@ where
                 return Ok(());
             }
 
-            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();
+            // Mark the event read here as seen: an event sent after `changed()` returned is read
+            // here, and would otherwise wake the next `changed()` and be sent a second time. The
+            // guard is dropped at the end of this statement, before any await.
+            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_and_update().clone();
 
             // None is the initial value of the WatchReceiver, ignore it.
             let Some(heartbeat) = heartbeat else {
