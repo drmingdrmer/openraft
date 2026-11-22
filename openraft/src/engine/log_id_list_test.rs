@@ -13,6 +13,9 @@ use crate::type_config::alias::LogIdOf;
 /// Mock RaftLogReader for testing get_key_log_ids
 struct MockLogReader {
     logs: HashMap<u64, LogIdOf<UTConfig>>,
+
+    /// Every index a read asked for, in order.
+    reads: Vec<u64>,
 }
 
 impl MockLogReader {
@@ -21,7 +24,10 @@ impl MockLogReader {
         for log_id in logs {
             map.insert(log_id.index(), log_id);
         }
-        Self { logs: map }
+        Self {
+            logs: map,
+            reads: Vec::new(),
+        }
     }
 }
 
@@ -49,6 +55,7 @@ impl RaftLogReader<UTConfig> for MockLogReader {
 
         let mut entries = Vec::new();
         for i in start..end {
+            self.reads.push(i);
             if let Some(log_id) = self.logs.get(&i) {
                 // Create a blank entry with this log_id
                 entries.push(crate::type_config::alias::EntryOf::<UTConfig>::new_blank(*log_id));
@@ -947,5 +954,37 @@ fn test_get_key_log_ids_long_same_leader() {
         let result = LogIdList::get_key_log_ids(log_id(1, 1, 0)..=log_id(1, 1, 9), &mut reader).await.unwrap();
 
         assert_eq!(vec![log_id(1, 1, 9)], result);
+    });
+}
+
+/// Near `u64::MAX`, the sum of two endpoint indexes overflows `u64`, while every index the search
+/// reads is in the range.
+#[test]
+fn test_get_key_log_ids_near_u64_max() {
+    UTConfig::<()>::run(async {
+        let base = u64::MAX - 20;
+
+        // Leader 1 at base..=base+3, leader 2 at base+4..=base+5, leader 3 at base+6..=base+9
+        let logs: Vec<_> = (0..10)
+            .map(|i| match i {
+                0..=3 => log_id(1, 1, base + i),
+                4..=5 => log_id(2, 1, base + i),
+                _ => log_id(3, 1, base + i),
+            })
+            .collect();
+        let mut reader = MockLogReader::new(logs);
+
+        let range = log_id(1, 1, base)..=log_id(3, 1, base + 9);
+        let result = LogIdList::get_key_log_ids(range, &mut reader).await.unwrap();
+
+        assert_eq!(
+            vec![log_id(1, 1, base + 3), log_id(2, 1, base + 5), log_id(3, 1, base + 9)],
+            result
+        );
+        assert!(
+            reader.reads.iter().all(|i| (base..=base + 9).contains(i)),
+            "reads: {:?}",
+            reader.reads
+        );
     });
 }

@@ -133,7 +133,9 @@ where CLID: RaftCommittedLeaderId
 
             // A*C cases:
 
-            let mid_index = (first.index() + last.index()) / 2;
+            // `first.index() + last.index()` can overflow, while the distance between them cannot.
+            let distance = last.index() - first.index();
+            let mid_index = first.index() + distance / 2;
             let mid = sto.get_log_id(mid_index).await?;
 
             // Case AAC: boundary is between mid and last
