@@ -13,6 +13,7 @@ mod t11_append_entries_with_bigger_term;
 mod t11_append_inconsistent_log;
 mod t11_append_updates_membership;
 mod t12_conflict_hint;
+mod t13_append_reply_waits_only_for_its_own_logs;
 mod t30_replication_1_voter_to_isolated_learner;
 mod t60_enable_heartbeat;
 mod t60_enable_tick;

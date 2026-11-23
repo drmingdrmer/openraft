@@ -38,39 +38,55 @@ where C: RaftTypeConfig
             pending_responds: self,
             io_state,
             phase: DrainPhase::LogIO,
+            from: 0,
         }
     }
 }
 
-/// Pop the first respond from the queue if the actual value satisfies the pending condition.
-pub(crate) fn pop_if_satisfied<C, V>(queue: &mut VecDeque<PendingRespond<C, V>>, actual: &V) -> Option<Respond<C>>
+/// Remove and return the first respond at or after `*from` whose condition `actual` satisfies.
+///
+/// A condition is satisfied when `actual >= wait_for`; a condition that `actual` cannot be
+/// compared with is not. The unsatisfied responds before the removed one stay in the queue, in
+/// order, and `*from` moves to the place of the removed one, so that the next call goes on from
+/// there instead of scanning the queue again from the front.
+pub(crate) fn pop_first_satisfied<C, V>(
+    queue: &mut VecDeque<PendingRespond<C, V>>,
+    from: &mut usize,
+    actual: &V,
+) -> Option<Respond<C>>
 where
     C: RaftTypeConfig,
     V: PartialOrd,
 {
-    let front_item = queue.front()?;
+    let offset = queue.range(*from..).position(|p| actual >= p.wait_for())?;
+    *from += offset;
 
-    if actual >= front_item.wait_for() {
-        let respond = queue.pop_front().map(|p| p.into_respond());
-        // Reset the head so a queue that has grown does not walk its whole buffer.
-        if queue.is_empty() {
-            queue.clear();
-        }
-        return respond;
+    let respond = queue.remove(*from).map(|p| p.into_respond());
+    // Reset the head so a queue that has grown does not walk its whole buffer.
+    if queue.is_empty() {
+        queue.clear();
     }
-    None
+    respond
 }
 
 /// Iterator that drains satisfied responds from pending queues.
 ///
 /// Iterates through all phases (LogIO, LogFlush, Apply, Snapshot) and yields responds
-/// whose waiting conditions are satisfied by the current IO state.
+/// whose waiting conditions are satisfied by the current IO state. A respond whose condition is
+/// not satisfied does not hold back a satisfied one behind it in its queue, because responds are
+/// queued in the order their requests arrived, not in the order of their conditions.
+///
+/// Each respond is removed from its queue only when it is yielded, so dropping the iterator
+/// early keeps every respond it has not yielded.
 pub(crate) struct DrainSatisfied<'a, C>
 where C: RaftTypeConfig
 {
     pending_responds: &'a mut PendingResponds<C>,
     io_state: &'a IOState<C>,
     phase: DrainPhase,
+
+    /// Where the current phase goes on scanning its queue: every respond before it is unsatisfied.
+    from: usize,
 }
 
 /// Phases for draining satisfied responds from pending queues.
@@ -100,6 +116,16 @@ impl fmt::Display for DrainPhase {
     }
 }
 
+impl<C> DrainSatisfied<'_, C>
+where C: RaftTypeConfig
+{
+    /// Go on to `phase`, whose queue is scanned from its front.
+    fn next_phase(&mut self, phase: DrainPhase) {
+        self.phase = phase;
+        self.from = 0;
+    }
+}
+
 impl<'a, C> Iterator for DrainSatisfied<'a, C>
 where C: RaftTypeConfig
 {
@@ -110,36 +136,40 @@ where C: RaftTypeConfig
             match self.phase {
                 DrainPhase::LogIO => {
                     if let Some(flushed) = self.io_state.log_progress.flushed()
-                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_io, flushed)
+                        && let Some(respond) =
+                            pop_first_satisfied(&mut self.pending_responds.on_log_io, &mut self.from, flushed)
                     {
                         return Some((self.phase, respond));
                     }
-                    self.phase = DrainPhase::LogFlush;
+                    self.next_phase(DrainPhase::LogFlush);
                 }
                 DrainPhase::LogFlush => {
                     if let Some(flushed) = self.io_state.log_progress.flushed()
                         && let Some(log_id) = flushed.last_log_id()
-                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_log_flush, log_id)
+                        && let Some(respond) =
+                            pop_first_satisfied(&mut self.pending_responds.on_log_flush, &mut self.from, log_id)
                     {
                         return Some((self.phase, respond));
                     }
-                    self.phase = DrainPhase::Apply;
+                    self.next_phase(DrainPhase::Apply);
                 }
                 DrainPhase::Apply => {
                     if let Some(applied) = self.io_state.apply_progress.flushed()
-                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_apply, applied)
+                        && let Some(respond) =
+                            pop_first_satisfied(&mut self.pending_responds.on_apply, &mut self.from, applied)
                     {
                         return Some((self.phase, respond));
                     }
-                    self.phase = DrainPhase::Snapshot;
+                    self.next_phase(DrainPhase::Snapshot);
                 }
                 DrainPhase::Snapshot => {
                     if let Some(snapshot) = self.io_state.snapshot.flushed()
-                        && let Some(respond) = pop_if_satisfied(&mut self.pending_responds.on_snapshot, snapshot)
+                        && let Some(respond) =
+                            pop_first_satisfied(&mut self.pending_responds.on_snapshot, &mut self.from, snapshot)
                     {
                         return Some((self.phase, respond));
                     }
-                    self.phase = DrainPhase::Done;
+                    self.next_phase(DrainPhase::Done);
                 }
                 DrainPhase::Done => {
                     return None;
