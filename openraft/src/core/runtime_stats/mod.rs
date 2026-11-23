@@ -13,6 +13,8 @@ mod runtime_stats_display;
 
 pub mod log_stage;
 
+#[cfg(feature = "runtime-stats")]
 pub use self::display_mode::DisplayMode;
 pub use self::runtime_stats::RuntimeStats;
+#[cfg(feature = "runtime-stats")]
 pub use self::runtime_stats_display::RuntimeStatsDisplay;

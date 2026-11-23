@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
+#[cfg(feature = "runtime-stats")]
 use std::time::Duration;
 
+#[cfg(feature = "runtime-stats")]
 use base2histogram::Histogram;
 use openraft_macros::since;
 
@@ -10,9 +12,13 @@ use crate::Instant;
 use crate::RaftTypeConfig;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::DisplayMode;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStatsDisplay;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::log_stage::LogStageHistograms;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::log_stage::LogStages;
 use crate::core::stage::Stage;
 use crate::engine::CommandName;
@@ -24,6 +30,9 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+///
+/// Without the `runtime-stats` feature, nothing can read the statistics, so the structure holds
+/// no field and its recording methods do nothing: a node allocates and updates no statistic.
 #[since(version = "0.10.2", change = "Add the re-arm wake and metrics send counters")]
 #[since(version = "0.10.0", change = "Add core_busy_histogram")]
 #[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
@@ -38,6 +47,7 @@ where C: RaftTypeConfig
     /// Updated before the core waits for incoming events. A snapshot includes
     /// completed processing intervals; the current interval is included after
     /// the core next reaches that wait. Fetching a snapshot requires core progress.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.0")]
     pub core_busy_duration: Duration,
 
@@ -45,6 +55,7 @@ where C: RaftTypeConfig
     ///
     /// Each sample is one completed interval added to [`Self::core_busy_duration`].
     /// The turn in progress is recorded when the loop next reaches the wait.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.0")]
     pub core_busy_histogram: Histogram,
 
@@ -55,6 +66,7 @@ where C: RaftTypeConfig
     /// shows the batch size the state machine's I/O actually sees.
     ///
     /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.1", change = "one sample per `apply()` call, not per command")]
     pub apply_batch: Histogram,
 
@@ -63,48 +75,56 @@ where C: RaftTypeConfig
     /// This tracks how many log entries are included in each AppendEntries command
     /// submitted to the storage layer, helping identify write batch patterns and storage I/O
     /// efficiency.
+    #[cfg(feature = "runtime-stats")]
     pub append_batch: Histogram,
 
     /// Histogram tracking the distribution of log entry counts in replication RPCs.
     ///
     /// This tracks how many log entries are included in each AppendEntries RPC
     /// sent to followers during replication, helping identify replication batch patterns.
+    #[cfg(feature = "runtime-stats")]
     pub replicate_batch: Histogram,
 
     /// Histogram tracking the distribution of RaftMsg counts processed in a batch.
     ///
     /// This tracks how many RaftMsg are processed together before calling
     /// `run_engine_commands()`, helping identify message batching efficiency.
+    #[cfg(feature = "runtime-stats")]
     pub raft_msg_per_run: Histogram,
 
     /// Histogram tracking the distribution of client write entries merged per batch.
     ///
     /// This tracks how many client write entries are merged together in each
     /// `RaftMsg::ClientWrite` after batching, helping identify batching efficiency.
+    #[cfg(feature = "runtime-stats")]
     pub write_batch: Histogram,
 
     /// Histogram tracking the budget for RaftMsg processing.
     ///
     /// This tracks the maximum number of RaftMsg allowed to process in each
     /// `process_raft_msg()` call, helping understand load balancing behavior.
+    #[cfg(feature = "runtime-stats")]
     pub raft_msg_budget: Histogram,
 
     /// Histogram tracking the budget for Notification processing.
     ///
     /// This tracks the maximum number of Notifications allowed to process in each
     /// `process_notification()` call, helping understand load balancing behavior.
+    #[cfg(feature = "runtime-stats")]
     pub notification_budget: Histogram,
 
     /// Histogram tracking RaftMsg budget utilization in permille (0-1000).
     ///
     /// This tracks `processed * 1000 / budget` for each `process_raft_msg()` call,
     /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
+    #[cfg(feature = "runtime-stats")]
     pub raft_msg_usage_permille: Histogram,
 
     /// Histogram tracking Notification budget utilization in permille (0-1000).
     ///
     /// This tracks `processed * 1000 / budget` for each `process_notification()` call,
     /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
+    #[cfg(feature = "runtime-stats")]
     pub notification_usage_permille: Histogram,
 
     /// Count of each command type executed.
@@ -112,6 +132,7 @@ where C: RaftTypeConfig
     /// This tracks how many times each command type has been executed,
     /// useful for understanding workload patterns and debugging.
     /// Indexed by `CommandName::index()`.
+    #[cfg(feature = "runtime-stats")]
     pub command_counts: Vec<u64>,
 
     /// Count of each RaftMsg type received.
@@ -119,6 +140,7 @@ where C: RaftTypeConfig
     /// This tracks how many times each RaftMsg type has been received,
     /// useful for understanding API usage patterns and debugging.
     /// Indexed by `stats::RaftMsgName::index()`.
+    #[cfg(feature = "runtime-stats")]
     pub raft_msg_counts: Vec<u64>,
 
     /// Count of each Notification type received.
@@ -126,6 +148,7 @@ where C: RaftTypeConfig
     /// This tracks how many times each Notification type has been received,
     /// useful for understanding internal message patterns and debugging.
     /// Indexed by `NotificationName::index()`.
+    #[cfg(feature = "runtime-stats")]
     pub notification_counts: Vec<u64>,
 
     /// Count of the times `RaftCore` woke the heartbeat timer's task to re-arm it.
@@ -138,6 +161,7 @@ where C: RaftTypeConfig
     ///
     /// A deadline moved later is stored without a wake. The task reads it when its timer expires
     /// at the stored deadline, and that wake is not counted.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub heartbeat_rearm_wakes: u64,
 
@@ -146,6 +170,7 @@ where C: RaftTypeConfig
     /// The fires of this timer are the `NotificationName::ElectionDeadlineReached` entries of
     /// [`Self::notification_counts`]. See [`Self::heartbeat_rearm_wakes`] for when `RaftCore`
     /// wakes a timer's task.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub election_rearm_wakes: u64,
 
@@ -154,18 +179,22 @@ where C: RaftTypeConfig
     /// The fires of this timer are the `NotificationName::PendingReadDeadlineReached` entries of
     /// [`Self::notification_counts`]. See [`Self::heartbeat_rearm_wakes`] for when `RaftCore`
     /// wakes a timer's task.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub pending_read_rearm_wakes: u64,
 
     /// Count of the `RaftMetrics` sends: one per metrics report, whether or not a field changed.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub metrics_sends: u64,
 
     /// Count of the `RaftDataMetrics` sends: the metrics reports that changed one of its fields.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub data_metrics_sends: u64,
 
     /// Count of the `RaftServerMetrics` sends: the metrics reports that changed one of its fields.
+    #[cfg(feature = "runtime-stats")]
     #[since(version = "0.10.2")]
     pub server_metrics_sends: u64,
 
@@ -175,11 +204,13 @@ where C: RaftTypeConfig
     /// Uses a fixed-capacity ring buffer per stage.
     /// Stage-to-stage gaps reveal where latency accumulates
     /// (channel queueing, storage I/O, replication, state machine apply).
+    #[cfg(feature = "runtime-stats")]
     pub log_stage: LogStages<InstantOf<C>>,
 
     /// Precomputed stage-to-stage duration histograms derived from [`log_stage`](Self::log_stage).
     ///
     /// Rebuilt on demand via [`build_log_stage_histograms()`](Self::build_log_stage_histograms).
+    #[cfg(feature = "runtime-stats")]
     pub log_stage_histograms: LogStageHistograms,
 
     _phantom: PhantomData<C>,
@@ -199,6 +230,7 @@ where C: RaftTypeConfig
     /// Create the statistics of a node whose state machine has applied the logs before
     /// `log_stage_begin`, such as at startup: their stages were not observed, so the log stages
     /// start at that index.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) fn new(config: &Config, log_stage_begin: u64) -> Self {
         Self {
             core_busy_duration: Duration::ZERO,
@@ -225,6 +257,13 @@ where C: RaftTypeConfig
             log_stage_histograms: LogStageHistograms::new(),
             _phantom: PhantomData,
         }
+    }
+
+    /// Create the statistics of a node: without the `runtime-stats` feature, an empty value.
+    #[cfg(not(feature = "runtime-stats"))]
+    pub(crate) fn new(config: &Config, log_stage_begin: u64) -> Self {
+        let _ = (config, log_stage_begin);
+        Self { _phantom: PhantomData }
     }
 
     /// Start one core-loop busy interval.
@@ -267,17 +306,144 @@ where C: RaftTypeConfig
 
     /// Record the execution of a command.
     pub fn record_command(&mut self, name: CommandName) {
-        self.command_counts[name.index()] += 1;
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.command_counts[name.index()] += 1;
+        }
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = name;
     }
 
     /// Record the receipt of a RaftMsg.
     pub fn record_raft_msg(&mut self, name: RaftMsgName) {
-        self.raft_msg_counts[name.index()] += 1;
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.raft_msg_counts[name.index()] += 1;
+        }
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = name;
     }
 
     /// Record the receipt of a Notification.
     pub fn record_notification(&mut self, name: NotificationName) {
-        self.notification_counts[name.index()] += 1;
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.notification_counts[name.index()] += 1;
+        }
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = name;
+    }
+
+    /// Record the budget of one `process_raft_msg()` call.
+    pub(crate) fn record_raft_msg_budget(&mut self, budget: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.raft_msg_budget.record(budget);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = budget;
+    }
+
+    /// Record the number of RaftMsg processed before one run of the engine commands.
+    pub(crate) fn record_raft_msg_per_run(&mut self, processed: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.raft_msg_per_run.record(processed);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = processed;
+    }
+
+    /// Record the RaftMsg budget utilization of one drain, in permille.
+    pub(crate) fn record_raft_msg_usage_permille(&mut self, permille: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.raft_msg_usage_permille.record(permille);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = permille;
+    }
+
+    /// Record the budget of one `process_notification()` call.
+    pub(crate) fn record_notification_budget(&mut self, budget: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.notification_budget.record(budget);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = budget;
+    }
+
+    /// Record the Notification budget utilization of one drain, in permille.
+    pub(crate) fn record_notification_usage_permille(&mut self, permille: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.notification_usage_permille.record(permille);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = permille;
+    }
+
+    /// Record the number of client write entries merged into one write.
+    pub(crate) fn record_write_batch(&mut self, entries: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.write_batch.record(entries);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = entries;
+    }
+
+    /// Record the number of log entries one `apply()` call receives.
+    pub(crate) fn record_apply_batch(&mut self, entries: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.apply_batch.record(entries);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = entries;
+    }
+
+    /// Record the number of log entries one storage append receives.
+    pub(crate) fn record_append_batch(&mut self, entries: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.append_batch.record(entries);
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = entries;
+    }
+
+    /// Count one `RaftMetrics` send.
+    pub(crate) fn count_metrics_send(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.metrics_sends += 1;
+        }
+    }
+
+    /// Count one `RaftDataMetrics` send.
+    pub(crate) fn count_data_metrics_send(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.data_metrics_sends += 1;
+        }
+    }
+
+    /// Count one `RaftServerMetrics` send.
+    pub(crate) fn count_server_metrics_send(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.server_metrics_sends += 1;
+        }
+    }
+
+    /// Count one wake of the heartbeat timer's task to re-arm it.
+    pub(crate) fn count_heartbeat_rearm_wake(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.heartbeat_rearm_wakes += 1;
+        }
+    }
+
+    /// Count one wake of the election timer's task to re-arm it.
+    pub(crate) fn count_election_rearm_wake(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.election_rearm_wakes += 1;
+        }
+    }
+
+    /// Count one wake of the pending-read timer's task to re-arm it.
+    pub(crate) fn count_pending_read_rearm_wake(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.pending_read_rearm_wakes += 1;
+        }
     }
 
     /// Record that the logs before index `right` reached `stage` now.
@@ -358,6 +524,7 @@ where C: RaftTypeConfig
     /// so it can be formatted any number of times, also after the runtime has exited.
     ///
     /// Use builder methods like `.human_readable()` to change the display mode.
+    #[cfg(feature = "runtime-stats")]
     pub fn display(&self) -> RuntimeStatsDisplay<C> {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
@@ -379,5 +546,25 @@ where C: RaftTypeConfig
             log_stage_histograms: self.log_stage_histograms.clone(),
             log_stages: self.log_stage.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Without the `runtime-stats` feature nothing reads the statistics, so they hold no
+    /// histogram, vector or counter, and a node allocates none.
+    #[cfg(not(feature = "runtime-stats"))]
+    #[test]
+    fn test_disabled_stats_hold_nothing() {
+        use super::RuntimeStats;
+        use crate::Config;
+        use crate::engine::testing::UTConfig;
+
+        assert_eq!(0, size_of::<RuntimeStats<UTConfig>>());
+
+        let mut stats = RuntimeStats::<UTConfig>::new(&Config::default(), 0);
+        stats.record_raft_msg_budget(10);
+        stats.count_metrics_send();
+        assert_eq!(RuntimeStats::<UTConfig>::default(), stats);
     }
 }

@@ -397,7 +397,7 @@ where
                 true
             });
             if server_sent {
-                self.runtime_stats.server_metrics_sends += 1;
+                self.runtime_stats.count_server_metrics_send();
             }
             if let Some(r) = &self.metrics_recorder {
                 crate::metrics::forward_metrics(&curr, r.as_ref());
@@ -989,7 +989,7 @@ where
             false
         });
         if data_sent {
-            self.runtime_stats.data_metrics_sends += 1;
+            self.runtime_stats.count_data_metrics_send();
         }
 
         let server_sent = self.metrics.server.send_if_modified(|metrics| {
@@ -1000,11 +1000,11 @@ where
             false
         });
         if server_sent {
-            self.runtime_stats.server_metrics_sends += 1;
+            self.runtime_stats.count_server_metrics_send();
         }
 
         tracing::debug!("report metrics: {}", m);
-        self.runtime_stats.metrics_sends += 1;
+        self.runtime_stats.count_metrics_send();
         let res = self.metrics.all.send(m);
 
         if let Err(err) = res {
@@ -1170,7 +1170,7 @@ where
         let deadline = self.pending_reads.earliest_deadline();
         let update = self.pending_read_deadline_notifier.set_deadline(deadline);
         if update.woke {
-            self.runtime_stats.pending_read_rearm_wakes += 1;
+            self.runtime_stats.count_pending_read_rearm_wake();
         }
     }
 
@@ -1568,7 +1568,7 @@ where
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
-        self.runtime_stats.raft_msg_budget.record(at_most);
+        self.runtime_stats.record_raft_msg_budget(at_most);
 
         let mut processed = 0u64;
         let mut total = 0u64;
@@ -1602,7 +1602,7 @@ where
 
             if index.saturating_sub(last_log_index) >= run_command_threshold {
                 // After handling all the inputs, batch run all the commands for better performance
-                self.runtime_stats.raft_msg_per_run.record(processed);
+                self.runtime_stats.record_raft_msg_per_run(processed);
                 self.run_engine_commands().await?;
 
                 last_log_index = index;
@@ -1611,10 +1611,10 @@ where
         }
 
         // One utilization sample per drain, of every message it processed.
-        self.runtime_stats.raft_msg_usage_permille.record(total * 1000 / at_most);
+        self.runtime_stats.record_raft_msg_usage_permille(total * 1000 / at_most);
 
         // After handling all the inputs, batch run all the commands for better performance
-        self.runtime_stats.raft_msg_per_run.record(processed);
+        self.runtime_stats.record_raft_msg_per_run(processed);
         self.run_engine_commands().await?;
 
         if total == at_most {
@@ -1629,7 +1629,7 @@ where
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
-        self.runtime_stats.notification_budget.record(at_most);
+        self.runtime_stats.record_notification_budget(at_most);
 
         let mut processed = 0u64;
 
@@ -1657,7 +1657,7 @@ where
             self.run_engine_commands().await?;
         }
 
-        self.runtime_stats.notification_usage_permille.record(processed * 1000 / at_most);
+        self.runtime_stats.record_notification_usage_permille(processed * 1000 / at_most);
 
         if processed == at_most {
             tracing::debug!(
@@ -1968,7 +1968,7 @@ where
                         return;
                     }
                 }
-                self.runtime_stats.write_batch.record(payloads.len() as u64);
+                self.runtime_stats.record_write_batch(payloads.len() as u64);
 
                 let precondition = write_option.expected_last_log_id.map(|last_log_id| Precondition::LastLogId {
                     last_log_id: Some(last_log_id),
@@ -2346,7 +2346,7 @@ where
         let wake_at = self.heartbeat_wake_at();
         let update = self.heartbeat_deadline_notifier.set_deadline(wake_at);
         if update.woke {
-            self.runtime_stats.heartbeat_rearm_wakes += 1;
+            self.runtime_stats.count_heartbeat_rearm_wake();
         }
         if update.changed {
             tracing::debug!(
@@ -2380,7 +2380,7 @@ where
         let wake_at = self.election_wake_at();
         let update = self.election_deadline_notifier.set_deadline(wake_at);
         if update.woke {
-            self.runtime_stats.election_rearm_wakes += 1;
+            self.runtime_stats.count_election_rearm_wake();
         }
         if update.changed {
             tracing::debug!("election deadline: {}", wake_at.as_ref().map(|t| t.display()).display());
@@ -2492,7 +2492,7 @@ where
                 // The worker merges queued `Apply` commands, so one result covers one `apply()`
                 // call, which may span several commands.
                 let entry_count = res.end - res.since;
-                self.runtime_stats.apply_batch.record(entry_count);
+                self.runtime_stats.record_apply_batch(entry_count);
                 if let Some(r) = &self.metrics_recorder {
                     r.record_apply_batch(entry_count);
                 }
@@ -2697,7 +2697,7 @@ where
         let entry_count = entries.len() as u64;
 
         // Record to internal histogram
-        self.runtime_stats.append_batch.record(entry_count);
+        self.runtime_stats.record_append_batch(entry_count);
 
         // Record to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
