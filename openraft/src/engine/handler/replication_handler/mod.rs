@@ -72,6 +72,7 @@ where
     pub(crate) leader: &'x mut Leader<C, WriteQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C, SM>,
+    pub(crate) lingering_replications: &'x [StreamId],
 }
 
 impl<'x, C, SM> ReplicationHandler<'x, C, SM>
@@ -84,12 +85,14 @@ where
         leader: &'x mut Leader<C, WriteQuorumSet<C>>,
         state: &'x mut RaftState<C>,
         output: &'x mut EngineOutput<C, SM>,
+        lingering_replications: &'x [StreamId],
     ) -> Self {
         Self {
             config,
             leader,
             state,
             output,
+            lingering_replications,
         }
     }
 
@@ -700,6 +703,6 @@ where
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler::new(self.config, self.state, self.output)
+        LogHandler::new(self.config, self.state, self.output, self.lingering_replications)
     }
 }

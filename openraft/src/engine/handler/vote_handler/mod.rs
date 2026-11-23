@@ -18,6 +18,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::entry::RaftPayload;
 use crate::errors::RejectVote;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
@@ -51,6 +52,7 @@ where
     pub(crate) leader: &'st mut LeaderState<C>,
     pub(crate) candidate: &'st mut CandidateState<C>,
     pub(crate) pre_candidate: &'st mut CandidateState<C>,
+    pub(crate) lingering_replications: &'st [StreamId],
 }
 
 impl<C, SM> VoteHandler<'_, C, SM>
@@ -256,12 +258,24 @@ where
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
-        ReplicationHandler::new(self.config, leader, self.state, self.output)
+        ReplicationHandler::new(
+            self.config,
+            leader,
+            self.state,
+            self.output,
+            self.lingering_replications,
+        )
     }
 
     pub(crate) fn leader_handler(&mut self) -> LeaderHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
-        LeaderHandler::new(self.config, leader, self.state, self.output)
+        LeaderHandler::new(
+            self.config,
+            leader,
+            self.state,
+            self.output,
+            self.lingering_replications,
+        )
     }
 }

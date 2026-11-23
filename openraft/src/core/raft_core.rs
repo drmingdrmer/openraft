@@ -2279,6 +2279,11 @@ where
                 }
             }
 
+            Notification::ReplicationStopped { stream_id, target } => {
+                tracing::debug!("the closed replication stream {} to {} stopped", stream_id, target);
+                self.engine.remove_lingering_replication(stream_id);
+            }
+
             Notification::HeartbeatProgress {
                 stream_id,
                 sending_time,
@@ -2617,7 +2622,12 @@ where
         (ctx, cancel_tx)
     }
 
-    fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+    /// Close the replication stream `s` to `target`.
+    ///
+    /// The task stops at its next cancellation check, after the log read it may be running. The
+    /// engine purges no log until the task has stopped, which the task's join reports with
+    /// [`Notification::ReplicationStopped`].
+    fn close_replication(&mut self, target: &C::NodeId, mut s: ReplicationHandle<C>) {
         let Some(handle) = s.join_handle.take() else {
             return;
         };
@@ -2627,12 +2637,18 @@ where
         drop(s.cancel_tx);
         drop(s.backoff_reset_tx);
 
+        let stream_id = s.stream_id;
+        self.engine.add_lingering_replication(stream_id);
+
         let target = target.clone();
+        let tx_notify = self.notifications.sender();
         #[allow(clippy::let_underscore_future)]
         let _ = C::spawn(async move {
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;
             tracing::info!("done joining removed replication: {}", target);
+            let stopped = Notification::ReplicationStopped { stream_id, target };
+            tx_notify.send(stopped).await.ok();
         });
     }
 
@@ -2831,7 +2847,7 @@ where
 
         let left = std::mem::take(&mut self.replications);
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 
@@ -2882,7 +2898,7 @@ where
                         "the node of target {} changed without a new stream id",
                         prog.target
                     );
-                    Self::close_replication(&prog.target, removed);
+                    self.close_replication(&prog.target, removed);
                     None
                 }
                 None => None,
@@ -2902,7 +2918,7 @@ where
         let left = std::mem::replace(&mut self.replications, new_replications);
 
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 

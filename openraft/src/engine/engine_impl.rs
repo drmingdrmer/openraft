@@ -32,6 +32,7 @@ use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
 use crate::membership::RaftMembershipExt;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Candidate;
 use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
@@ -109,6 +110,18 @@ where
     /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote) is set.
     pub(crate) pre_candidate: CandidateState<C>,
 
+    /// The lingering replications: the replication streams that `RaftCore` closed and whose tasks
+    /// have not stopped yet, so they may still read the log.
+    ///
+    /// A closed task finishes the read it is running before it stops. No log is purged while this
+    /// list is not empty, and a stream leaves it once its task has stopped, see
+    /// [`Notification::ReplicationStopped`], so that a task never reads a log that the purge
+    /// removed. The list is not part of the leader's state: a node that stops leading closes all
+    /// its streams, and their tasks must stop before it purges as a follower.
+    ///
+    /// [`Notification::ReplicationStopped`]: crate::core::notification::Notification::ReplicationStopped
+    pub(crate) lingering_replications: Vec<StreamId>,
+
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C, SM>,
 }
@@ -126,6 +139,7 @@ where
             leader: None,
             candidate: None,
             pre_candidate: None,
+            lingering_replications: Vec::new(),
             output: EngineOutput::default(),
         }
     }
@@ -827,6 +841,20 @@ where
         self.try_purge_log();
     }
 
+    /// Record the closed replication stream `stream_id` as lingering: its task has not stopped yet
+    /// and may still read the log, so no log is purged until
+    /// [`Self::remove_lingering_replication()`] removes it.
+    pub(crate) fn add_lingering_replication(&mut self, stream_id: StreamId) {
+        self.lingering_replications.push(stream_id);
+    }
+
+    /// Remove `stream_id` from the lingering replications, once its task has stopped and reads the
+    /// log no more, and retry a purge that waited for it.
+    pub(crate) fn remove_lingering_replication(&mut self, stream_id: StreamId) {
+        self.lingering_replications.retain(|id| *id != stream_id);
+        self.try_purge_log();
+    }
+
     /// Try to purge logs up to the expected position.
     ///
     /// If the node is a leader, it will only purge logs when no replication tasks are using them.
@@ -1230,11 +1258,17 @@ where
             leader: &mut self.leader,
             candidate: &mut self.candidate,
             pre_candidate: &mut self.pre_candidate,
+            lingering_replications: &self.lingering_replications,
         }
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler::new(&mut self.config, &mut self.state, &mut self.output)
+        LogHandler::new(
+            &mut self.config,
+            &mut self.state,
+            &mut self.output,
+            &self.lingering_replications,
+        )
     }
 
     pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
@@ -1262,6 +1296,7 @@ where
             leader,
             &mut self.state,
             &mut self.output,
+            &self.lingering_replications,
         ))
     }
 
@@ -1269,7 +1304,13 @@ where
     pub(crate) fn try_replication_handler(&mut self) -> Option<ReplicationHandler<'_, C, SM>> {
         let leader = self.leader.as_mut()?;
 
-        let rh = ReplicationHandler::new(&mut self.config, leader, &mut self.state, &mut self.output);
+        let rh = ReplicationHandler::new(
+            &mut self.config,
+            leader,
+            &mut self.state,
+            &mut self.output,
+            &self.lingering_replications,
+        );
 
         Some(rh)
     }
@@ -1282,7 +1323,13 @@ where
             Some(x) => x,
         };
 
-        ReplicationHandler::new(&mut self.config, leader, &mut self.state, &mut self.output)
+        ReplicationHandler::new(
+            &mut self.config,
+            leader,
+            &mut self.state,
+            &mut self.output,
+            &self.lingering_replications,
+        )
     }
 
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<'_, C, SM> {
@@ -1300,6 +1347,7 @@ where
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
+            lingering_replications: &self.lingering_replications,
         }
     }
 

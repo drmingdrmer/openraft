@@ -1,4 +1,5 @@
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 
 use crate::LogIdOptionExt;
 use crate::RaftState;
@@ -7,6 +8,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::LogStateReader;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
@@ -25,6 +27,12 @@ where
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C, SM>,
+
+    /// The engine's lingering replications, see [`Engine::lingering_replications`]: no log is
+    /// purged while one lingers.
+    ///
+    /// [`Engine::lingering_replications`]: crate::engine::Engine::lingering_replications
+    pub(crate) lingering_replications: &'x [StreamId],
 }
 
 impl<'x, C, SM> LogHandler<'x, C, SM>
@@ -36,8 +44,14 @@ where
         config: &'x mut EngineConfig<C>,
         state: &'x mut RaftState<C>,
         output: &'x mut EngineOutput<C, SM>,
+        lingering_replications: &'x [StreamId],
     ) -> Self {
-        Self { config, state, output }
+        Self {
+            config,
+            state,
+            output,
+            lingering_replications,
+        }
     }
 
     /// Purge log entries up to `RaftState.purge_upto()`, inclusive.
@@ -53,6 +67,16 @@ where
         );
 
         if purge_upto <= st.last_purged_log_id() {
+            return;
+        }
+
+        // The task of a lingering replication may still be reading the log: purge once none
+        // lingers, when `Engine::remove_lingering_replication()` retries.
+        if !self.lingering_replications.is_empty() {
+            tracing::info!(
+                "postpone the purge: the lingering replications {} may still read the log",
+                self.lingering_replications.display()
+            );
             return;
         }
 

@@ -19,6 +19,7 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::progress::stream_id::StreamId;
 use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
@@ -58,6 +59,7 @@ where
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C, SM>,
+    pub(crate) lingering_replications: &'x [StreamId],
 }
 
 impl<C, SM> FollowingHandler<'_, C, SM>
@@ -378,7 +380,7 @@ where
     }
 
     fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler::new(self.config, self.state, self.output)
+        LogHandler::new(self.config, self.state, self.output, self.lingering_replications)
     }
 
     fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {

@@ -7,6 +7,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::quorum_loss_probe::QuorumLossProbe;
 use crate::entry::RaftEntry;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
 use crate::raft::linearizable_read::Linearizer;
@@ -44,6 +45,7 @@ where
     pub(crate) leader: &'x mut Leader<C, WriteQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C, SM>,
+    pub(crate) lingering_replications: &'x [StreamId],
 }
 
 impl<'x, C, SM> LeaderHandler<'x, C, SM>
@@ -56,12 +58,14 @@ where
         leader: &'x mut Leader<C, WriteQuorumSet<C>>,
         state: &'x mut RaftState<C>,
         output: &'x mut EngineOutput<C, SM>,
+        lingering_replications: &'x [StreamId],
     ) -> Self {
         Self {
             config,
             leader,
             state,
             output,
+            lingering_replications,
         }
     }
 
@@ -224,6 +228,12 @@ where
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
-        ReplicationHandler::new(self.config, self.leader, self.state, self.output)
+        ReplicationHandler::new(
+            self.config,
+            self.leader,
+            self.state,
+            self.output,
+            self.lingering_replications,
+        )
     }
 }
