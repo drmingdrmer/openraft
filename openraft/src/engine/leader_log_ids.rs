@@ -87,12 +87,18 @@ where CLID: RaftCommittedLeaderId
     }
 
     /// Returns the number of log IDs in the range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the count does not fit in `usize`: for `[0, u64::MAX]`, or on a 32-bit target for
+    /// a range of more than `u32::MAX` log IDs.
     #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         if self.first > self.last {
             0
         } else {
-            (self.last - self.first + 1) as usize
+            let len = (self.last - self.first).checked_add(1).and_then(|n| usize::try_from(n).ok());
+            len.unwrap_or_else(|| panic!("the number of log ids in {} does not fit in usize", self))
         }
     }
 }
@@ -103,12 +109,14 @@ where CLID: RaftCommittedLeaderId
     type Item = LogId<CLID>;
     type IntoIter = LeaderLogIdsIter<CLID>;
 
+    /// # Panics
+    ///
+    /// Panics if the last index is `u64::MAX`, which has no successor to end the half-open
+    /// iterator range `[first, last + 1)`.
     fn into_iter(self) -> Self::IntoIter {
-        LeaderLogIdsIter::new(
-            self.committed_leader_id,
-            self.first,
-            self.last + 1, // half-open: [start, end)
-        )
+        let end = self.last.checked_add(1);
+        let end = end.unwrap_or_else(|| panic!("{} can not be iterated: its last index has no successor", self));
+        LeaderLogIdsIter::new(self.committed_leader_id, self.first, end)
     }
 }
 
