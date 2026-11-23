@@ -311,6 +311,20 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Discard the recorded log stages of the logs from index `since` on, which a truncation
+    /// removed from the log.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
+    pub(crate) fn truncate_log_stages(&mut self, since: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.log_stage.truncate(since);
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = since;
+        }
+    }
+
     /// Compute `log_stage_histograms` from the recorded log stages.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
