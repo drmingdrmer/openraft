@@ -1,4 +1,7 @@
+use std::fmt;
+use std::fmt::Write;
 use std::time::Duration;
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use super::DisplayUtc;
@@ -8,14 +11,72 @@ use crate::display_ext::DisplayInstantExt;
 use crate::engine::testing::UTConfig;
 use crate::type_config::TypeConfigExt;
 
-/// Check the result by a human.
+/// A past, the current and a future instant show the wall-clock time they stand for.
+///
+/// That time lies between the wall-clock times read before and after formatting, moved by the
+/// instant's offset from the runtime clock. The bounds allow for the time between the clock reads
+/// and for one second of clock adjustment; each offset is far larger, so a display that ignored
+/// or reversed it would fall outside them.
 #[test]
-fn test_display_instant() -> anyhow::Result<()> {
+fn test_display_instant_wall_clock() {
+    let allowance = Duration::from_secs(1);
+
+    // The offset of the instant from the runtime clock, and whether it lies in the future.
+    let cases = [
+        (Duration::from_secs(60), false),
+        (Duration::ZERO, false),
+        (Duration::from_secs(86_400), true),
+    ];
+
+    for (offset, future) in cases {
+        let before = SystemTime::now();
+        let base = UTConfig::<()>::now();
+        let instant = if future { base + offset } else { base - offset };
+        let full = instant.display().full().to_string();
+        let elapsed = UTConfig::<()>::now() - base;
+        let after = SystemTime::now();
+
+        let shift = |t: SystemTime| if future { t + offset } else { t - offset };
+        // The full format has a fixed width, so its text sorts as the time it shows.
+        let lo = DisplayUtc::<false>(shift(before) - elapsed - allowance).to_string();
+        let hi = DisplayUtc::<false>(shift(after) + allowance).to_string();
+        assert!(
+            lo <= full && full <= hi,
+            "offset {offset:?}, future: {future}: {full} is not in [{lo}, {hi}]"
+        );
+    }
+}
+
+/// `display()` starts in the simple format, and `full()` and `simple()` select a format whatever
+/// was selected before.
+#[test]
+fn test_display_instant_format_builders() {
+    let shape = |s: String| s.chars().map(|c| if c.is_ascii_digit() { '9' } else { c }).collect::<String>();
+    let full = "9999-99-99T99:99:99.999999Z";
+    let simple = "99:99:99.999999";
+
     let now = UTConfig::<()>::now();
-    println!("now: {}", now.display());
-    println!("now: {}", now.display().full());
-    println!("now: {}", now.display().full().simple());
-    Ok(())
+    assert_eq!(simple, shape(now.display().to_string()));
+    assert_eq!(full, shape(now.display().full().to_string()));
+    assert_eq!(simple, shape(now.display().simple().to_string()));
+    assert_eq!(simple, shape(now.display().full().simple().to_string()));
+    assert_eq!(full, shape(now.display().simple().full().to_string()));
+}
+
+/// An error of the writer is returned, in both formats.
+#[test]
+fn test_display_instant_writer_error() {
+    struct Reject;
+
+    impl Write for Reject {
+        fn write_str(&mut self, _: &str) -> fmt::Result {
+            Err(fmt::Error)
+        }
+    }
+
+    let now = UTConfig::<()>::now();
+    assert_eq!(Err(fmt::Error), write!(Reject, "{}", now.display()));
+    assert_eq!(Err(fmt::Error), write!(Reject, "{}", now.display().full()));
 }
 
 #[test]
