@@ -1,4 +1,5 @@
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 
 use crate::LogIdOptionExt;
 use crate::RaftState;
@@ -53,6 +54,16 @@ where
         );
 
         if purge_upto <= st.last_purged_log_id() {
+            return;
+        }
+
+        // A task of a closed replication stream may still be reading the log: purge once all of
+        // them have stopped, when `Engine::on_replication_stopped()` retries.
+        if !st.stopping_streams.is_empty() {
+            tracing::info!(
+                "postpone the purge: the closed replication streams {} may still read the log",
+                st.stopping_streams.display()
+            );
             return;
         }
 

@@ -32,6 +32,7 @@ use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
 use crate::membership::RaftMembershipExt;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Candidate;
 use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
@@ -824,6 +825,20 @@ where
         }
 
         self.log_handler().schedule_policy_based_purge();
+        self.try_purge_log();
+    }
+
+    /// Record that `RaftCore` closed the replication stream `stream_id`, whose task may still read
+    /// the log: no log is purged until the task has stopped, see
+    /// [`Self::on_replication_stopped()`].
+    pub(crate) fn on_replication_closed(&mut self, stream_id: StreamId) {
+        self.state.stopping_streams.push(stream_id);
+    }
+
+    /// The task of the closed replication stream `stream_id` has stopped and reads the log no
+    /// more: retry a purge that waited for it.
+    pub(crate) fn on_replication_stopped(&mut self, stream_id: StreamId) {
+        self.state.stopping_streams.retain(|id| *id != stream_id);
         self.try_purge_log();
     }
 
