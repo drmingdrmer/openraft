@@ -41,6 +41,7 @@ use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::membership::RaftMembershipExt;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
 use crate::raft_state::io_state::io_progress::IOProgress;
@@ -91,6 +92,18 @@ where C: RaftTypeConfig
     pub(crate) purge_upto: Option<LogIdOf<C>>,
 
     pub(crate) progress_id_gen: SharedIdGenerator,
+
+    /// The purge blockers: the replication streams that `RaftCore` closed and whose tasks may still
+    /// read the log.
+    ///
+    /// A closed task finishes the read it is running before it stops. No log is purged while this
+    /// list is not empty, and a stream leaves it once its task has stopped, see
+    /// [`Notification::ReplicationStopped`], so that a task never reads a log that the purge
+    /// removed. The field is not part of the leader's state: a node that stops leading closes all
+    /// its streams, and their tasks must stop before it purges as a follower.
+    ///
+    /// [`Notification::ReplicationStopped`]: crate::core::notification::Notification::ReplicationStopped
+    pub(crate) purge_blockers: Vec<StreamId>,
 }
 
 /// This impl is only for testing, require in the test NodeId has default value.
@@ -189,6 +202,7 @@ where C: RaftTypeConfig
             io_state: Valid::new(IOState::default()),
             purge_upto: None,
             progress_id_gen: Default::default(),
+            purge_blockers: Vec::new(),
         }
     }
 
