@@ -1280,7 +1280,7 @@ where
     }
     pub(crate) fn establish_handler(&mut self) -> EstablishHandler<'_, C> {
         EstablishHandler {
-            config: &mut self.config,
+            node_id: &self.config.id,
             leader: &mut self.leader,
         }
     }
