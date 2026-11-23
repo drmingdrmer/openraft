@@ -2479,6 +2479,11 @@ where
 
                 let st = self.engine.state.io_state_mut();
                 if let Some(last) = &meta.last_log_id {
+                    // This node applied none of the logs that the snapshot covers past its applied
+                    // ones, so the stages a later record gives them would describe other logs.
+                    let applied_end = st.apply_progress.flushed().cloned().next_index();
+                    self.runtime_stats.exclude_log_stages(applied_end..last.index() + 1);
+
                     st.apply_progress.try_flush(last.clone());
                     st.snapshot.try_flush(last.clone());
                 }

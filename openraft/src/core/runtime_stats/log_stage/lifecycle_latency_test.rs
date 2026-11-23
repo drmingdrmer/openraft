@@ -409,3 +409,72 @@ fn test_truncate_after_the_recorded_logs() {
     latency.truncate(5);
     assert_eq!(before, latency);
 }
+
+/// Excluding the logs an installed snapshot covers keeps the observed prefix before them and the
+/// suffix queued after them, and drops the segment in between.
+#[test]
+fn test_exclude_keeps_the_observed_prefix_and_the_queued_suffix() {
+    let base = C::now();
+    let mut latency = LS::new(10, 0);
+    let t1 = [0, 1, 2, 3, 4, 5].map(|i| instant_at(base, i));
+    record_all(&mut latency, 5, t1);
+
+    // The suffix after the snapshot is submitted and persisted before the snapshot result arrives.
+    let queued = [10, 11].map(|i| instant_at(base, i));
+    latency.submitted(24, queued[0]);
+    latency.persisted(24, queued[1]);
+
+    latency.exclude(5..21);
+
+    let done = [20, 21].map(|i| instant_at(base, i));
+    latency.committed(24, done[0]);
+    latency.applied(24, done[1]);
+
+    let suffix = [queued[0], queued[0], queued[0], queued[1], done[0], done[1]];
+    assert_eq!(vec![(0..5, t1), (21..24, suffix)], segments_of(&latency));
+    assert_eq!(5 + 3, latency.compute_histograms().proposed_to_applied.total());
+}
+
+/// A node that installs a snapshot before it observes any log starts the observation after the
+/// snapshot: an excluded range at the observation start moves the start to its end.
+#[test]
+fn test_exclude_at_the_start_moves_the_start() {
+    let base = C::now();
+    let mut latency = LS::new(10, 0);
+    latency.exclude(0..7);
+
+    let t = [0, 1, 2, 3, 4, 5].map(|i| instant_at(base, i));
+    record_all(&mut latency, 8, t);
+
+    assert_eq!(vec![(7..8, t)], segments_of(&latency));
+    assert_eq!(1, latency.compute_histograms().proposed_to_applied.total());
+}
+
+/// Overlapping exclusions merge, and when they outnumber the stage capacity, the history before the
+/// oldest one is forgotten.
+#[test]
+fn test_exclude_merges_and_stays_bounded() {
+    let base = C::now();
+    let mut latency = LS::new(2, 0);
+    let t1 = [0, 1, 2, 3, 4, 5].map(|i| instant_at(base, i));
+    record_all(&mut latency, 1, t1);
+
+    latency.exclude(2..4);
+    latency.exclude(3..6);
+    latency.exclude(7..8);
+
+    let t2 = [10, 11, 12, 13, 14, 15].map(|i| instant_at(base, i));
+    record_all(&mut latency, 9, t2);
+    assert_eq!(
+        vec![(0..1, t1), (1..2, t2), (6..7, t2), (8..9, t2)],
+        segments_of(&latency),
+        "2..4 and 3..6 merge"
+    );
+
+    latency.exclude(10..11);
+    assert_eq!(
+        vec![(6..7, t2), (8..9, t2)],
+        segments_of(&latency),
+        "a third range forgets the history before 2..6"
+    );
+}

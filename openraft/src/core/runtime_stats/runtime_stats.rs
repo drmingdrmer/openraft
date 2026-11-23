@@ -189,15 +189,17 @@ impl<C> Default for RuntimeStats<C>
 where C: RaftTypeConfig
 {
     fn default() -> Self {
-        Self::new(&Config::default())
+        Self::new(&Config::default(), 0)
     }
 }
 
 impl<C> RuntimeStats<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(config: &Config) -> Self {
-        let _ = config;
+    /// Create the statistics of a node whose state machine has applied the logs before
+    /// `log_stage_begin`, such as at startup: their stages were not observed, so the log stages
+    /// start at that index.
+    pub(crate) fn new(config: &Config, log_stage_begin: u64) -> Self {
         Self {
             core_busy_duration: Duration::ZERO,
             core_busy_histogram: Histogram::<()>::new(),
@@ -219,7 +221,7 @@ where C: RaftTypeConfig
             metrics_sends: 0,
             data_metrics_sends: 0,
             server_metrics_sends: 0,
-            log_stage: LogStages::new(config.log_stage_capacity(), 0),
+            log_stage: LogStages::new(config.log_stage_capacity(), log_stage_begin),
             log_stage_histograms: LogStageHistograms::new(),
             _phantom: PhantomData,
         }
@@ -322,6 +324,20 @@ where C: RaftTypeConfig
         #[cfg(not(feature = "runtime-stats"))]
         {
             let _ = since;
+        }
+    }
+
+    /// Exclude the logs in `range` from the log stages, such as the logs an installed snapshot
+    /// covers beyond the applied ones: their stages were not observed.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
+    pub(crate) fn exclude_log_stages(&mut self, range: std::ops::Range<u64>) {
+        #[cfg(feature = "runtime-stats")]
+        self.log_stage.exclude(range);
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = range;
         }
     }
 

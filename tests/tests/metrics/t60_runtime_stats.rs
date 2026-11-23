@@ -524,3 +524,168 @@ async fn runtime_stats_late_flush_of_discarded_logs_records_nothing() -> Result<
     n1.shutdown().await?;
     Ok(())
 }
+
+/// The log-stage segment ranges.
+fn log_stage_ranges(stats: &RuntimeStats<TypeConfig>) -> Vec<std::ops::Range<u64>> {
+    stats.log_stage.segments().map(|seg| seg.range).collect()
+}
+
+/// A restarted node observes only the logs after the ones its state machine already applied: the
+/// new leader's blank log is the one segment, with one sample in each histogram.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_restart_observes_only_the_logs_after_the_applied_ones() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        snapshot_policy: SnapshotPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0], []).await?;
+
+    tracing::info!(
+        log_index,
+        "--- apply 5 writes, then restart node 0 with the same stores"
+    );
+    {
+        let written = router.client_request_many(0, "before", 5).await?;
+        log_index += written.count;
+        router.wait(&0).applied_index(Some(log_index), "the writes are applied").await?;
+
+        let node = router.stop_node(0).await?;
+        router.new_raft_node_with_sto(0, node.log_store, node.state_machine).await?;
+        log_index += 1;
+        router.wait(&0).applied_index(Some(log_index), "the new leader's blank log is applied").await?;
+    }
+
+    tracing::info!(log_index, "--- only the blank log is observed");
+    {
+        let stats = router.get_raft_handle(&0)?.runtime_stats().await?;
+        assert_eq!(
+            vec![log_index..log_index + 1],
+            log_stage_ranges(&stats),
+            "segments: {}",
+            stats.log_stage
+        );
+        assert_eq!([1; 6], log_stage_totals(&stats));
+    }
+
+    Ok(())
+}
+
+/// A node that starts with an empty state machine re-applies the committed logs before its core
+/// runs, and does not count them. The logs stored after them, which it commits after starting,
+/// are observed together with the new leader's blank log.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_startup_replay_is_not_observed_but_a_later_suffix_is() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        snapshot_policy: SnapshotPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0], []).await?;
+
+    tracing::info!(log_index, "--- apply 5 writes and stop node 0");
+    let mut log_store = {
+        let written = router.client_request_many(0, "before", 5).await?;
+        log_index += written.count;
+        router.wait(&0).applied_index(Some(log_index), "the writes are applied").await?;
+        router.stop_node(0).await?.log_store
+    };
+    let applied_end = log_index + 1;
+
+    tracing::info!(
+        log_index,
+        "--- store 2 uncommitted logs, then restart with an empty state machine"
+    );
+    {
+        let suffix = (applied_end..applied_end + 2).map(|index| blank_ent::<TypeConfig>(1, 0, index));
+        log_store.append(suffix.collect::<Vec<_>>(), IOFlushed::noop()).await?;
+        log_index += 2;
+
+        let (_, state_machine) = openraft_memstore::new_mem_store();
+        router.new_raft_node_with_sto(0, log_store, state_machine).await?;
+        log_index += 1;
+        router.wait(&0).applied_index(Some(log_index), "the suffix and the blank log are applied").await?;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- the re-applied logs are not observed; the suffix and the blank log are"
+    );
+    {
+        let stats = router.get_raft_handle(&0)?.runtime_stats().await?;
+        assert_eq!(
+            vec![applied_end..log_index + 1],
+            log_stage_ranges(&stats),
+            "segments: {}",
+            stats.log_stage
+        );
+        assert_eq!([3; 6], log_stage_totals(&stats));
+    }
+
+    Ok(())
+}
+
+/// A follower that installs a snapshot does not observe the logs the snapshot covers: the log it
+/// appends after the snapshot is the one segment.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_logs_covered_by_an_installed_snapshot_are_not_observed() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        snapshot_policy: SnapshotPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!(log_index, "--- apply 5 writes on node 0 and build a snapshot of them");
+    let snapshot = {
+        let written = router.client_request_many(0, "snapshot", 5).await?;
+        log_index += written.count;
+        n0.trigger().snapshot().await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "the snapshot is built").await?;
+        n0.get_snapshot().await?.expect("node 0 has a snapshot")
+    };
+
+    tracing::info!(
+        log_index,
+        "--- an empty node 1 installs the snapshot, then appends the next log"
+    );
+    let n1 = {
+        router.new_raft_node(1).await?;
+        let n1 = router.get_raft_handle(&1)?;
+        n1.install_full_snapshot(Vote::new_committed(1, 0), snapshot).await?;
+
+        let prev = Some(log_id(1, 0, log_index));
+        let reply = n1.append_entries(append_request(1, prev, log_index + 1..log_index + 2, true)).await?;
+        log_index += 1;
+        assert_eq!(Ok(Some(log_id(1, 0, log_index))), reply);
+        router.wait(&1).applied_index(Some(log_index), "the log after the snapshot is applied").await?;
+        n1
+    };
+
+    tracing::info!(log_index, "--- only the log after the snapshot is observed");
+    {
+        let stats = n1.runtime_stats().await?;
+        assert_eq!(
+            vec![log_index..log_index + 1],
+            log_stage_ranges(&stats),
+            "segments: {}",
+            stats.log_stage
+        );
+        assert_eq!([1; 6], log_stage_totals(&stats));
+    }
+
+    Ok(())
+}
