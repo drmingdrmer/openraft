@@ -153,8 +153,7 @@ where
             return false;
         }
 
-        let membership_log_id = self.state.membership_state.effective().log_id();
-        let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
+        let session_id = self.replication_session_id();
 
         self.output.push_command(Command::BroadcastHeartbeat {
             session_id,
@@ -216,8 +215,8 @@ where
         });
     }
 
-    /// Return a replication session id
-    #[allow(dead_code)]
+    /// Return the ID of this leader's replication session: its committed vote and the log ID of
+    /// the effective membership.
     pub(crate) fn replication_session_id(&self) -> ReplicationSessionId<C> {
         let committed_vote = self.leader.committed_vote.clone();
         let membership_log_id = self.state.membership_state.effective().log_id();
