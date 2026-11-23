@@ -96,6 +96,8 @@ where
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
+        let old_membership = self.state.membership_state.effective().clone();
+
         self.state
             .membership_state
             .append(StoredMembershipOf::<C>::new_arc(Some(log_id.clone()), m.clone()));
@@ -106,8 +108,43 @@ where
         // committed.
 
         self.rebuild_progresses();
+        self.renew_streams_of_changed_nodes(&old_membership);
         self.rebuild_replication_streams(false);
         self.initiate_replication();
+    }
+
+    /// Give a new replication stream to each target whose node metadata differs from `old`.
+    ///
+    /// A network client may capture the metadata it was created from, such as an address, so
+    /// `RaftCore` replaces the stream of such a target instead of reusing it, see
+    /// [`Command::RebuildReplicationStreams`]. The replaced stream never answers the target's
+    /// inflight request, so the request is dropped, and [`Self::initiate_replication`] sends the
+    /// next one through the new stream. The new stream id makes a late response from the replaced
+    /// stream stale. The matching log id stays, because the target is the same node.
+    fn renew_streams_of_changed_nodes(&mut self, old: &StoredMembershipOf<C>) {
+        let new = self.state.membership_state.effective().clone();
+        let id_gen = self.state.progress_id_gen.clone();
+
+        for item in self.leader.progress.iter_mut_without_reorder() {
+            if item.id == self.config.id {
+                continue;
+            }
+            let (Some(old_node), Some(new_node)) = (old.get_node(&item.id), new.get_node(&item.id)) else {
+                continue;
+            };
+            if old_node == new_node {
+                continue;
+            }
+
+            tracing::info!(
+                "node metadata of target {} changed from {:?} to {:?}: replace its replication stream",
+                item.id,
+                old_node,
+                new_node
+            );
+            item.data.inflight = Inflight::None;
+            item.data.stream_id = StreamId::new(id_gen.next_id());
+        }
     }
 
     /// Rebuild leader's replication progress to reflect replication changes.
