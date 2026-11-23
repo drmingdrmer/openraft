@@ -248,6 +248,7 @@ where
             io_state: Valid::new(io_state),
             purge_upto: last_purged_log_id,
             progress_id_gen: SharedIdGenerator::new(),
+            lingering_replications: Vec::new(),
         })
     }
 

@@ -1,4 +1,5 @@
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 
 use crate::LogIdOptionExt;
 use crate::RaftState;
@@ -53,6 +54,16 @@ where
         );
 
         if purge_upto <= st.last_purged_log_id() {
+            return;
+        }
+
+        // The task of a lingering replication may still be reading the log: purge once none
+        // lingers, when `Engine::remove_lingering_replication()` retries.
+        if !st.lingering_replications.is_empty() {
+            tracing::info!(
+                "postpone the purge: the lingering replications {} may still read the log",
+                st.lingering_replications.display()
+            );
             return;
         }
 

@@ -32,6 +32,7 @@ use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
 use crate::membership::RaftMembershipExt;
+use crate::progress::stream_id::StreamId;
 use crate::proposer::Candidate;
 use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
@@ -824,6 +825,20 @@ where
         }
 
         self.log_handler().schedule_policy_based_purge();
+        self.try_purge_log();
+    }
+
+    /// Record the closed replication stream `stream_id` as lingering: its task has not stopped yet
+    /// and may still read the log, so no log is purged until
+    /// [`Self::remove_lingering_replication()`] removes it.
+    pub(crate) fn add_lingering_replication(&mut self, stream_id: StreamId) {
+        self.state.lingering_replications.push(stream_id);
+    }
+
+    /// Remove `stream_id` from the lingering replications, once its task has stopped and reads the
+    /// log no more, and retry a purge that waited for it.
+    pub(crate) fn remove_lingering_replication(&mut self, stream_id: StreamId) {
+        self.state.lingering_replications.retain(|id| *id != stream_id);
         self.try_purge_log();
     }
 

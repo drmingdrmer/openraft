@@ -3,6 +3,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::progress::stream_id::StreamId;
 use crate::raft_state::LogStateReader;
 
 fn eng() -> Engine<UTConfig> {
@@ -273,6 +274,43 @@ fn test_schedule_policy_based_purge() -> anyhow::Result<()> {
         vec![Command::PurgeLog { upto: log_id(2, 1, 4) }],
         lh.output.take_commands()
     );
+
+    Ok(())
+}
+
+/// While a closed replication stream may still read the log, a purge is postponed: it runs once
+/// the last such stream has stopped.
+#[test]
+fn test_purge_log_waits_for_lingering_replications() -> anyhow::Result<()> {
+    // Setup: purged at 2, leader 2 at 3-4, leader 4 at 5-6
+    let mut eng = eng();
+    eng.add_lingering_replication(StreamId::new(7));
+    eng.add_lingering_replication(StreamId::new(8));
+    eng.state.purge_upto = Some(log_id(2, 1, 3));
+
+    tracing::info!("--- the closed streams may still read: nothing is purged");
+    {
+        eng.log_handler().purge_log();
+        assert_eq!(Some(&log_id(2, 1, 2)), eng.state.last_purged_log_id());
+        assert_eq!(0, eng.output.take_commands().len());
+    }
+
+    tracing::info!("--- one stream stops: the other may still read");
+    {
+        eng.remove_lingering_replication(StreamId::new(7));
+        assert_eq!(Some(&log_id(2, 1, 2)), eng.state.last_purged_log_id());
+        assert_eq!(0, eng.output.take_commands().len());
+    }
+
+    tracing::info!("--- the last stream stops: the postponed purge runs");
+    {
+        eng.remove_lingering_replication(StreamId::new(8));
+        assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_purged_log_id());
+        assert_eq!(
+            vec![Command::PurgeLog { upto: log_id(2, 1, 3) }],
+            eng.output.take_commands()
+        );
+    }
 
     Ok(())
 }
