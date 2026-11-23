@@ -2951,11 +2951,9 @@ where
                 Select3::First(Ok(())) => {}
                 Select3::First(Err(_)) | Select3::Third(None) => return Err(Fatal::Stopped),
                 Select3::Second(Ok(())) => return Ok(()),
-                Select3::Second(Err(_)) => {
-                    let source = C::err_from_string("cannot send to sm::Worker");
-                    let error = StorageError::write_state_machine(source);
-                    return Err(Fatal::StorageError(error));
-                }
+                // The worker dropped its command receiver: it stopped, without an error that
+                // `RaftCore` received.
+                Select3::Second(Err(_)) => return Err(Fatal::StateMachineWorkerStopped),
                 Select3::Third(Some(notify)) => self.handle_notification(notify)?,
             }
         }
