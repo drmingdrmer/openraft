@@ -120,3 +120,51 @@ fn test_clone() {
     let ids2: Vec<_> = iter2.collect();
     assert_eq!(ids1, ids2);
 }
+
+/// A range at the top of the index space keeps its full log IDs and its exact length from both
+/// ends; equal and reversed bounds there are empty.
+#[test]
+fn test_range_at_u64_max() {
+    let clid = committed_leader_id(1, 1);
+
+    let mut iter = LeaderLogIdsIter::<UtClid>::new(clid, u64::MAX - 3, u64::MAX);
+    assert_eq!(3, ExactSizeIterator::len(&iter));
+    assert_eq!(Some(log_id(1, 1, u64::MAX - 3)), iter.next());
+    assert_eq!(Some(log_id(1, 1, u64::MAX - 1)), iter.next_back());
+    assert_eq!(1, ExactSizeIterator::len(&iter));
+    assert_eq!(Some(log_id(1, 1, u64::MAX - 2)), iter.next_back());
+    assert_eq!(0, ExactSizeIterator::len(&iter));
+    assert_eq!(None, iter.next());
+    assert_eq!(None, iter.next_back());
+
+    for (start, end) in [(u64::MAX, u64::MAX), (u64::MAX, 0), (u64::MAX - 1, 5)] {
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(clid, start, end);
+        assert_eq!((0, Some(0)), Iterator::size_hint(&iter), "[{start}, {end})");
+        assert_eq!(None, iter.next());
+        assert_eq!(None, iter.next_back());
+    }
+}
+
+/// The longest range whose length `usize` can count is accepted with that exact length, checked
+/// without traversing it.
+#[test]
+fn test_span_of_usize_max() {
+    let end = u64::try_from(usize::MAX).unwrap();
+
+    let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 0, end);
+    assert_eq!(usize::MAX, ExactSizeIterator::len(&iter));
+    assert_eq!((usize::MAX, Some(usize::MAX)), Iterator::size_hint(&iter));
+
+    assert_eq!(Some(log_id(1, 1, 0)), iter.next());
+    assert_eq!(Some(log_id(1, 1, end - 1)), iter.next_back());
+    assert_eq!(usize::MAX - 2, ExactSizeIterator::len(&iter));
+}
+
+/// Where `usize` is narrower than `u64`, a longer range is rejected when it is created.
+#[cfg(not(target_pointer_width = "64"))]
+#[test]
+#[should_panic(expected = "more than usize can count")]
+fn test_span_over_usize_max() {
+    let end = u64::try_from(usize::MAX).unwrap() + 1;
+    LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 0, end);
+}
