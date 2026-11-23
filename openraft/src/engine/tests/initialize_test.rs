@@ -167,13 +167,19 @@ fn test_initialize() -> anyhow::Result<()> {
     {
         let mut eng = eng();
 
+        let result = eng.initialize(m12());
+        let expected = Err(InitializeError::NotInMembers(NotInMembers {
+            node_id: 0,
+            membership: m12(),
+        }));
+        assert_eq!(expected, result);
         assert_eq!(
-            Err(InitializeError::NotInMembers(NotInMembers {
-                node_id: 0,
-                membership: m12()
-            })),
-            eng.initialize(m12())
+            "node 0 has to be able to campaign in the initial membership, as a voter does: \
+             Membership { configs: [{1, 2}], nodes: {1: (), 2: ()} }",
+            result.unwrap_err().to_string()
         );
+        let commands = eng.output.take_commands();
+        assert_eq!(Vec::<Command<UTConfig>>::new(), commands);
     }
 
     tracing::info!("--- initial learner 0 cannot initialize the cluster");
@@ -183,6 +189,11 @@ fn test_initialize() -> anyhow::Result<()> {
         let result = eng.initialize(membership.clone());
         let expected = Err(InitializeError::NotInMembers(NotInMembers { node_id: 0, membership }));
         assert_eq!(expected, result);
+        assert_eq!(
+            "node 0 has to be able to campaign in the initial membership, as a voter does: \
+             Membership { configs: [{1, 2}], nodes: {0: (), 1: (), 2: ()} }",
+            result.unwrap_err().to_string()
+        );
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
