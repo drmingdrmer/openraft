@@ -1276,7 +1276,7 @@ where
     }
 
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler::new(&self.config, &mut self.state)
+        ServerStateHandler::new(&self.config.id, &mut self.state)
     }
     pub(crate) fn establish_handler(&mut self) -> EstablishHandler<'_, C> {
         EstablishHandler {
