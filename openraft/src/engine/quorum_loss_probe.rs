@@ -46,8 +46,13 @@ where I: Instant
         let slot = elapsed.as_nanos() / interval;
         let is_quiet = slot.is_multiple_of(2);
 
-        let into_slot = u64::try_from(elapsed.as_nanos() % interval).unwrap_or(u64::MAX);
-        let remaining = self.interval.saturating_sub(Duration::from_nanos(into_slot));
+        // The offset into the slot can exceed `u64::MAX` nanoseconds, so build it from seconds and
+        // nanoseconds. It is less than `interval`, so its seconds fit in `u64`.
+        let into_slot = elapsed.as_nanos() % interval;
+        let into_slot_secs = (into_slot / 1_000_000_000) as u64;
+        let into_slot_nanos = (into_slot % 1_000_000_000) as u32;
+        let into_slot = Duration::new(into_slot_secs, into_slot_nanos);
+        let remaining = self.interval.saturating_sub(into_slot);
         (is_quiet, remaining)
     }
 }
