@@ -77,6 +77,10 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m34());
 
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
+
     assert_eq!(
         MembershipState::new(
             Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
@@ -181,6 +185,10 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m4_356());
 
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
+
     assert_eq!(
         MembershipState::new(
             Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23_45())),
@@ -250,6 +258,10 @@ fn test_leader_append_membership_updates_self_quorum() -> anyhow::Result<()> {
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m23());
 
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
+
     let self_quorum = eng.leader_ref().unwrap().is_self_quorum();
     assert!(!self_quorum, "node 2 alone is not a majority of {{2,3}}");
 
@@ -308,6 +320,8 @@ fn test_leader_append_membership_renews_the_stream_of_a_changed_node() -> anyhow
 
         tracing::info!("--- a membership log moves learner 4 to a new address");
         eng.replication_handler().append_membership(&log_id(1, 1, 4), &m23_4_at("new"));
+        // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+        eng.replication_handler().initiate_replication();
 
         let after_4 = eng.leader.as_ref().unwrap().progress.try_get(&4).unwrap().clone();
         assert_ne!(
