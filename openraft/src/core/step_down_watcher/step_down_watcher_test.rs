@@ -18,6 +18,7 @@ use crate::async_runtime::watch::WatchSender;
 use crate::core::ServerState;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::leader_removal::LeaderRemoval;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::metrics::RaftMetrics;
@@ -219,6 +220,74 @@ fn test_coalesced_second_removal_waits_its_own_delay() {
 #[test]
 fn test_removal_under_a_new_vote_waits_its_own_delay() {
     assert_fallback_at(vec![(600, leader_at(3, 3, m23()))], 1_650, 3, 3);
+}
+
+/// With replication metrics that name a target, the watcher transfers leadership at the end of the
+/// delay, and the transfer carries the removal: the vote and the membership config log id that
+/// fence the fallback too.
+#[test]
+fn test_transfer_carries_the_removal() {
+    run_paused(async move {
+        let config = Config {
+            removed_leader_step_down: StepDownPolicy::After(1_000),
+            heartbeat_interval: 50,
+            ..Default::default()
+        };
+        let start = tokio::time::Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+
+        let mut metrics = RaftMetrics::new_initial(1);
+        metrics.membership_config = stored(3, m23());
+        metrics.replication = Some(btreemap! {
+            2u64 => Some(log_id(2, 1, 3)),
+            3u64 => None,
+        });
+
+        let (_tx_server, rx_server) = UTConfig::<()>::watch_channel(leader_at(2, 3, m23()));
+        let (_tx_metrics, rx_metrics) = UTConfig::<()>::watch_channel(metrics);
+        let (tx_api, mut rx_api) = UTConfig::<()>::mpsc::<RaftMsg<UTConfig>>(16);
+        StepDownWatcher::<UTConfig>::spawn(rx_server, rx_metrics, tx_api.downgrade(), &config);
+
+        let expected = LeaderRemoval {
+            vote: Vote::new_committed(2, 1),
+            membership_log_id: Some(log_id(2, 1, 3)),
+        };
+
+        tracing::info!("--- the transfer comes at the end of the delay, fenced by the removal");
+        {
+            tokio::time::sleep_until(at(999)).await;
+            assert!(rx_api.try_recv().is_err(), "no command before 1,000 ms");
+
+            tokio::time::sleep_until(at(1_001)).await;
+            let msg = rx_api.try_recv().expect("the transfer command");
+            let RaftMsg::ExternalCommand {
+                cmd: ExternalCommand::TriggerTransferLeader { to, removal },
+            } = msg
+            else {
+                panic!("expected the transfer command, got: {msg}");
+            };
+            assert_eq!(2, to);
+            assert_eq!(Some(expected.clone()), removal);
+        }
+
+        tracing::info!("--- the fallback follows after the heartbeat interval, with the same fence");
+        {
+            tokio::time::sleep_until(at(1_051)).await;
+            let msg = rx_api.try_recv().expect("the fallback command");
+            let RaftMsg::ExternalCommand {
+                cmd:
+                    ExternalCommand::RefreshServerState {
+                        vote,
+                        membership_log_id,
+                    },
+            } = msg
+            else {
+                panic!("expected the fallback command, got: {msg}");
+            };
+            assert_eq!(Some(expected.vote), vote);
+            assert_eq!(expected.membership_log_id, membership_log_id);
+        }
+    });
 }
 
 /// Run the watcher like `assert_fallback_at()`, with an API channel of one slot, which `block_api`

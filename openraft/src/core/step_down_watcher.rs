@@ -18,6 +18,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::leader_removal::LeaderRemoval;
 use crate::membership::RaftMembershipExt;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -34,10 +35,13 @@ use crate::type_config::alias::WatchReceiverOf;
 /// from a snapshot of the full metrics), then after another `heartbeat_interval` it reverts this
 /// node to a learner, in case the transfer does not take effect.
 ///
-/// It is an automation plugin outside the consensus kernel: it only sends the commands an
-/// application could send manually, [`TriggerTransferLeader`] and [`RefreshServerState`], both of
-/// which re-validate the state inside `RaftCore`. Therefore acting on stale or coalesced metrics
-/// is harmless: an outdated command is just a no-op.
+/// It is an automation plugin outside the consensus kernel: it sends `RaftCore` two commands,
+/// [`TriggerTransferLeader`] and [`RefreshServerState`], each fenced by the removal it observed:
+/// the vote of this Leader and the log id of the membership config that removes it. `RaftCore`
+/// re-validates a command when it handles it and drops it if the fence no longer matches, such as
+/// after a membership change or a new vote that it handled first. The transfer also requires this
+/// node to be a Leader whose effective membership config is committed and does not contain it.
+/// Therefore acting on stale or coalesced metrics is harmless: an outdated command is a no-op.
 ///
 /// The task quits as soon as `RaftCore` terminates, also while it sleeps or waits to send a
 /// command, see [`until_closed()`].
@@ -117,7 +121,9 @@ where C: RaftTypeConfig
     ///   that contains it is committed, and it starts again when the removal is another one, such
     ///   as a second removal after a readmission, or the same config under a new vote. Other
     ///   metrics updates leave the deadline as it is.
-    /// - Transfer leadership to the most up-to-date voter.
+    /// - Transfer leadership to the most up-to-date voter. The command is fenced by the removal:
+    ///   `RaftCore` drops it unless this node is still a Leader with the vote of the removal, whose
+    ///   effective membership config is the removing one, committed, and without this node.
     /// - Wait for `transfer_wait`, then revert this node to a learner. This is the guaranteed
     ///   fallback in case the transfer takes no effect; the command is fenced by the vote and the
     ///   membership config log id of the removal, thus it is dropped if a new Leader is already
@@ -158,27 +164,36 @@ where C: RaftTypeConfig
             }
         }
 
+        // The removal fences both commands. In the fence of the fallback a `None` membership log
+        // id means skipping the membership check, thus it must be `Some` here. It always holds:
+        // this node is a Leader, hence the cluster is initialized, hence the membership config
+        // comes from a log entry that has a log id.
+        debug_assert!(
+            server_metrics.membership_config.log_id().is_some(),
+            "the membership config of a Leader must have a log id"
+        );
+        let removal = LeaderRemoval {
+            vote: server_metrics.vote.clone(),
+            membership_log_id: server_metrics.membership_config.log_id().clone(),
+        };
+
         let metrics = self.rx_metrics.borrow_watched().clone();
         let target = transfer_target(&metrics);
 
         if let Some(to) = target {
             tracing::info!("removed Leader steps down: transfer leadership to {}", to);
-            self.send(ExternalCommand::TriggerTransferLeader { to }).await;
+            let cmd = ExternalCommand::TriggerTransferLeader {
+                to,
+                removal: Some(removal.clone()),
+            };
+            self.send(cmd).await;
         }
 
         C::sleep(self.transfer_wait).await;
 
-        // In the fence a `None` membership log id means skipping the membership check, thus it
-        // must be `Some` here. It always holds: this node is a Leader, hence the cluster is
-        // initialized, hence the membership config comes from a log entry that has a log id.
-        debug_assert!(
-            server_metrics.membership_config.log_id().is_some(),
-            "the membership config of a Leader must have a log id"
-        );
-
         let cmd = ExternalCommand::RefreshServerState {
-            vote: Some(server_metrics.vote.clone()),
-            membership_log_id: server_metrics.membership_config.log_id().clone(),
+            vote: Some(removal.vote),
+            membership_log_id: removal.membership_log_id,
         };
         self.send(cmd).await;
     }
