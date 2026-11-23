@@ -46,6 +46,8 @@ mod try_purge_log_test;
 mod update_conflicting_test;
 #[cfg(test)]
 mod update_matching_test;
+#[cfg(test)]
+mod update_progress_test;
 
 /// Bounds replication attached to each matching-point probe, avoiding large fragmented ranges
 /// while retaining batching for small follower gaps.
@@ -440,16 +442,24 @@ where
             Err(err_str) => {
                 tracing::warn!("update progress error: {}", err_str);
 
-                // Reset inflight state and it will retry. A clear stays: it waits for the
-                // replication task, which may still read the log for the plan the clear dropped,
-                // and an error of that plan says nothing about whether it still does.
+                // Reset the operation the error belongs to, and it will retry. An error without an
+                // operation ID, or with the ID of an earlier operation, leaves the current one: a
+                // stream can report an error after an earlier answer completed its operation and
+                // another one started. A clear stays: it waits for the replication task, which may
+                // still read the log for the plan the clear dropped, and an error of that plan says
+                // nothing about whether it still does.
                 let mut dropped = None;
-                self.leader.progress.update_data_with(&target, |data| match data.inflight {
-                    Inflight::Clear { .. } => {}
-                    Inflight::Probe { .. } | Inflight::LogsSince { .. } => {
-                        dropped = Some(std::mem::replace(&mut data.inflight, Inflight::None));
+                self.leader.progress.update_data_with(&target, |data| {
+                    if data.inflight.inflight_id() != inflight_id {
+                        return;
                     }
-                    Inflight::None | Inflight::Snapshot { .. } => data.inflight = Inflight::None,
+                    match data.inflight {
+                        Inflight::Probe { .. } | Inflight::LogsSince { .. } => {
+                            dropped = Some(std::mem::replace(&mut data.inflight, Inflight::None));
+                        }
+                        Inflight::Snapshot { .. } => data.inflight = Inflight::None,
+                        Inflight::None | Inflight::Clear { .. } => {}
+                    }
                 });
 
                 // A transport that pulls requests on a task of its own may still read the log for
