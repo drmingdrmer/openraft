@@ -1,12 +1,18 @@
+use maplit::btreeset;
+
 use super::CommandName;
 use super::SMCommandName;
+use crate::Membership;
+use crate::base::BoxAsyncOnceMut;
 use crate::batch::Batch;
 use crate::core::sm;
 use crate::engine::Command;
+use crate::engine::Respond;
 use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::UTLeaderId;
 use crate::engine::testing::log_id;
+use crate::errors::InitializeError;
 use crate::impls::Vote;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
@@ -14,8 +20,13 @@ use crate::progress::stream_id::StreamId;
 use crate::raft::VoteRequest;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::ReplicationSessionId;
 use crate::replication::replicate::Replicate;
+use crate::storage::Snapshot;
+use crate::storage::SnapshotMeta;
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::committed::CommittedVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -25,137 +36,179 @@ fn committed_vote(term: u64, node_id: u64) -> CommittedVote<UTLeaderId> {
     Vote::<UTLeaderId>::new(term, node_id).to_committed()
 }
 
-#[test]
-fn test_command_name() {
-    let cv = committed_vote(1, 0);
-
-    // UpdateIOProgress
-    let cmd: Command<C> = Command::UpdateIOProgress {
-        when: None,
-        io_id: IOId::new_log_io(cv.clone(), Some(log_id(1, 0, 1))),
-    };
-    assert_eq!(cmd.name(), CommandName::UpdateIOProgress);
-
-    // AppendEntries
-    let cmd: Command<C> = Command::AppendEntries {
-        committed_vote: cv.clone(),
-        entries: Batch::of([]),
-    };
-    assert_eq!(cmd.name(), CommandName::AppendEntries);
-
-    // ReplicateCommitted
-    let cmd: Command<C> = Command::ReplicateCommitted { committed: None };
-    assert_eq!(cmd.name(), CommandName::ReplicateCommitted);
-
-    // BroadcastHeartbeat
-    let cmd: Command<C> = Command::BroadcastHeartbeat {
-        session_id: ReplicationSessionId::new(cv.clone(), None),
-        bypass_min_interval: false,
-    };
-    assert_eq!(cmd.name(), CommandName::BroadcastHeartbeat);
-
-    // SaveCommittedAndApply
-    let cmd: Command<C> = Command::SaveCommittedAndApply {
-        already_applied: None,
-        upto: log_id(1, 0, 1),
-    };
-    assert_eq!(cmd.name(), CommandName::SaveCommittedAndApply);
-
-    // Replicate
-    let cmd: Command<C> = Command::Replicate {
-        target: 1,
-        req: Replicate::new_probe(
-            crate::log_id_range::LogIdRange::new(None, Some(log_id(1, 0, 1))),
-            InflightId::new(1),
+/// One command of each worker variant, with the name it must report.
+fn sm_commands() -> Vec<(sm::Command<C>, SMCommandName)> {
+    let (snapshot_tx, _snapshot_rx) = C::oneshot();
+    let meta = SnapshotMeta {
+        last_log_id: Some(log_id(1, 0, 3)),
+        last_membership: StoredMembershipOf::<C>::new(
+            Some(log_id(1, 0, 1)),
+            Membership::new_with_defaults(vec![btreeset! {0}], []),
         ),
     };
-    assert_eq!(cmd.name(), CommandName::Replicate);
+    let snapshot = Snapshot::new(meta, ());
+    let log_io_id = LogIOId::new(committed_vote(1, 0), Some(log_id(1, 0, 3)));
+    let func: BoxAsyncOnceMut<'static, ()> = Box::new(|_sm: &mut ()| Box::pin(async {}));
 
-    // ClearReplicate
-    let cmd: Command<C> = Command::ClearReplicate {
-        target: 1,
-        inflight_id: InflightId::new(1),
-    };
-    assert_eq!(cmd.name(), CommandName::ClearReplicate);
+    vec![
+        (sm::Command::build_snapshot(), SMCommandName::BuildSnapshot),
+        (sm::Command::get_snapshot(snapshot_tx), SMCommandName::GetSnapshot),
+        (
+            sm::Command::install_full_snapshot(snapshot, log_io_id),
+            SMCommandName::InstallFullSnapshot,
+        ),
+        (
+            sm::Command::apply(log_id(1, 0, 1), log_id(1, 0, 2), vec![]),
+            SMCommandName::Apply,
+        ),
+        (sm::Command::ExternalFunc { func }, SMCommandName::ExternalFunc),
+    ]
+}
 
-    // ReplicateSnapshot
-    let cmd: Command<C> = Command::ReplicateSnapshot {
-        leader_vote: cv.clone(),
-        target: 1,
-        inflight_id: InflightId::new(1),
-    };
-    assert_eq!(cmd.name(), CommandName::ReplicateSnapshot);
+/// One command of each engine variant, and of each worker variant inside `StateMachine`, with the
+/// name it must report.
+fn commands() -> Vec<(Command<C>, CommandName)> {
+    let cv = committed_vote(1, 0);
+    let (initialize_tx, _initialize_rx) = C::oneshot::<Result<(), InitializeError<C>>>();
 
-    // BroadcastTransferLeader
-    let cmd: Command<C> = Command::BroadcastTransferLeader {
-        req: TransferLeaderRequest::new(Vote::new(1, 0), 1, None),
-    };
-    assert_eq!(cmd.name(), CommandName::BroadcastTransferLeader);
+    let mut cases: Vec<(Command<C>, CommandName)> = vec![
+        (
+            Command::UpdateIOProgress {
+                when: None,
+                io_id: IOId::new_log_io(cv.clone(), Some(log_id(1, 0, 1))),
+            },
+            CommandName::UpdateIOProgress,
+        ),
+        (
+            Command::AppendEntries {
+                committed_vote: cv.clone(),
+                entries: Batch::of([]),
+            },
+            CommandName::AppendEntries,
+        ),
+        (
+            Command::ReplicateCommitted { committed: None },
+            CommandName::ReplicateCommitted,
+        ),
+        (
+            Command::BroadcastHeartbeat {
+                session_id: ReplicationSessionId::new(cv.clone(), None),
+                bypass_min_interval: false,
+            },
+            CommandName::BroadcastHeartbeat,
+        ),
+        (
+            Command::SaveCommittedAndApply {
+                already_applied: None,
+                upto: log_id(1, 0, 1),
+            },
+            CommandName::SaveCommittedAndApply,
+        ),
+        (
+            Command::Replicate {
+                target: 1,
+                req: Replicate::new_probe(
+                    crate::log_id_range::LogIdRange::new(None, Some(log_id(1, 0, 1))),
+                    InflightId::new(1),
+                ),
+            },
+            CommandName::Replicate,
+        ),
+        (
+            Command::ClearReplicate {
+                target: 1,
+                inflight_id: InflightId::new(1),
+            },
+            CommandName::ClearReplicate,
+        ),
+        (
+            Command::ReplicateSnapshot {
+                leader_vote: cv.clone(),
+                target: 1,
+                inflight_id: InflightId::new(1),
+            },
+            CommandName::ReplicateSnapshot,
+        ),
+        (
+            Command::BroadcastTransferLeader {
+                req: TransferLeaderRequest::new(Vote::new(1, 0), 1, None),
+            },
+            CommandName::BroadcastTransferLeader,
+        ),
+        (Command::CloseReplicationStreams, CommandName::CloseReplicationStreams),
+        (Command::FailPendingReads, CommandName::FailPendingReads),
+        (
+            Command::RebuildReplicationStreams {
+                leader_vote: cv.clone(),
+                targets: vec![TargetProgress {
+                    target: 1,
+                    target_node: (),
+                    progress: ProgressEntry::empty(1, StreamId::new(1), 1),
+                }],
+                close_old_streams: false,
+            },
+            CommandName::RebuildReplicationStreams,
+        ),
+        (Command::SaveVote { vote: Vote::new(1, 0) }, CommandName::SaveVote),
+        (
+            Command::SendVote {
+                vote_req: VoteRequest::new(Vote::new(1, 0), None),
+            },
+            CommandName::SendVote,
+        ),
+        (
+            Command::SendPreVote {
+                vote_req: VoteRequest::new(Vote::new(1, 0), None),
+            },
+            CommandName::SendPreVote,
+        ),
+        (Command::PurgeLog { upto: log_id(1, 0, 1) }, CommandName::PurgeLog),
+        (
+            Command::TruncateLog {
+                after: Some(log_id(1, 0, 1)),
+            },
+            CommandName::TruncateLog,
+        ),
+        (
+            Command::Respond {
+                when: None,
+                resp: Respond::new(Ok(()), initialize_tx),
+            },
+            CommandName::Respond,
+        ),
+    ];
 
-    // CloseReplicationStreams
-    let cmd: Command<C> = Command::CloseReplicationStreams;
-    assert_eq!(cmd.name(), CommandName::CloseReplicationStreams);
+    for (command, name) in sm_commands() {
+        cases.push((Command::StateMachine { command }, CommandName::StateMachine(name)));
+    }
+    cases
+}
 
-    // FailPendingReads
-    let cmd: Command<C> = Command::FailPendingReads;
-    assert_eq!(cmd.name(), CommandName::FailPendingReads);
+/// Sort `names`, and check that they are exactly `all`: one case per name, none repeated.
+fn assert_each_name_once<N>(all: &[N], mut names: Vec<N>)
+where N: Ord + Copy + std::fmt::Debug {
+    names.sort();
+    let mut all = all.to_vec();
+    all.sort();
+    assert_eq!(all, names, "each name has exactly one case");
+}
 
-    // RebuildReplicationStreams
-    let cmd: Command<C> = Command::RebuildReplicationStreams {
-        leader_vote: cv.clone(),
-        targets: vec![TargetProgress {
-            target: 1,
-            target_node: (),
-            progress: ProgressEntry::empty(1, StreamId::new(1), 1),
-        }],
-        close_old_streams: false,
-    };
-    assert_eq!(cmd.name(), CommandName::RebuildReplicationStreams);
-
-    // SaveVote
-    let cmd: Command<C> = Command::SaveVote { vote: Vote::new(1, 0) };
-    assert_eq!(cmd.name(), CommandName::SaveVote);
-
-    // SendVote
-    let cmd: Command<C> = Command::SendVote {
-        vote_req: VoteRequest::new(Vote::new(1, 0), None),
-    };
-    assert_eq!(cmd.name(), CommandName::SendVote);
-
-    // PurgeLog
-    let cmd: Command<C> = Command::PurgeLog { upto: log_id(1, 0, 1) };
-    assert_eq!(cmd.name(), CommandName::PurgeLog);
-
-    // TruncateLog
-    let cmd: Command<C> = Command::TruncateLog {
-        after: Some(log_id(1, 0, 1)),
-    };
-    assert_eq!(cmd.name(), CommandName::TruncateLog);
-
-    // Respond - skip as it requires a oneshot sender
+#[test]
+fn test_command_name() {
+    let cases = commands();
+    for (cmd, want) in &cases {
+        assert_eq!(*want, cmd.name(), "the name of {}", cmd);
+    }
+    assert_each_name_once(CommandName::ALL, cases.iter().map(|(_, name)| *name).collect());
 }
 
 #[test]
 fn test_sm_command_name() {
-    // BuildSnapshot
-    let cmd: sm::Command<C> = sm::Command::build_snapshot();
-    assert_eq!(cmd.name(), SMCommandName::BuildSnapshot);
-
-    // Apply
-    let cmd: sm::Command<C> = sm::Command::apply(log_id(1, 0, 1), log_id(1, 0, 2), vec![]);
-    assert_eq!(cmd.name(), SMCommandName::Apply);
-
-    // GetSnapshot and InstallFullSnapshot require channels/data
-    // Test via StateMachine command wrapper
-    let cmd: Command<C> = Command::StateMachine {
-        command: sm::Command::build_snapshot(),
-    };
-    assert_eq!(cmd.name(), CommandName::StateMachine(SMCommandName::BuildSnapshot));
-
-    let cmd: Command<C> = Command::StateMachine {
-        command: sm::Command::apply(log_id(1, 0, 1), log_id(1, 0, 2), vec![]),
-    };
-    assert_eq!(cmd.name(), CommandName::StateMachine(SMCommandName::Apply));
+    let cases = sm_commands();
+    for (cmd, want) in &cases {
+        assert_eq!(*want, cmd.name(), "the name of {}", cmd);
+    }
+    assert_each_name_once(SMCommandName::ALL, cases.iter().map(|(_, name)| *name).collect());
 }
 
 #[test]
