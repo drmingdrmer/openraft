@@ -1,4 +1,4 @@
-use super::*;
+use super::LeaderLogIds;
 use crate::engine::testing::UtClid;
 use crate::engine::testing::log_id;
 
@@ -102,4 +102,49 @@ fn test_ref_at() {
     assert_eq!(range.ref_at(5).into_log_id(), log_id(1, 2, 5));
     assert_eq!(range.ref_at(7).into_log_id(), log_id(1, 2, 7));
     assert_eq!(range.ref_at(10).into_log_id(), log_id(1, 2, 10));
+}
+
+#[test]
+fn test_zero_based_iterator_in_both_directions() {
+    let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 0, 2);
+    assert_eq!(range.len(), 3);
+
+    let ids: Vec<_> = range.clone().into_iter().collect();
+    assert_eq!(ids, vec![log_id(1, 2, 0), log_id(1, 2, 1), log_id(1, 2, 2)]);
+
+    let ids: Vec<_> = range.into_iter().rev().collect();
+    assert_eq!(ids, vec![log_id(1, 2, 2), log_id(1, 2, 1), log_id(1, 2, 0)]);
+}
+
+/// A range that ends just below `u64::MAX` has a successor for its end, so it iterates.
+#[test]
+fn test_range_ending_below_u64_max() {
+    let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), u64::MAX - 2, u64::MAX - 1);
+    assert_eq!(range.len(), 2);
+
+    let ids: Vec<_> = range.clone().into_iter().collect();
+    assert_eq!(ids, vec![log_id(1, 2, u64::MAX - 2), log_id(1, 2, u64::MAX - 1)]);
+
+    let ids: Vec<_> = range.into_iter().rev().collect();
+    assert_eq!(ids, vec![log_id(1, 2, u64::MAX - 1), log_id(1, 2, u64::MAX - 2)]);
+}
+
+#[test]
+fn test_range_ending_at_u64_max_has_a_length() {
+    let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), u64::MAX - 1, u64::MAX);
+    assert_eq!(range.len(), 2);
+}
+
+#[test]
+#[should_panic(expected = "its last index has no successor")]
+fn test_range_ending_at_u64_max_can_not_be_iterated() {
+    let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), u64::MAX - 1, u64::MAX);
+    let _ = range.into_iter();
+}
+
+#[test]
+#[should_panic(expected = "does not fit in usize")]
+fn test_length_of_the_whole_index_space_does_not_fit() {
+    let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 0, u64::MAX);
+    let _ = range.len();
 }
