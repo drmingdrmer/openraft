@@ -50,7 +50,7 @@ where C: TestConfig
 {
     type Network = Connection<C>;
 
-    async fn new_client(&mut self, target: u64, _node: &()) -> Self::Network {
+    async fn new_client(&mut self, target: u64, _node: &C::Node) -> Self::Network {
         Connection {
             source: self.source,
             target,

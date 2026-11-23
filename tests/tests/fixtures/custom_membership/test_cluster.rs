@@ -33,11 +33,11 @@ use crate::fixtures::network_delay::configured_network_send_delay;
 
 /// A type config that [`TestCluster`] can run.
 pub trait TestConfig
-where Self: RaftTypeConfig<NodeId = u64, Node = (), Term = u64, R = ()>
+where Self: RaftTypeConfig<NodeId = u64, Term = u64, R = ()>
 {
 }
 
-impl<C> TestConfig for C where C: RaftTypeConfig<NodeId = u64, Node = (), Term = u64, R = ()> {}
+impl<C> TestConfig for C where C: RaftTypeConfig<NodeId = u64, Term = u64, R = ()> {}
 
 pub type TestRaft<C> = Raft<C, StateMachine<C>>;
 
@@ -132,12 +132,15 @@ where
         source: u64,
         target: u64,
         request: VoteRequest<C>,
-    ) -> Result<VoteResponse<C>, RPCError<C>> {
+    ) -> Result<VoteResponse<C>, RPCError<C>>
+    where
+        C::Node: Default,
+    {
         let mut network = Network {
             source,
             router: self.router.clone(),
         };
-        let mut connection = network.new_client(target, &()).await;
+        let mut connection = network.new_client(target, &C::Node::default()).await;
         let option = RPCOption::new(Duration::from_secs(1));
         connection.vote(request, option).await
     }
