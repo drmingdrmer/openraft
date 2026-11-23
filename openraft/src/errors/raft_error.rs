@@ -53,8 +53,11 @@ where C: RaftTypeConfig
 impl<C> RaftError<C, Infallible>
 where C: RaftTypeConfig
 {
-    /// Convert to a [`Fatal`] error if its `APIError` variant is [`Infallible`],
-    /// otherwise panic.
+    /// Return the [`Fatal`] error that this `RaftError` holds.
+    ///
+    /// This method exists only when the API error type is [`Infallible`], an enum without values,
+    /// so the `APIError` variant cannot occur: every such `RaftError` holds a `Fatal` error, and
+    /// the conversion always succeeds.
     #[since(version = "0.10.0")]
     pub fn unwrap_fatal(self) -> Fatal<C> {
         self.into_fatal().unwrap()
