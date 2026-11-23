@@ -1592,7 +1592,6 @@ where
             if index.saturating_sub(last_log_index) >= run_command_threshold {
                 // After handling all the inputs, batch run all the commands for better performance
                 self.runtime_stats.raft_msg_per_run.record(processed);
-                self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
                 self.run_engine_commands().await?;
 
                 last_log_index = index;
@@ -1600,9 +1599,11 @@ where
             }
         }
 
+        // One utilization sample per drain, of every message it processed.
+        self.runtime_stats.raft_msg_usage_permille.record(total * 1000 / at_most);
+
         // After handling all the inputs, batch run all the commands for better performance
         self.runtime_stats.raft_msg_per_run.record(processed);
-        self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
         self.run_engine_commands().await?;
 
         if total == at_most {

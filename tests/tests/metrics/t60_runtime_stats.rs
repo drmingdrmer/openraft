@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use futures::TryStreamExt;
 use openraft::Config;
 use openraft::raft::WriteOption;
 use openraft::stats::RuntimeStats;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
@@ -197,6 +200,53 @@ fn runtime_stats_display_formats_after_the_sim_runtime_exits() -> Result<()> {
     );
     assert_eq!(compact, stats.display().compact().to_string());
     assert_eq!(human, stats.display().human_readable().to_string());
+
+    Ok(())
+}
+
+/// `process_raft_msg()` records one budget-utilization sample per drain of the API channel, as it
+/// records one budget sample, also for a drain that processes several messages or none.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_record_one_raft_msg_usage_sample_per_drain() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let log_index = router.new_cluster([0], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!(
+        log_index,
+        "--- send 10 API messages 10 ms apart, so that the drains end between them"
+    );
+    let (before, after) = {
+        let before = n0.runtime_stats().await?;
+        for _ in 0..10 {
+            TypeConfig::sleep(Duration::from_millis(10)).await;
+            n0.with_raft_state(|_| ()).await?;
+        }
+        TypeConfig::sleep(Duration::from_millis(10)).await;
+        let after = n0.runtime_stats().await?;
+        (before, after)
+    };
+
+    tracing::info!(
+        log_index,
+        "--- every drain adds one budget sample and one utilization sample"
+    );
+    {
+        let drains = after.raft_msg_budget.total() - before.raft_msg_budget.total();
+        let samples = after.raft_msg_usage_permille.total() - before.raft_msg_usage_permille.total();
+        assert!(
+            drains >= 1,
+            "the messages are processed in drains after the first snapshot"
+        );
+        assert_eq!(drains, samples, "one utilization sample per drain");
+    }
 
     Ok(())
 }
