@@ -25,6 +25,7 @@ use openraft::storage::RaftLogStorageExt;
 use openraft::testing::log_id;
 
 use crate::fixtures::custom_membership::log_store::LogStore;
+use crate::fixtures::custom_membership::network::ClientRecord;
 use crate::fixtures::custom_membership::network::Network;
 use crate::fixtures::custom_membership::network::Router;
 use crate::fixtures::custom_membership::state_machine::StateMachine;
@@ -86,6 +87,8 @@ where
             nodes: BTreeMap::new(),
             cut_links: BTreeSet::new(),
             send_delay,
+            clients: Vec::new(),
+            closed_endpoints: Vec::new(),
         }));
         let mut state_machines = BTreeMap::new();
 
@@ -143,6 +146,19 @@ where
         let mut connection = network.new_client(target, &C::Node::default()).await;
         let option = RPCOption::new(Duration::from_secs(1));
         connection.vote(request, option).await
+    }
+
+    /// Every network client that a node created so far, in creation order.
+    pub fn clients(&self) -> Vec<ClientRecord<C>> {
+        let router = self.router.lock().unwrap();
+        router.clients.clone()
+    }
+
+    /// Fails every RPC through a client created for `target` at `node`, as an address that no
+    /// longer accepts connections. Clients created for `target` at another node still deliver.
+    pub fn close_endpoint(&self, target: u64, node: C::Node) {
+        let mut router = self.router.lock().unwrap();
+        router.closed_endpoints.push((target, node));
     }
 
     /// Fails every RPC between the two nodes of each link in `links`, and delivers all others.
