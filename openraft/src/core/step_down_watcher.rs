@@ -1,6 +1,7 @@
 //! Step-down watcher: a task that steps down a Leader that is removed from a committed
 //! membership config.
 
+use std::future::Future;
 use std::pin::pin;
 use std::time::Duration;
 
@@ -38,7 +39,8 @@ use crate::type_config::alias::WatchReceiverOf;
 /// which re-validate the state inside `RaftCore`. Therefore acting on stale or coalesced metrics
 /// is harmless: an outdated command is just a no-op.
 ///
-/// The task quits when `RaftCore` terminates.
+/// The task quits as soon as `RaftCore` terminates, also while it sleeps or waits to send a
+/// command, see [`until_closed()`].
 ///
 /// [`removed_leader_step_down`]: crate::Config::removed_leader_step_down
 /// [`TriggerTransferLeader`]: ExternalCommand::TriggerTransferLeader
@@ -90,7 +92,8 @@ where C: RaftTypeConfig
         };
 
         let span = tracing::debug_span!("step_down_watcher");
-        let watch_fut = this.watch_loop().instrument(span);
+        let rx_closed = this.rx_server_metrics.clone();
+        let watch_fut = until_closed::<C, _>(rx_closed, this.watch_loop()).instrument(span);
         let _join_handle = C::spawn(watch_fut);
     }
 
@@ -183,13 +186,30 @@ where C: RaftTypeConfig
     /// Send an external command to `RaftCore`.
     ///
     /// A failure to upgrade the weak sender or to send means `RaftCore` is terminated. It is
-    /// safe to ignore it here: the watch loop quits at the next `changed()` call in this case.
+    /// safe to ignore it here: the task quits once `RaftCore` drops the server metrics sender.
     async fn send(&self, cmd: ExternalCommand<C>) {
         let Some(tx_api) = self.tx_api.upgrade() else {
             return;
         };
 
         let _ = tx_api.send(RaftMsg::ExternalCommand { cmd }).await;
+    }
+}
+
+/// Run `work` until it returns or `RaftCore` terminates, whichever comes first.
+///
+/// `RaftCore` terminates when it drops the server metrics sender. `rx` is a receiver of its own, so
+/// the metrics updates it takes stay unseen for `work`, and it waits until `changed()` reports the
+/// closure, which comes after a last value it has not seen. Dropping `work` then cancels a pending
+/// sleep or send, and releases what `work` holds, such as its metrics receivers.
+async fn until_closed<C, F>(mut rx: WatchReceiverOf<C, RaftServerMetrics<C>>, work: F)
+where
+    C: RaftTypeConfig,
+    F: Future<Output = ()>,
+{
+    let closed = async move { while rx.changed().await.is_ok() {} };
+    if let Either::Right(_) = select(pin!(work), pin!(closed)).await {
+        tracing::info!("RaftCore terminated, quit step_down_watcher");
     }
 }
 
