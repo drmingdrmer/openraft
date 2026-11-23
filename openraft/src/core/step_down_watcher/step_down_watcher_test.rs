@@ -220,3 +220,89 @@ fn test_coalesced_second_removal_waits_its_own_delay() {
 fn test_removal_under_a_new_vote_waits_its_own_delay() {
     assert_fallback_at(vec![(600, leader_at(3, 3, m23()))], 1_650, 3, 3);
 }
+
+/// Run the watcher like `assert_fallback_at()`, with an API channel of one slot, which `block_api`
+/// fills, so that the fallback command at 1,050 ms waits to be sent. At `close_at` ms, right after
+/// an update that the watcher has not seen, drop the server metrics sender, as a terminated
+/// `RaftCore` does. The watcher must quit within 1 ms: it drops its receiver of the full metrics,
+/// before any timer of its own fires, and it sends no command.
+fn assert_quits_when_closed(close_at: u64, block_api: bool) {
+    run_paused(async move {
+        let config = Config {
+            removed_leader_step_down: StepDownPolicy::After(1_000),
+            heartbeat_interval: 50,
+            ..Default::default()
+        };
+        let start = tokio::time::Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+
+        let (tx_server, rx_server) = UTConfig::<()>::watch_channel(leader_at(2, 3, m23()));
+        let (tx_metrics, rx_metrics) = UTConfig::<()>::watch_channel(RaftMetrics::new_initial(1));
+        let (tx_api, mut rx_api) = UTConfig::<()>::mpsc::<RaftMsg<UTConfig>>(1);
+        if block_api {
+            let filler = RaftMsg::ExternalCommand {
+                cmd: ExternalCommand::Heartbeat,
+            };
+            tx_api.send(filler).await.unwrap();
+        }
+        StepDownWatcher::<UTConfig>::spawn(rx_server, rx_metrics, tx_api.downgrade(), &config);
+
+        let mut update = leader_at(2, 3, m23());
+        update.current_leader = Some(1);
+
+        tracing::info!(close_at, "--- metrics updates keep the watcher running");
+        {
+            tokio::time::sleep_until(at(close_at - 10)).await;
+            tx_server.send(update.clone()).unwrap();
+            tokio::time::sleep_until(at(close_at - 5)).await;
+            assert!(tx_metrics.send(RaftMetrics::new_initial(1)).is_ok(), "the watcher runs");
+        }
+
+        tracing::info!(
+            close_at,
+            "--- RaftCore drops the server metrics sender after a last update"
+        );
+        {
+            tokio::time::sleep_until(at(close_at)).await;
+            tx_server.send(update).unwrap();
+            drop(tx_server);
+
+            tokio::time::sleep_until(at(close_at + 1)).await;
+            assert!(
+                tx_metrics.send(RaftMetrics::new_initial(1)).is_err(),
+                "the watcher quit"
+            );
+
+            drop(tx_api);
+            if block_api {
+                let msg = rx_api.recv().await;
+                let is_filler = matches!(
+                    msg,
+                    Some(RaftMsg::ExternalCommand {
+                        cmd: ExternalCommand::Heartbeat
+                    })
+                );
+                assert!(is_filler, "only the filler is in the channel");
+            }
+            assert!(rx_api.recv().await.is_none(), "no command is sent");
+        }
+    });
+}
+
+/// The core terminates during the step-down delay.
+#[test]
+fn test_quit_during_the_step_down_delay() {
+    assert_quits_when_closed(500, false);
+}
+
+/// The core terminates after the transfer, while the watcher waits to send the fallback.
+#[test]
+fn test_quit_during_the_fallback_delay() {
+    assert_quits_when_closed(1_020, false);
+}
+
+/// The core terminates while the fallback waits for room in the API channel.
+#[test]
+fn test_quit_during_a_blocked_send() {
+    assert_quits_when_closed(1_100, true);
+}
