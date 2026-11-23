@@ -41,6 +41,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[cfg(test)]
 mod append_membership_test;
 #[cfg(test)]
+mod receive_logs_test;
+#[cfg(test)]
 mod try_purge_log_test;
 #[cfg(test)]
 mod update_conflicting_test;
@@ -518,6 +520,13 @@ where
     }
 
     /// Update replication streams to reflect replication progress change.
+    ///
+    /// With `close_old`, `RaftCore` replaces every replication stream, so the work in flight of
+    /// every target is dropped. Without it, `RaftCore` keeps the stream of each target that still
+    /// receives logs, and closes the stream of a target that no longer does. The work in flight of
+    /// such a target is dropped too: the closed stream never answers it, and it would keep the
+    /// target from starting new work once the target receives logs again and gets a new stream.
+    /// The target keeps its matching log id and its heartbeats.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn rebuild_replication_streams(&mut self, close_old: bool) {
         let mut targets = vec![];
@@ -526,7 +535,7 @@ where
 
         for item in self.leader.progress.iter_mut_without_reorder() {
             if item.id != self.config.id {
-                if close_old {
+                if close_old || !membership.membership().receives_logs(&item.id) {
                     item.data.inflight = Inflight::None;
                 }
 
