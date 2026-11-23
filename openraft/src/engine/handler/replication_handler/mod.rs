@@ -91,7 +91,9 @@ where
 
     /// Append a new membership and update related state such as replication streams.
     ///
-    /// It is called by the leader when a new membership log is appended to the log store.
+    /// It is called by the leader when a new membership log is appended to the log store. It does
+    /// not initiate replication: the caller that appended the log does, see
+    /// `LeaderHandler::leader_append_entries()`.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
@@ -110,7 +112,6 @@ where
         self.rebuild_progresses();
         self.renew_streams_of_changed_nodes(&old_membership);
         self.rebuild_replication_streams(false);
-        self.initiate_replication();
     }
 
     /// Give a new replication stream to each target whose node metadata differs from `old`.
