@@ -18,17 +18,71 @@ const EMPTY_STATS: PercentileStats = PercentileStats {
     p99_9: 0,
 };
 
-fn sample_stats(samples: u64, p50: u64, p99: u64) -> PercentileStats {
+/// Percentile stats whose fields all differ: `samples`, then `first`, `first + 1`, ... for the
+/// percentiles in order.
+fn distinct_stats(samples: u64, first: u64) -> PercentileStats {
     PercentileStats {
         samples,
-        p0_1: 1,
-        p1: 2,
-        p5: 5,
-        p10: 10,
-        p50,
-        p90: p99 - 1,
-        p99,
-        p99_9: p99 + 1,
+        p0_1: first,
+        p1: first + 1,
+        p5: first + 2,
+        p10: first + 3,
+        p50: first + 4,
+        p90: first + 5,
+        p99: first + 6,
+        p99_9: first + 7,
+    }
+}
+
+/// A display whose values all differ, so that a value shown under another label or column changes
+/// the text.
+///
+/// The distributions have distinct sample counts and percentiles. Each counter group counts its
+/// first and its last name and leaves the others at zero. The log stage percentiles come from the
+/// histograms of the chart, which keep small values exactly; the persisted-to-committed stage has
+/// no sample.
+fn populated_display() -> RuntimeStatsDisplay<C> {
+    let mut command_counts = vec![0; CommandName::COUNT];
+    command_counts[0] = 999;
+    command_counts[CommandName::COUNT - 1] = 1_000;
+
+    let mut raft_msg_counts = vec![0; RaftMsgName::COUNT];
+    raft_msg_counts[0] = 3;
+    raft_msg_counts[RaftMsgName::COUNT - 1] = u64::MAX;
+
+    let mut notification_counts = vec![0; NotificationName::COUNT];
+    notification_counts[0] = 7;
+    notification_counts[NotificationName::COUNT - 1] = 1_234_567;
+
+    let mut hist = LogStageHistograms::new();
+    hist.proposed_to_received.record_n(1, 4);
+    hist.proposed_to_received.record_n(2, 1);
+    hist.received_to_submitted.record_n(2, 3);
+    hist.submitted_to_persisted.record_n(1, 1);
+    hist.submitted_to_persisted.record_n(3, 2);
+    hist.committed_to_applied.record_n(1, 2);
+    hist.proposed_to_applied.record_n(4, 2);
+    hist.proposed_to_applied.record_n(6, 3);
+
+    RuntimeStatsDisplay {
+        mode: DisplayMode::default(),
+        core_busy_duration: Duration::from_micros(1_500),
+        core_busy_histogram: distinct_stats(11, 100),
+        apply_batch: distinct_stats(12, 200),
+        append_batch: distinct_stats(13, 300),
+        replicate_batch: distinct_stats(14, 400),
+        raft_msg_per_run: distinct_stats(15, 500),
+        write_batch: distinct_stats(16, 600),
+        raft_msg_budget: distinct_stats(17, 700),
+        notification_budget: distinct_stats(18, 800),
+        raft_msg_usage_permille: distinct_stats(19, 900),
+        notification_usage_permille: distinct_stats(20, 1000),
+        command_counts,
+        raft_msg_counts,
+        notification_counts,
+        log_stage_percentiles: hist.percentile_stats_array(),
+        log_stage_histograms: hist,
+        log_stages: LogStages::new(1, 0),
     }
 }
 
@@ -73,28 +127,61 @@ fn empty_log_stages() -> [(&'static str, PercentileStats); 6] {
 #[test]
 fn test_compact_empty() {
     let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let s = format!("{}", d.compact());
+    let s = d.compact().to_string();
 
-    assert!(s.starts_with("RuntimeStats {"));
-    assert!(s.ends_with("} }"));
-    assert!(s.contains("commands: {}"));
-    assert!(s.contains("log_stages(us): {}"));
+    // Every distribution is shown; zero counts and stages without samples are not.
+    let want = [
+        "RuntimeStats { core_busy_duration: 0ns",
+        "core_busy_histogram(us): [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "apply_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "append_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "replicate_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "raft_msg_per_run: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "write_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "raft_msg_budget: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "notification_budget: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "raft_msg_usage_permille: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "notification_usage_permille: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "commands: {}",
+        "raft_msgs: {}",
+        "notifications: {}",
+        "log_stages(us): {} }",
+    ]
+    .join(", ");
+    assert_eq!(want, s);
 }
 
+#[cfg(feature = "runtime-stats")]
 #[test]
-fn test_compact_with_data() {
-    let mut cmds = vec![0u64; CommandName::COUNT];
-    cmds[0] = 42;
+fn test_compact_populated() {
+    let s = populated_display().compact().to_string();
 
-    let mut stages = empty_log_stages();
-    stages[0].1 = sample_stats(10, 100, 500);
-
-    let d = make_display(sample_stats(5, 50, 200), cmds, stages);
-    let s = format!("{}", d.compact());
-    println!("{s}");
-
-    assert!(s.contains("apply_batch: [samples: 5"));
-    assert!(s.contains("1:proposed→received: [samples: 10"));
+    let want = [
+        "RuntimeStats { core_busy_duration: 1.5ms",
+        "core_busy_histogram(us): [samples: 11, P0.1: 100, P1: 101, P5: 102, P10: 103, P50: 104, P90: 105, P99: 106, P99.9: 107]",
+        "apply_batch: [samples: 12, P0.1: 200, P1: 201, P5: 202, P10: 203, P50: 204, P90: 205, P99: 206, P99.9: 207]",
+        "append_batch: [samples: 13, P0.1: 300, P1: 301, P5: 302, P10: 303, P50: 304, P90: 305, P99: 306, P99.9: 307]",
+        "replicate_batch: [samples: 14, P0.1: 400, P1: 401, P5: 402, P10: 403, P50: 404, P90: 405, P99: 406, P99.9: 407]",
+        "raft_msg_per_run: [samples: 15, P0.1: 500, P1: 501, P5: 502, P10: 503, P50: 504, P90: 505, P99: 506, P99.9: 507]",
+        "write_batch: [samples: 16, P0.1: 600, P1: 601, P5: 602, P10: 603, P50: 604, P90: 605, P99: 606, P99.9: 607]",
+        "raft_msg_budget: [samples: 17, P0.1: 700, P1: 701, P5: 702, P10: 703, P50: 704, P90: 705, P99: 706, P99.9: 707]",
+        "notification_budget: [samples: 18, P0.1: 800, P1: 801, P5: 802, P10: 803, P50: 804, P90: 805, P99: 806, P99.9: 807]",
+        "raft_msg_usage_permille: [samples: 19, P0.1: 900, P1: 901, P5: 902, P10: 903, P50: 904, P90: 905, P99: 906, P99.9: 907]",
+        "notification_usage_permille: [samples: 20, P0.1: 1000, P1: 1001, P5: 1002, P10: 1003, P50: 1004, P90: 1005, P99: 1006, P99.9: 1007]",
+        "commands: {UpdateIOProgress: 999",
+        "Respond: 1000}",
+        "raft_msgs: {AppendEntries: 3",
+        "GetRuntimeStats: 18446744073709551615}",
+        "notifications: {Notify::VoteResponse: 7",
+        "Notify::ReplicateCleared: 1234567}",
+        "log_stages(us): {1:proposed→received: [samples: 5, P0.1: 1, P1: 1, P5: 1, P10: 1, P50: 1, P90: 2, P99: 2, P99.9: 2]",
+        "2:received→submitted: [samples: 3, P0.1: 2, P1: 2, P5: 2, P10: 2, P50: 2, P90: 2, P99: 2, P99.9: 2]",
+        "3:submitted→persisted: [samples: 3, P0.1: 1, P1: 1, P5: 1, P10: 1, P50: 3, P90: 3, P99: 3, P99.9: 3]",
+        "5:committed→applied: [samples: 2, P0.1: 1, P1: 1, P5: 1, P10: 1, P50: 1, P90: 1, P99: 1, P99.9: 1]",
+        "1~5:proposed→applied: [samples: 5, P0.1: 4, P1: 4, P5: 4, P10: 4, P50: 6, P90: 6, P99: 6, P99.9: 6]} }",
+    ]
+    .join(", ");
+    assert_eq!(want, s);
 }
 
 #[test]
@@ -164,34 +251,70 @@ fn test_core_busy_histogram_distribution_display() {
 #[test]
 fn test_multiline_empty() {
     let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let s = format!("{}", d.multiline());
+    let s = d.multiline().to_string();
 
-    assert!(s.contains("RuntimeStats:"));
-    assert!(s.contains("apply_batch:"));
-    assert!(s.contains("log_stages(us):"));
-    // No log stage entries when all empty
-    assert!(!s.contains("proposed→received"));
+    // The sections of zero counts and of stages without samples stay empty, and no log stage
+    // segment is shown.
+    let want = [
+        "RuntimeStats:",
+        "  core_busy_duration: 0ns",
+        "  core_busy_histogram(us): [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  apply_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  append_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  replicate_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  raft_msg_per_run: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  write_batch: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  raft_msg_budget: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  notification_budget: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  raft_msg_usage_permille: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  notification_usage_permille: [samples: 0, P0.1: 0, P1: 0, P5: 0, P10: 0, P50: 0, P90: 0, P99: 0, P99.9: 0]",
+        "  commands:",
+        "  raft_msgs:",
+        "  notifications:",
+        "  log_stages(us):",
+        "",
+    ]
+    .join("\n");
+    assert_eq!(want, s);
 }
 
+#[cfg(feature = "runtime-stats")]
 #[test]
-fn test_multiline_with_log_stages() {
-    let mut stages = empty_log_stages();
-    stages[0].1 = sample_stats(100, 50, 200);
-    stages[5].1 = sample_stats(100, 120, 800);
+fn test_multiline_populated() {
+    let s = populated_display().multiline().to_string();
 
-    let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], stages);
-    let s = format!("{}", d.multiline());
-
-    println!("{s}");
-
-    assert!(s.contains("1:proposed→received"));
-    assert!(s.contains("n=100"));
-    assert!(s.contains("p50=50"));
-    assert!(s.contains("p99=200"));
-    assert!(s.contains("1~5:proposed→applied"));
-    assert!(s.contains("p50=120"));
-    // Stages with 0 samples are omitted
-    assert!(!s.contains("2:received→submitted"));
+    let want = [
+        "RuntimeStats:",
+        "  core_busy_duration: 1.5ms",
+        "  core_busy_histogram(us): [samples: 11, P0.1: 100, P1: 101, P5: 102, P10: 103, P50: 104, P90: 105, P99: 106, P99.9: 107]",
+        "  apply_batch: [samples: 12, P0.1: 200, P1: 201, P5: 202, P10: 203, P50: 204, P90: 205, P99: 206, P99.9: 207]",
+        "  append_batch: [samples: 13, P0.1: 300, P1: 301, P5: 302, P10: 303, P50: 304, P90: 305, P99: 306, P99.9: 307]",
+        "  replicate_batch: [samples: 14, P0.1: 400, P1: 401, P5: 402, P10: 403, P50: 404, P90: 405, P99: 406, P99.9: 407]",
+        "  raft_msg_per_run: [samples: 15, P0.1: 500, P1: 501, P5: 502, P10: 503, P50: 504, P90: 505, P99: 506, P99.9: 507]",
+        "  write_batch: [samples: 16, P0.1: 600, P1: 601, P5: 602, P10: 603, P50: 604, P90: 605, P99: 606, P99.9: 607]",
+        "  raft_msg_budget: [samples: 17, P0.1: 700, P1: 701, P5: 702, P10: 703, P50: 704, P90: 705, P99: 706, P99.9: 707]",
+        "  notification_budget: [samples: 18, P0.1: 800, P1: 801, P5: 802, P10: 803, P50: 804, P90: 805, P99: 806, P99.9: 807]",
+        "  raft_msg_usage_permille: [samples: 19, P0.1: 900, P1: 901, P5: 902, P10: 903, P50: 904, P90: 905, P99: 906, P99.9: 907]",
+        "  notification_usage_permille: [samples: 20, P0.1: 1000, P1: 1001, P5: 1002, P10: 1003, P50: 1004, P90: 1005, P99: 1006, P99.9: 1007]",
+        "  commands:",
+        "    UpdateIOProgress: 999",
+        "    Respond: 1000",
+        "  raft_msgs:",
+        "    AppendEntries: 3",
+        "    GetRuntimeStats: 18446744073709551615",
+        "  notifications:",
+        "    Notify::VoteResponse: 7",
+        "    Notify::ReplicateCleared: 1234567",
+        "  log_stages(us):",
+        "       1:proposed→received: n=5 p50=1 p90=2 p99=2 p99.9=2",
+        "      2:received→submitted: n=3 p50=2 p90=2 p99=2 p99.9=2",
+        "     3:submitted→persisted: n=3 p50=3 p90=3 p99=3 p99.9=3",
+        "       5:committed→applied: n=2 p50=1 p90=1 p99=1 p99.9=1",
+        "      1~5:proposed→applied: n=5 p50=6 p90=6 p99=6 p99.9=6",
+        "",
+    ]
+    .join("\n");
+    assert_eq!(want, s);
 }
 
 #[test]
@@ -256,131 +379,148 @@ fn test_multiline_with_log_stage_segments() {
 }
 
 #[test]
-fn test_multiline_no_segments_when_empty() {
-    let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let s = format!("{}", d.multiline());
+fn test_mode_selection() {
+    let compact = populated_display().compact().to_string();
+    let multiline = populated_display().multiline().to_string();
+    let human = populated_display().human_readable().to_string();
 
-    assert!(!s.contains("log_stage_segments"));
-}
+    // A display starts in the compact mode; `mode()` selects the same mode as each builder, and the
+    // last selection wins.
+    assert_eq!(compact, populated_display().to_string());
+    assert_eq!(compact, populated_display().mode(DisplayMode::Compact).to_string());
+    assert_eq!(multiline, populated_display().mode(DisplayMode::Multiline).to_string());
+    assert_eq!(human, populated_display().mode(DisplayMode::HumanReadable).to_string());
+    assert_eq!(compact, populated_display().human_readable().compact().to_string());
+    assert_eq!(multiline, populated_display().compact().multiline().to_string());
 
-#[test]
-fn test_multiline_with_counts() {
-    let mut cmds = vec![0u64; CommandName::COUNT];
-    cmds[0] = 7;
-
-    let d = make_display(EMPTY_STATS, cmds, empty_log_stages());
-    let s = format!("{}", d.multiline());
-
-    assert!(s.contains("commands:"));
-    assert!(s.contains(": 7"));
-}
-
-#[cfg(feature = "runtime-stats")]
-#[test]
-fn test_mode_builder() {
-    let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let compact = format!("{}", d.compact());
-
-    let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let multiline = format!("{}", d.multiline());
-
-    let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let human = format!("{}", d.human_readable());
-
-    assert!(compact.starts_with("RuntimeStats {"));
-    assert!(multiline.starts_with("RuntimeStats:"));
-    assert!(human.contains("Batch Sizes:"));
     assert_ne!(compact, multiline);
-    assert_ne!(multiline, human);
+    if cfg!(feature = "runtime-stats") {
+        assert_ne!(multiline, human);
+    } else {
+        assert_eq!(multiline, human, "without tables, it falls back to the multiline mode");
+    }
 }
 
 #[cfg(feature = "runtime-stats")]
 #[test]
 fn test_human_readable_empty() {
     let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
-    let s = format!("{}", d.human_readable());
+    let s = d.human_readable().to_string();
 
-    assert!(s.contains("Batch Sizes:"));
-    assert!(s.contains("Budget & Utilization:"));
-    // No command/message/notification/log-stage tables when all counts are zero
-    assert!(!s.contains("Commands:"));
-    assert!(!s.contains("Raft Messages:"));
-    assert!(!s.contains("Notifications:"));
-    assert!(!s.contains("Log Stage Latencies"));
+    // The distribution tables are shown with zeros; the count and log stage tables and the chart,
+    // which would have no row, are not.
+    let want = [
+        "Core busy duration: 0ns",
+        "",
+        "Core loop busy (us):",
+        "╭──────┬──────────┬──────┬────┬────┬─────┬─────┬─────┬─────┬───────┬─────────────────────────────────╮",
+        "│      │ #Samples │ P0.1 │ P1 │ P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                 │",
+        "├──────┼──────────┼──────┼────┼────┼─────┼─────┼─────┼─────┼───────┼─────────────────────────────────┤",
+        "│ Busy │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Wall time of one core-loop turn │",
+        "╰──────┴──────────┴──────┴────┴────┴─────┴─────┴─────┴─────┴───────┴─────────────────────────────────╯",
+        "Batch Sizes:",
+        "╭─────────────┬──────────┬──────┬────┬────┬─────┬─────┬─────┬─────┬───────┬────────────────────────────────────╮",
+        "│             │ #Samples │ P0.1 │ P1 │ P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                    │",
+        "├─────────────┼──────────┼──────┼────┼────┼─────┼─────┼─────┼─────┼───────┼────────────────────────────────────┤",
+        "│ Apply       │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Entries per state machine apply    │",
+        "│ Append      │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Entries per storage append         │",
+        "│ Replicate   │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Entries per replication RPC        │",
+        "│ RaftMsg/run │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ RaftMsgs per run_engine_commands() │",
+        "│ Write       │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Client writes merged per batch     │",
+        "╰─────────────┴──────────┴──────┴────┴────┴─────┴─────┴─────┴─────┴───────┴────────────────────────────────────╯",
+        "Budget & Utilization:",
+        "╭───────────────┬──────────┬──────┬────┬────┬─────┬─────┬─────┬─────┬───────┬─────────────────────────────────────╮",
+        "│               │ #Samples │ P0.1 │ P1 │ P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                     │",
+        "├───────────────┼──────────┼──────┼────┼────┼─────┼─────┼─────┼─────┼───────┼─────────────────────────────────────┤",
+        "│ RaftMsgBudget │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Max RaftMsgs allowed per loop       │",
+        "│ NotifyBudget  │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Max Notifications allowed per loop  │",
+        "│ RaftMsgUsage‰ │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ RaftMsg budget utilization (‰)      │",
+        "│ NotifyUsage‰  │        0 │    0 │  0 │  0 │   0 │   0 │   0 │   0 │     0 │ Notification budget utilization (‰) │",
+        "╰───────────────┴──────────┴──────┴────┴────┴─────┴─────┴─────┴─────┴───────┴─────────────────────────────────────╯",
+        "",
+    ]
+    .join("\n");
+    assert_eq!(want, s);
 }
 
 #[cfg(feature = "runtime-stats")]
 #[test]
-fn test_human_readable_with_data() {
-    let mut cmds = vec![0u64; CommandName::COUNT];
-    cmds[0] = 1_234;
+fn test_human_readable_populated() {
+    let s = populated_display().human_readable().to_string();
 
-    let mut msgs = vec![0u64; RaftMsgName::COUNT];
-    msgs[0] = 56;
-
-    let mut stages = empty_log_stages();
-    stages[0].1 = sample_stats(100, 50, 200);
-    stages[5].1 = sample_stats(100, 120, 800);
-
-    // Build histograms where each stage follows a log-normal distribution
-    // (Gaussian on the log scale) with a different center.
-    // 7 geometrically-spaced bucket values; each stage peaks at a
-    // different position and tapers symmetrically on the log axis.
-    //
-    // values(us):            8   20   50  120  300  700 1500
-    // 1:proposed→received   20   12    5    2    1    1    1  (peak@8)
-    // 2:received→submitted   8   20   12    5    2    1    1  (peak@20)
-    // 5:committed→applied    1    2    8   20   12    5    1  (peak@120)
-    // 4:persisted→committed  1    1    2    8   20   12    5  (peak@300)
-    // 3:submitted→persisted  1    1    1    2    8   20   12  (peak@700)
-    let mut hist = LogStageHistograms::new();
-    let values: [u64; 7] = [8, 20, 50, 120, 300, 700, 1500];
-    let counts: [&[u64; 7]; 5] = [
-        &[20, 12, 5, 2, 1, 1, 1],
-        &[8, 20, 12, 5, 2, 1, 1],
-        &[1, 1, 1, 2, 8, 20, 12],
-        &[1, 1, 2, 8, 20, 12, 5],
-        &[1, 2, 8, 20, 12, 5, 1],
-    ];
-    let fields = [
-        &mut hist.proposed_to_received,
-        &mut hist.received_to_submitted,
-        &mut hist.submitted_to_persisted,
-        &mut hist.persisted_to_committed,
-        &mut hist.committed_to_applied,
-    ];
-    for (field, stage_counts) in fields.into_iter().zip(counts) {
-        for (&v, &n) in values.iter().zip(stage_counts) {
-            field.record_n(v, n);
-        }
-    }
-    for (i, &v) in values.iter().enumerate() {
-        let total: u64 = counts.iter().map(|c| c[i]).sum();
-        hist.proposed_to_applied.record_n(v, total);
-    }
-
-    let mut d = make_display(sample_stats(10, 30, 150), cmds, stages);
-    d.raft_msg_counts = msgs;
-    d.log_stage_histograms = hist;
-    let s = format!("{}", d.human_readable());
-    println!("{s}");
-
-    // Batch sizes table
-    assert!(s.contains("Batch Sizes:"));
-    assert!(s.contains("Apply"));
-
-    // Counts tables
-    assert!(s.contains("Commands:"));
-    assert!(s.contains("1,234"));
-    assert!(s.contains("Raft Messages:"));
-
-    // Log stage percentile table
-    assert!(s.contains("Log Stage Latencies (us):"));
-    assert!(s.contains("1:proposed→received"));
-    assert!(s.contains("1~5:proposed→applied"));
-    // ASCII chart
-    assert!(s.contains("Log Stage Latency Distribution (us):"));
-    assert!(s.contains("1:proposed→received"));
-    // Chart contains bar characters
-    assert!(s.contains('█'));
+    // Counts are grouped by thousands, up to `u64::MAX`. The chart draws a row for each bucket that
+    // holds a sample, with one bar segment and one count per stage; its summaries agree with the
+    // log stage table, which shows only the stages with samples.
+    let want = [
+        "Core busy duration: 1.5ms",
+        "",
+        "Core loop busy (us):",
+        "╭──────┬──────────┬──────┬─────┬─────┬─────┬─────┬─────┬─────┬───────┬─────────────────────────────────╮",
+        "│      │ #Samples │ P0.1 │  P1 │  P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                 │",
+        "├──────┼──────────┼──────┼─────┼─────┼─────┼─────┼─────┼─────┼───────┼─────────────────────────────────┤",
+        "│ Busy │       11 │  100 │ 101 │ 102 │ 103 │ 104 │ 105 │ 106 │   107 │ Wall time of one core-loop turn │",
+        "╰──────┴──────────┴──────┴─────┴─────┴─────┴─────┴─────┴─────┴───────┴─────────────────────────────────╯",
+        "Batch Sizes:",
+        "╭─────────────┬──────────┬──────┬─────┬─────┬─────┬─────┬─────┬─────┬───────┬────────────────────────────────────╮",
+        "│             │ #Samples │ P0.1 │  P1 │  P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                    │",
+        "├─────────────┼──────────┼──────┼─────┼─────┼─────┼─────┼─────┼─────┼───────┼────────────────────────────────────┤",
+        "│ Apply       │       12 │  200 │ 201 │ 202 │ 203 │ 204 │ 205 │ 206 │   207 │ Entries per state machine apply    │",
+        "│ Append      │       13 │  300 │ 301 │ 302 │ 303 │ 304 │ 305 │ 306 │   307 │ Entries per storage append         │",
+        "│ Replicate   │       14 │  400 │ 401 │ 402 │ 403 │ 404 │ 405 │ 406 │   407 │ Entries per replication RPC        │",
+        "│ RaftMsg/run │       15 │  500 │ 501 │ 502 │ 503 │ 504 │ 505 │ 506 │   507 │ RaftMsgs per run_engine_commands() │",
+        "│ Write       │       16 │  600 │ 601 │ 602 │ 603 │ 604 │ 605 │ 606 │   607 │ Client writes merged per batch     │",
+        "╰─────────────┴──────────┴──────┴─────┴─────┴─────┴─────┴─────┴─────┴───────┴────────────────────────────────────╯",
+        "Budget & Utilization:",
+        "╭───────────────┬──────────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬───────┬─────────────────────────────────────╮",
+        "│               │ #Samples │ P0.1 │   P1 │   P5 │  P10 │  P50 │  P90 │  P99 │ P99.9 │                                     │",
+        "├───────────────┼──────────┼──────┼──────┼──────┼──────┼──────┼──────┼──────┼───────┼─────────────────────────────────────┤",
+        "│ RaftMsgBudget │       17 │  700 │  701 │  702 │  703 │  704 │  705 │  706 │   707 │ Max RaftMsgs allowed per loop       │",
+        "│ NotifyBudget  │       18 │  800 │  801 │  802 │  803 │  804 │  805 │  806 │   807 │ Max Notifications allowed per loop  │",
+        "│ RaftMsgUsage‰ │       19 │  900 │  901 │  902 │  903 │  904 │  905 │  906 │   907 │ RaftMsg budget utilization (‰)      │",
+        "│ NotifyUsage‰  │       20 │ 1000 │ 1001 │ 1002 │ 1003 │ 1004 │ 1005 │ 1006 │  1007 │ Notification budget utilization (‰) │",
+        "╰───────────────┴──────────┴──────┴──────┴──────┴──────┴──────┴──────┴──────┴───────┴─────────────────────────────────────╯",
+        "Commands:",
+        "╭──────────────────┬───────╮",
+        "│ Command          │ Count │",
+        "├──────────────────┼───────┤",
+        "│ UpdateIOProgress │   999 │",
+        "│ Respond          │ 1,000 │",
+        "╰──────────────────┴───────╯",
+        "Raft Messages:",
+        "╭─────────────────┬────────────────────────────╮",
+        "│ Message         │                      Count │",
+        "├─────────────────┼────────────────────────────┤",
+        "│ AppendEntries   │                          3 │",
+        "│ GetRuntimeStats │ 18,446,744,073,709,551,615 │",
+        "╰─────────────────┴────────────────────────────╯",
+        "Notifications:",
+        "╭──────────────────────────┬───────────╮",
+        "│ Notification             │     Count │",
+        "├──────────────────────────┼───────────┤",
+        "│ Notify::VoteResponse     │         7 │",
+        "│ Notify::ReplicateCleared │ 1,234,567 │",
+        "╰──────────────────────────┴───────────╯",
+        "Log Stage Latencies (us):",
+        "╭───────────────────────┬──────────┬──────┬────┬────┬─────┬─────┬─────┬─────┬───────╮",
+        "│                       │ #Samples │ P0.1 │ P1 │ P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │",
+        "├───────────────────────┼──────────┼──────┼────┼────┼─────┼─────┼─────┼─────┼───────┤",
+        "│ 1:proposed→received   │        5 │    1 │  1 │  1 │   1 │   1 │   2 │   2 │     2 │",
+        "│ 2:received→submitted  │        3 │    2 │  2 │  2 │   2 │   2 │   2 │   2 │     2 │",
+        "│ 3:submitted→persisted │        3 │    1 │  1 │  1 │   1 │   3 │   3 │   3 │     3 │",
+        "│ 5:committed→applied   │        2 │    1 │  1 │  1 │   1 │   1 │   1 │   1 │     1 │",
+        "│ 1~5:proposed→applied  │        5 │    4 │  4 │  4 │   4 │   6 │   6 │   6 │     6 │",
+        "╰───────────────────────┴──────────┴──────┴────┴────┴─────┴─────┴─────┴─────┴───────╯",
+        "Log Stage Latency Distribution (us):",
+        " range | █ 1:proposed→received ▒ 2:received→submitted ░ 3:submitted→persisted ▓ 4:persisted→committed ▞ 5:committed→applied",
+        "[1, 2) | ███████████████████████░░░░░░▞▞▞▞▞▞▞▞▞▞▞  4 + 0 + 1 + 0 + 2",
+        "[2, 3) | ██████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒  1 + 3 + 0 + 0 + 0",
+        "[3, 4) | ░░░░░░░░░░░  0 + 0 + 2 + 0 + 0",
+        "█     1:proposed→received  total: 5  P50: 1  P90: 2  P99: 2",
+        "▒    2:received→submitted  total: 3  P50: 2  P90: 2  P99: 2",
+        "░   3:submitted→persisted  total: 3  P50: 3  P90: 3  P99: 3",
+        "▓   4:persisted→committed  total: 0  P50: 0  P90: 0  P99: 0",
+        "▞     5:committed→applied  total: 2  P50: 1  P90: 1  P99: 1",
+    ]
+    .join("\n");
+    assert_eq!(want, s);
 }
