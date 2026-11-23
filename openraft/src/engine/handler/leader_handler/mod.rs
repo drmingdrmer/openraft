@@ -136,11 +136,14 @@ where
         // caller checked the step from the committed membership: each read quorum of either side
         // intersects each write quorum of the other. So a leader that either side elects holds
         // every entry that the other side committed.
+        //
+        // `append_membership()` initiates replication itself, after it rebuilds the replication
+        // streams.
         if let Some((log_id, m)) = membership_entry {
             rh.append_membership(&log_id, &m);
+        } else {
+            rh.initiate_replication();
         }
-
-        rh.initiate_replication();
 
         Some(log_ids)
     }
