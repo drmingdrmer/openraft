@@ -98,6 +98,17 @@ where I: Instant
         self.record_at(stage.index(), right, value);
     }
 
+    /// Discard the stages of the logs from index `since` on, which a truncation removed from the
+    /// log, so that the logs written at those indexes later are observed afresh.
+    ///
+    /// A batch that holds `since` keeps its stages for the logs before `since`. When `since` is
+    /// before the retained history, the history is gone, and the observation starts again at
+    /// `since`.
+    pub(crate) fn truncate(&mut self, since: u64) {
+        self.inner.truncate(self.begin, since);
+        self.begin = self.begin.min(since);
+    }
+
     /// Record `(right, value)` into the range map at `index`, advancing
     /// `begin` if the insertion evicted the oldest entry.
     fn record_at(&mut self, index: usize, right: u64, value: I) {

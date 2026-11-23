@@ -1,16 +1,40 @@
+use std::collections::VecDeque;
+use std::io;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::Result;
 use futures::TryStreamExt;
 use openraft::Config;
+use openraft::LogState;
+use openraft::OptionalSend;
+use openraft::Raft;
+use openraft::SnapshotPolicy;
+use openraft::Vote;
+use openraft::alias::EntryOf;
+use openraft::alias::LogIdOf;
+use openraft::alias::OneshotReceiverOf;
+use openraft::alias::OneshotSenderOf;
+use openraft::alias::VoteOf;
+use openraft::raft::AppendEntriesRequest;
 use openraft::raft::WriteOption;
 use openraft::stats::RuntimeStats;
+use openraft::storage::IOFlushed;
+use openraft::storage::RaftLogStorage;
+use openraft::testing::blank_ent;
+use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::MemLogStore;
+use crate::fixtures::MemRaft;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::WAIT_TIMEOUT;
+use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 fn log_stage_totals(stats: &RuntimeStats<TypeConfig>) -> [u64; 6] {
@@ -248,5 +272,255 @@ async fn runtime_stats_record_one_raft_msg_usage_sample_per_drain() -> Result<()
         assert_eq!(drains, samples, "one utilization sample per drain");
     }
 
+    Ok(())
+}
+
+/// The request of the leader of `term`, node 0, to append blank logs of `term` at `indexes` after
+/// `prev`, which commits them if `commit`.
+fn append_request(
+    term: u64,
+    prev: Option<LogIdOf<TypeConfig>>,
+    indexes: std::ops::Range<u64>,
+    commit: bool,
+) -> AppendEntriesRequest<TypeConfig> {
+    let last = indexes.clone().last().map(|index| log_id(term, 0, index));
+    AppendEntriesRequest {
+        vote: Vote::new_committed(term, 0),
+        prev_log_id: prev,
+        entries: indexes.map(|index| blank_ent::<TypeConfig>(term, 0, index)).collect(),
+        leader_commit: if commit { last } else { None },
+    }
+}
+
+/// Append a blank log of `term` at `index` after `prev`, and commit it if `commit`.
+async fn append_blank(
+    raft: &MemRaft,
+    term: u64,
+    prev: Option<LogIdOf<TypeConfig>>,
+    index: u64,
+    commit: bool,
+) -> Result<()> {
+    let request = append_request(term, prev, index..index + 1, commit);
+    let reply = raft.append_entries(request).await?;
+    assert_eq!(Ok(Some(log_id(term, 0, index))), reply);
+    Ok(())
+}
+
+/// A follower that replaces an unapplied log observes the replacement afresh: the proposal and
+/// receipt it backfills are the replacement's submission, not the discarded log's.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_replaced_log_is_observed_afresh() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        snapshot_policy: SnapshotPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    router.new_raft_node(1).await?;
+    let n1 = router.get_raft_handle(&1)?;
+
+    tracing::info!("--- append log 0 of term 1, then replace it with a committed log 0 of term 2");
+    {
+        append_blank(&n1, 1, None, 0, false).await?;
+        append_blank(&n1, 2, None, 0, true).await?;
+        router.wait(&1).applied_index(Some(0), "the replacement is applied").await?;
+    }
+
+    tracing::info!("--- one segment, 0..1, whose proposal and receipt are its submission");
+    {
+        let stats = n1.runtime_stats().await?;
+        let segments: Vec<_> = stats.log_stage.segments().collect();
+        assert_eq!(1, segments.len(), "segments: {}", stats.log_stage);
+        assert_eq!(0..1, segments[0].range);
+
+        // The values are in stage order: proposed, received, submitted, persisted, committed,
+        // applied.
+        let values = segments[0].values;
+        assert_eq!(values[2], values[0], "proposed is the replacement's submission");
+        assert_eq!(values[2], values[1], "received is the replacement's submission");
+    }
+
+    Ok(())
+}
+
+/// A follower whose log-stage capacity holds two batches discards three unapplied logs and applies
+/// a replacement at index 0: the evicted history does not hide the replacement, which adds one
+/// sample to each log-stage histogram.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_replacement_before_the_retained_history_is_observed() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        enable_heartbeat: false,
+        snapshot_policy: SnapshotPolicy::Never,
+        log_stage_capacity: Some(2),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    router.new_raft_node(1).await?;
+    let n1 = router.get_raft_handle(&1)?;
+
+    tracing::info!("--- append logs 0, 1 and 2 of term 1 one at a time: the first batch is evicted");
+    {
+        for index in 0..3u64 {
+            let prev = index.checked_sub(1).map(|prev| log_id(1, 0, prev));
+            append_blank(&n1, 1, prev, index, false).await?;
+        }
+    }
+
+    tracing::info!("--- replace them with a committed log 0 of term 2");
+    {
+        append_blank(&n1, 2, None, 0, true).await?;
+        router.wait(&1).applied_index(Some(0), "the replacement is applied").await?;
+    }
+
+    tracing::info!("--- the replacement is the one segment, with one sample in each histogram");
+    {
+        let stats = n1.runtime_stats().await?;
+        let ranges: Vec<_> = stats.log_stage.segments().map(|seg| seg.range).collect();
+        assert_eq!(vec![0..1], ranges, "segments: {}", stats.log_stage);
+        assert_eq!([1; 6], log_stage_totals(&stats));
+    }
+
+    Ok(())
+}
+
+/// A log store that hands the flush callbacks of its first `held` appends to the test, in order,
+/// and flushes the later ones at once.
+///
+/// A held append is readable at once, as `RaftLogStorage::append()` requires.
+struct HeldFlushLogStore {
+    inner: MemLogStore,
+    flushes: Arc<Mutex<VecDeque<OneshotSenderOf<TypeConfig, IOFlushed<TypeConfig>>>>>,
+}
+
+impl HeldFlushLogStore {
+    fn new(inner: MemLogStore, held: usize) -> (Self, Vec<OneshotReceiverOf<TypeConfig, IOFlushed<TypeConfig>>>) {
+        let (senders, receivers): (VecDeque<_>, Vec<_>) = (0..held).map(|_| TypeConfig::oneshot()).unzip();
+        let store = Self {
+            inner,
+            flushes: Arc::new(Mutex::new(senders)),
+        };
+        (store, receivers)
+    }
+}
+
+impl RaftLogStorage<TypeConfig> for HeldFlushLogStore {
+    type LogReader = MemLogStore;
+
+    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
+        self.inner.get_log_state().await
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.inner.clone()
+    }
+
+    async fn save_vote(&mut self, vote: &VoteOf<TypeConfig>) -> Result<(), io::Error> {
+        self.inner.save_vote(vote).await
+    }
+
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
+    where
+        I: IntoIterator<Item = EntryOf<TypeConfig>> + OptionalSend,
+        I::IntoIter: OptionalSend,
+    {
+        let held = self.flushes.lock().unwrap().pop_front();
+        let Some(flush) = held else {
+            return self.inner.append(entries, callback).await;
+        };
+        self.inner.append(entries, IOFlushed::noop()).await?;
+        let sent = flush.send(callback);
+        assert!(sent.is_ok(), "the test keeps the flush receiver");
+        Ok(())
+    }
+
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {
+        self.inner.truncate_after(last_log_id).await
+    }
+
+    async fn purge(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), io::Error> {
+        self.inner.purge(log_id).await
+    }
+}
+
+/// A flush of logs that a truncation discarded, which completes after the truncation, records no
+/// stage: a later log at a discarded index is observed from its own submission.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn runtime_stats_late_flush_of_discarded_logs_records_nothing() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            enable_elect: false,
+            enable_heartbeat: false,
+            snapshot_policy: SnapshotPolicy::Never,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let router = RaftRouter::new(config.as_ref().clone())?;
+    let (log_store, sm) = openraft_memstore::new_mem_store();
+    let (log_store, held) = HeldFlushLogStore::new(log_store, 2);
+    let mut held = held.into_iter();
+    let n1 = Raft::new(1, config, router.clone(), log_store, sm).await?;
+
+    tracing::info!("--- append logs 0..3 of term 1, and hold their flush");
+    let (discarded, discarded_flush) = {
+        let n1 = n1.clone();
+        let request = append_request(1, None, 0..3, false);
+        let append = TypeConfig::spawn(async move { n1.append_entries(request).await });
+        let flush = TypeConfig::timeout(WAIT_TIMEOUT, held.next().unwrap()).await??;
+        (append, flush)
+    };
+
+    tracing::info!("--- replace them with a committed log 0 of term 2, and hold its flush too");
+    let (replacing, replacing_flush) = {
+        let n1 = n1.clone();
+        let request = append_request(2, None, 0..1, true);
+        let append = TypeConfig::spawn(async move { n1.append_entries(request).await });
+        let flush = TypeConfig::timeout(WAIT_TIMEOUT, held.next().unwrap()).await??;
+        (append, flush)
+    };
+
+    tracing::info!("--- the discarded logs' flush completes first, then the replacement's");
+    {
+        discarded_flush.io_completed(Ok(()));
+        let reply = TypeConfig::timeout(WAIT_TIMEOUT, discarded).await??;
+        tracing::info!("the discarded append replies: {:?}", reply);
+
+        replacing_flush.io_completed(Ok(()));
+        let reply = TypeConfig::timeout(WAIT_TIMEOUT, replacing).await???;
+        assert_eq!(Ok(Some(log_id(2, 0, 0))), reply);
+        n1.wait(timeout()).applied_index(Some(0), "the replacement is applied").await?;
+    }
+
+    tracing::info!("--- append a committed log 1 of term 2: its proposal and receipt are its submission");
+    {
+        let reply = n1.append_entries(append_request(2, Some(log_id(2, 0, 0)), 1..2, true)).await?;
+        assert_eq!(Ok(Some(log_id(2, 0, 1))), reply);
+        n1.wait(timeout()).applied_index(Some(1), "log 1 is applied").await?;
+
+        let stats = n1.runtime_stats().await?;
+        let segment = stats.log_stage.segments().find(|seg| seg.range.contains(&1));
+        let segment = segment.expect("a segment covers log 1");
+        let values = segment.values;
+        assert_eq!(
+            values[2], values[0],
+            "proposed is log 1's submission: {}",
+            stats.log_stage
+        );
+        assert_eq!(
+            values[2], values[1],
+            "received is log 1's submission: {}",
+            stats.log_stage
+        );
+    }
+
+    n1.shutdown().await?;
     Ok(())
 }

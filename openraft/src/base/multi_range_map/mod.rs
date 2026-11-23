@@ -38,6 +38,15 @@ where
         &mut self.range_maps[index]
     }
 
+    /// Discard the ranges of every range map from `since` on, see [`RangeMap::truncate()`].
+    ///
+    /// `begin` is the left boundary of the first entry of each range map.
+    pub fn truncate(&mut self, begin: Bound, since: Bound) {
+        for range_map in &mut self.range_maps {
+            range_map.truncate(begin, since);
+        }
+    }
+
     /// Iterate segments: contiguous key ranges that do not cross any range map's
     /// batch boundary, within the intersection range where all ranges have data.
     ///

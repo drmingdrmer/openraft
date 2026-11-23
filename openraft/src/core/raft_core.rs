@@ -2426,7 +2426,11 @@ where
 
         match io_id {
             IOId::Log(log_io_id) => {
-                if let Some(ref log_id) = log_io_id.log_id {
+                // A flush of logs that a truncation discarded meanwhile records nothing: it would
+                // give their timestamps to the logs that replace them.
+                if let Some(ref log_id) = log_io_id.log_id
+                    && self.engine.state.has_log_id(log_id.clone())
+                {
                     self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
                 }
 
@@ -2779,6 +2783,9 @@ where
     /// Run [`Command::TruncateLog`].
     async fn run_truncate_log(&mut self, after: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
         self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
+
+        // The stages of the discarded logs must not describe the logs written in their place.
+        self.runtime_stats.truncate_log_stages(after.next_index());
 
         // Inform clients waiting for logs to be applied.
         let leader_id = self.current_leader();
