@@ -39,6 +39,9 @@ impl<CLID> LeaderLogIds<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Create a new log ID range `[first, last]`.
+    ///
+    /// The caller must pass `first <= last`. Only a build with debug assertions checks it, and
+    /// panics when it does not hold.
     pub(crate) fn new(committed_leader_id: CLID, first: u64, last: u64) -> Self {
         debug_assert!(first <= last, "first {} must be <= last {}", first, last);
         Self {
@@ -56,8 +59,12 @@ where CLID: RaftCommittedLeaderId
 
     /// Returns the log ID at the specified index.
     ///
+    /// The caller must pass an `index` in `[first, last]`.
+    ///
     /// # Panics
-    /// Panics if `index` is out of range `[first, last]`.
+    ///
+    /// Panics if `index` is out of range, but only in a build with debug assertions. Other builds
+    /// do not check it, and return a log ID at `index` even outside the range.
     #[allow(dead_code)]
     pub(crate) fn get(&self, index: u64) -> LogId<CLID> {
         debug_assert!(
@@ -72,8 +79,12 @@ where CLID: RaftCommittedLeaderId
 
     /// Returns a reference to the log ID at the specified index.
     ///
+    /// The caller must pass an `index` in `[first, last]`.
+    ///
     /// # Panics
-    /// Panics if `index` is out of range `[first, last]`.
+    ///
+    /// Panics if `index` is out of range, but only in a build with debug assertions. Other builds
+    /// do not check it, and return a log ID at `index` even outside the range.
     #[allow(dead_code)]
     pub(crate) fn ref_at(&self, index: u64) -> RefLogId<'_, CLID> {
         debug_assert!(
