@@ -1,4 +1,4 @@
-use super::*;
+use super::LeaderLogIdsIter;
 use crate::engine::testing::UtClid;
 use crate::engine::testing::log_id;
 
@@ -6,20 +6,24 @@ fn committed_leader_id(term: u64, node_id: u64) -> UtClid {
     *log_id(term, node_id, 0).committed_leader_id()
 }
 
+/// `start >= end` is an empty range, which stays exhausted from both ends.
 #[test]
 fn test_empty_range() {
-    // start == end means empty
-    let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 5, 5);
-    assert_eq!(iter.len(), 0);
-    let ids: Vec<_> = iter.collect();
-    assert!(ids.is_empty());
+    for (start, end) in [(5, 5), (6, 5)] {
+        let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), start, end);
+        assert_eq!(0, ExactSizeIterator::len(&iter), "[{start}, {end})");
+        assert_eq!((0, Some(0)), Iterator::size_hint(&iter), "[{start}, {end})");
+        assert_eq!(None, iter.next());
+        assert_eq!(None, iter.next_back());
+        assert_eq!(None, iter.next());
+    }
 }
 
 #[test]
 fn test_single_element() {
     // [0, 1) is a single element at index 0
     let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 2), 0, 1);
-    assert_eq!(iter.len(), 1);
+    assert_eq!(1, ExactSizeIterator::len(&iter));
     let ids: Vec<_> = iter.collect();
     assert_eq!(ids, vec![log_id(1, 2, 0)]);
 }
@@ -79,17 +83,32 @@ fn test_single_element_at_zero() {
     assert!(iter.next().is_none());
 }
 
+/// `ExactSizeIterator::len()` and `Iterator::size_hint()` both count the IDs left, as either end
+/// advances and after the iterator is exhausted.
 #[test]
 fn test_exact_size() {
-    let iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 10, 15);
-    assert_eq!(iter.len(), 5);
+    let left = |iter: &LeaderLogIdsIter<UtClid>| (ExactSizeIterator::len(iter), Iterator::size_hint(iter));
 
-    let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 10, 15);
-    assert_eq!(iter.len(), 5);
-    iter.next();
-    assert_eq!(iter.len(), 4);
-    iter.next_back();
-    assert_eq!(iter.len(), 3);
+    let mut iter = LeaderLogIdsIter::<UtClid>::new(committed_leader_id(1, 1), 10, 14);
+    assert_eq!((4, (4, Some(4))), left(&iter));
+
+    assert_eq!(Some(log_id(1, 1, 10)), iter.next());
+    assert_eq!((3, (3, Some(3))), left(&iter));
+
+    assert_eq!(Some(log_id(1, 1, 13)), iter.next_back());
+    assert_eq!((2, (2, Some(2))), left(&iter));
+
+    assert_eq!(Some(log_id(1, 1, 11)), iter.next());
+    assert_eq!((1, (1, Some(1))), left(&iter));
+
+    assert_eq!(Some(log_id(1, 1, 12)), iter.next_back());
+    assert_eq!((0, (0, Some(0))), left(&iter));
+
+    assert_eq!(None, iter.next());
+    assert_eq!(None, iter.next_back());
+    assert_eq!(None, iter.next());
+    assert_eq!(None, iter.next_back());
+    assert_eq!((0, (0, Some(0))), left(&iter));
 }
 
 #[test]
