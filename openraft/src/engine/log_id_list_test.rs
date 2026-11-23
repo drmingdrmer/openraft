@@ -1,5 +1,7 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 
+use crate::LogId;
 use crate::RaftLogReader;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
@@ -987,4 +989,55 @@ fn test_get_key_log_ids_near_u64_max() {
             reader.reads
         );
     });
+}
+
+thread_local! {
+    /// The number of `CountedLeaderId` clones made on this thread.
+    static LEADER_ID_CLONES: Cell<usize> = const { Cell::new(0) };
+}
+
+/// A committed leader id that is not `Copy` and counts its clones.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+struct CountedLeaderId(u64);
+
+impl Clone for CountedLeaderId {
+    fn clone(&self) -> Self {
+        LEADER_ID_CLONES.with(|n| n.set(n.get() + 1));
+        Self(self.0)
+    }
+}
+
+impl std::fmt::Display for CountedLeaderId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "L{}", self.0)
+    }
+}
+
+/// The ends of each batch move into the list, so extending it clones no leader id, and it stores
+/// the same boundaries as before: for an empty batch, a single log, a batch that continues the
+/// last leader, and a batch of a new leader.
+#[test]
+fn test_extend_from_same_leader_moves_the_ends() {
+    let lid = |leader: u64, index: u64| LogId::new(CountedLeaderId(leader), index);
+    let batch = |leader: u64, first: u64, last: u64| (first..=last).map(|i| lid(leader, i)).collect::<Vec<_>>();
+    let clones = || LEADER_ID_CLONES.with(|n| n.get());
+
+    let mut ids = LogIdList::<CountedLeaderId>::default();
+    let cases = [
+        (vec![], vec![]),
+        (batch(1, 2, 2), vec![lid(1, 2)]),
+        (batch(1, 3, 4), vec![lid(1, 4)]),
+        (batch(2, 5, 7), vec![lid(1, 4), lid(2, 7)]),
+    ];
+    for (new_ids, want) in cases {
+        let before = clones();
+        ids.extend_from_same_leader(new_ids);
+        assert_eq!(before, clones(), "extending clones no leader id");
+        assert_eq!(want, ids.key_log_ids());
+    }
+
+    let found = [2, 4, 5, 7, 8].map(|index| ids.get(index));
+    let want = [Some(lid(1, 2)), Some(lid(1, 4)), Some(lid(2, 5)), Some(lid(2, 7)), None];
+    assert_eq!(want, found);
 }
