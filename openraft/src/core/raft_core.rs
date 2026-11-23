@@ -1422,7 +1422,10 @@ where
     /// Send responds whose waiting conditions are satisfied.
     ///
     /// Responds are queued when their waiting conditions (log flushed, applied, snapshot built)
-    /// are not yet met. This method drains all responds whose conditions are now satisfied.
+    /// are not yet met. This method sends the satisfied responds at the front of each queue; see
+    /// [`PendingResponds::drain_satisfied()`].
+    ///
+    /// [`PendingResponds::drain_satisfied()`]: crate::engine::pending_responds::PendingResponds::drain_satisfied
     pub(crate) fn send_satisfied_responds(&mut self) {
         let io_state = self.engine.state.io_state();
 

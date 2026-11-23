@@ -461,7 +461,14 @@ pub struct Timeout<C: RaftTypeConfig> {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ForwardReason {
-    /// The receiving node is not the leader.
+    /// The receiving node is not the leader, or not the leader that the request expected.
+    ///
+    /// A write whose [`WriteOption::with_leader()`] names another committed leader than the
+    /// current one gets this reason too, also from the current leader. Its hint names the current
+    /// leader, so it can be the receiving node itself, and this reason does not show that the
+    /// receiver is a follower. Check whether the expected leader still holds before retrying.
+    ///
+    /// [`WriteOption::with_leader()`]: crate::raft::WriteOption::with_leader
     #[default]
     NotLeader,
 
