@@ -225,6 +225,12 @@ where
     /// Updates `self.last_log_id` to the last allocated log ID.
     ///
     /// The caller is responsible for assigning the log IDs to entries.
+    ///
+    /// # Panics
+    ///
+    /// Panics in every build if the last allocated index would be greater than `u64::MAX - 1`, and
+    /// leaves `self.last_log_id` unchanged. Iterating a [`LeaderLogIds`] needs the index after its
+    /// last one, so a leader never allocates index `u64::MAX`.
     pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
 
@@ -234,7 +240,14 @@ where
 
         let committed_leader_id = self.committed_vote.committed_leader_id();
         let first = self.last_log_id().next_index();
-        let last = first + count as u64 - 1;
+
+        // Require the exclusive end, not only the last index, to fit in u64: iterating the range
+        // needs it.
+        let end = u64::try_from(count).ok().and_then(|n| first.checked_add(n));
+        let Some(end) = end else {
+            panic!("can not assign {count} log ids from index {first}: the last assignable log index is u64::MAX - 1");
+        };
+        let last = end - 1;
 
         self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), last));
 
