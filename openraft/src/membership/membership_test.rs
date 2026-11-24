@@ -160,7 +160,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_membership_add_learner() -> anyhow::Result<()> {
+fn test_membership_add_nodes_finalizes_joint_config() -> anyhow::Result<()> {
     let node = |s: &str| TestNode {
         addr: s.to_string(),
         data: Default::default(),
@@ -171,8 +171,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         btreemap! {1=>node("1"), 2=>node("2")},
     );
 
-    // Add learner that presents in old cluster has no effect.
-
+    // The general AddNodes edit keeps existing metadata but produces a final target.
     let change = ChangeMembers::AddNodes(btreemap! {1=>node("3")});
     let res = change.apply(&m_1_2, true)?;
     assert_eq!(
@@ -180,8 +179,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         res
     );
 
-    // Success to add a learner
-
+    // Adding a missing node likewise produces a final target.
     let change = ChangeMembers::AddNodes(btreemap! {3=>node("3")});
     let m_1_2_3 = change.apply(&m_1_2, true)?;
     assert_eq!(
