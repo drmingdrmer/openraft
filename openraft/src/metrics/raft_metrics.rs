@@ -41,17 +41,35 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///
 /// Access metrics through the watch channel returned by [`Raft::metrics`]:
 ///
-/// ```ignore
+/// ```no_run
+/// # use std::time::Duration;
+/// # use openraft::metrics::WaitError;
+/// # use openraft::storage::RaftStateMachine;
+/// # use openraft::{Raft, RaftTypeConfig};
+/// use openraft::ServerState;
+/// use openraft::async_runtime::WatchReceiver;
+///
+/// # async fn example<C, SM>(raft: &Raft<C, SM>, timeout: Duration) -> Result<(), WaitError>
+/// # where
+/// #     C: RaftTypeConfig,
+/// #     SM: RaftStateMachine<C>,
+/// # {
 /// let metrics_rx = raft.metrics();
 ///
-/// // Read current metrics
-/// let metrics = metrics_rx.borrow_watched();
-/// println!("Node state: {:?}", metrics.state);
-/// println!("Current leader: {:?}", metrics.current_leader);
+/// // Read current metrics. The guard returned by `borrow_watched()` can hold a read lock, as
+/// // Tokio's does, that blocks Raft from publishing new metrics. End the guard before any
+/// // `.await`, such as the waits below, which need those updates.
+/// {
+///     let metrics = metrics_rx.borrow_watched();
+///     println!("Node state: {:?}", metrics.state);
+///     println!("Current leader: {:?}", metrics.current_leader);
+/// }
 ///
 /// // Wait for specific conditions
-/// raft.wait(None).state(State::Leader, "become leader").await?;
+/// raft.wait(None).state(ServerState::Leader, "become leader").await?;
 /// raft.wait(Some(timeout)).applied_index(Some(10), "log-10 applied").await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// # Leader-Specific Metrics
