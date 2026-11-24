@@ -238,7 +238,12 @@ where C: RaftTypeConfig
     /// restart: the leader takes `Ok` as proof that the target installed it. See
     /// [`NetSnapshot::full_snapshot`] for what the leader records for each outcome.
     ///
-    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission.
+    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission. The
+    /// caller may also drop the returned future at any `.await`, whether or not `cancel` is ready,
+    /// and then call `full_snapshot()` again on the same `self`. A dropped call must leave `self`
+    /// safe for the next one: discard a connection that the call left with a partial request or an
+    /// unread reply, and stop the work that the call moved to another task. The cancellation
+    /// section of [`NetSnapshot::full_snapshot`] describes how.
     ///
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
     /// [`NetSnapshot::full_snapshot`]: crate::network::NetSnapshot::full_snapshot
