@@ -199,13 +199,25 @@ where
         Membership { configs: config, nodes }
     }
 
-    /// Returns reference to the joint config.
+    /// Returns a reference to the joint config, the voter configurations of this membership.
     ///
-    /// Membership is defined by a joint of multiple configs.
-    /// Each config is a vec of node-id.
+    /// Each configuration is a `BTreeSet` of voter node IDs. Learners are in none of them. The
+    /// returned `Vec` holds:
     ///
-    /// The returned `Vec` contains one or more configs. If there is only one config, it is in a
-    /// uniform config, otherwise, it is in a joint consensus.
+    /// - No configuration. [`Membership::default()`], the membership of a node that has not been
+    ///   initialized, has none, and [`Self::new()`] and [`Self::new_with_defaults()`] accept an
+    ///   empty `config`.
+    /// - One configuration: a uniform config.
+    /// - Two or more configurations: the membership is in joint consensus, and a quorum includes a
+    ///   majority of every configuration.
+    ///
+    /// A configuration may also be an empty set. [`Raft::initialize()`],
+    /// [`Raft::change_membership()`], and [`Raft::append_membership()`] reject a membership with no
+    /// configuration or with an empty one before they write it to the log.
+    ///
+    /// [`Raft::initialize()`]: crate::Raft::initialize
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
     }
@@ -308,9 +320,16 @@ where
         !has_role
     }
 
-    /// Create a new Membership the same as [`Self::new()`], but does not add the default
-    /// value `Node::default()` if a voter id is not in `nodes`. Thus, it may create an invalid
-    /// instance.
+    /// Create a new Membership from `configs` and `nodes` without checking that every voter has a
+    /// node.
+    ///
+    /// [`Self::new()`] returns [`NodeNotFound`] for a voter that is not in `nodes`.
+    /// [`Self::new_with_defaults()`] takes only node IDs and builds every node, voters included,
+    /// with `N::default()`. This function does neither: a voter that is not in `nodes` has no node
+    /// in the result, which breaks the [`RaftMembership`] invariant that every voter resolves
+    /// through `get_node()`.
+    ///
+    /// [`RaftMembership`]: crate::membership::RaftMembership
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
