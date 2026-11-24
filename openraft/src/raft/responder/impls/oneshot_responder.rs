@@ -56,9 +56,9 @@ where
         let res = self.tx.send(res);
 
         if res.is_ok() {
-            tracing::debug!("OneshotConsumer.tx.send: is_ok: {}", res.is_ok());
+            tracing::debug!("OneshotResponder.tx.send: is_ok: {}", res.is_ok());
         } else {
-            tracing::warn!("OneshotConsumer.tx.send: is_ok: {}", res.is_ok());
+            tracing::warn!("OneshotResponder.tx.send: is_ok: {}", res.is_ok());
         }
     }
 }
