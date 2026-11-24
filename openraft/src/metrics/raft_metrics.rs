@@ -149,8 +149,16 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The last log index has been applied to this Raft node's state machine.
     pub last_applied: Option<LogIdOf<C>>,
 
-    /// The id of the last log included in snapshot.
-    /// If there is no snapshot, it is (0,0).
+    /// The ID of the last log entry included in this node's latest snapshot, which is the
+    /// `last_log_id` in that snapshot's [`SnapshotMeta`](crate::storage::SnapshotMeta).
+    ///
+    /// At startup, the latest snapshot is the one that [`get_current_snapshot()`] returns. A
+    /// snapshot that this node builds, or installs from the leader, counts once the build or the
+    /// installation finishes.
+    ///
+    /// It is `None` when there is no snapshot, or when the snapshot includes no log entry.
+    ///
+    /// [`get_current_snapshot()`]: crate::storage::RaftStateMachine::get_current_snapshot
     pub snapshot: Option<LogIdOf<C>>,
 
     /// The last log id that has purged from storage, inclusive.
