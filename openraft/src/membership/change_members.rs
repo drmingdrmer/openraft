@@ -23,6 +23,10 @@ use crate::node::NodeId;
 
 /// Defines various actions to change the membership, including adding or removing learners or
 /// voters.
+///
+/// Exhaustive matches must handle [`Self::AddLearner`], which preserves joint configurations when
+/// applied on its own. Existing variants keep their serialized names and indices.
+#[since(version = "0.10.2", change = "added the AddLearner variant")]
 #[since(
     version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
@@ -53,7 +57,9 @@ where
 
     /// Add nodes to membership, as learners.
     ///
-    /// it **WON'T** replace existing node.
+    /// This does not replace existing nodes. On a joint membership it produces a target with
+    /// only the last voter configuration. Use [`Self::AddLearner`] to preserve all voter
+    /// configurations when adding a learner.
     ///
     /// Prefer using this variant instead of `SetNodes` whenever possible, as `AddNodes` ensures
     /// safety, whereas incorrect usage of `SetNodes` can result in a brain split.
@@ -87,6 +93,20 @@ where
     /// And it still finishes in a two-step joint config change.
     #[since(version = "0.10.0")]
     Batch(Vec<ChangeMembers<NID, N>>),
+
+    /// Add one learner without replacing an existing node or changing its role.
+    ///
+    /// This is the edit returned by [`RaftMembershipEditOps::add_learner()`]. On its own it
+    /// preserves all voter configurations and ignores `retain`, since no voter is demoted.
+    /// Inside a [`Self::Batch`], it inserts the node at its position in the batch, and the batch
+    /// produces its final target as usual.
+    #[since(version = "0.10.2")]
+    AddLearner {
+        /// The learner's node ID.
+        node_id: NID,
+        /// Metadata to insert if the ID is not already present.
+        node: N,
+    },
 }
 
 /// Convert a series of ids to a `Replace` operation.
@@ -136,6 +156,9 @@ where
             ChangeMembers::Batch(changes) => {
                 write!(f, "Batch({})", changes.as_slice().display_n(1024))
             }
+            ChangeMembers::AddLearner { node_id, node } => {
+                write!(f, "AddLearner({node_id}:{node:?})")
+            }
         }
     }
 }
@@ -155,6 +178,15 @@ where
         tracing::debug!("{}: change: {:?}", func_name!(), self);
 
         let mut target = membership.clone();
+        if let ChangeMembers::AddLearner { node_id, node } = self {
+            if target.configs.is_empty() {
+                return Err(EmptyMembership {}.into());
+            }
+            target.nodes.entry(node_id).or_insert(node);
+            tracing::debug!("target membership: {}", target);
+            return Ok(target);
+        }
+
         let mut pending = vec![self];
         while let Some(change) = pending.pop() {
             let configs = target.get_joint_config();
@@ -208,6 +240,10 @@ where
                     pending.extend(changes);
                     None
                 }
+                ChangeMembers::AddLearner { node_id, node } => {
+                    target.nodes.entry(node_id).or_insert(node);
+                    None
+                }
             };
 
             if let Some(voter_ids) = new_voter_ids {
@@ -238,8 +274,7 @@ where
     N: Node,
 {
     fn add_learner(node_id: NID, node: N) -> Self {
-        let nodes = BTreeMap::from([(node_id, node)]);
-        ChangeMembers::AddNodes(nodes)
+        ChangeMembers::AddLearner { node_id, node }
     }
 }
 

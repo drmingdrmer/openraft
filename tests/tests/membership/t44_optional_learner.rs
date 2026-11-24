@@ -47,7 +47,8 @@ impl RaftMembershipEdit<Membership<u64, ()>> for LearnerEdit {
         current: &Membership<u64, ()>,
         retain: bool,
     ) -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>> {
-        let change = ChangeMembers::AddNodes(std::collections::BTreeMap::from([(self.id, self.node)]));
+        let Self { id, node: () } = self;
+        let change = <ChangeMembers<u64, ()> as RaftMembershipEditOps<Membership<u64, ()>>>::add_learner(id, ());
         change.apply(current, retain)
     }
 }

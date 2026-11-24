@@ -6,6 +6,69 @@ use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembershipEdit;
+use crate::membership::RaftMembershipEditOps;
+
+#[test]
+fn learner_edit_preserves_membership_configurations() -> anyhow::Result<()> {
+    let configs = [btreeset! {1, 2}, btreeset! {2, 3}, btreeset! {3, 4}];
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50};
+    for config_count in 1..=configs.len() {
+        let configs = configs[configs.len() - config_count..].to_vec();
+        let original = Membership::new(configs.clone(), nodes.clone())?;
+        let membership = original.clone();
+
+        for retain in [false, true] {
+            tracing::info!(config_count, retain, "--- add a new learner without changing voters");
+            {
+                let mut expected_nodes = nodes.clone();
+                expected_nodes.insert(6, 60);
+                let expected = Membership::new(configs.clone(), expected_nodes)?;
+                let actual = ChangeMembers::add_learner(6, 60).apply(&membership, retain)?;
+                assert_eq!(expected, actual);
+            }
+
+            tracing::info!(config_count, retain, "--- re-add voters and learners");
+            {
+                for node_id in [1, 2, 4, 5] {
+                    let edit = ChangeMembers::add_learner(node_id, 99);
+                    assert_eq!(original, edit.apply(&membership, retain)?, "re-adding {node_id}");
+                }
+            }
+        }
+        assert_eq!(original, membership);
+    }
+    Ok(())
+}
+
+#[test]
+fn learner_edit_in_batch_follows_order_and_finalizes_joint_config() -> anyhow::Result<()> {
+    let joint = Membership::new(
+        vec![btreeset! {1, 2}, btreeset! {2, 3}],
+        btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40},
+    )?;
+
+    for retain in [false, true] {
+        tracing::info!(retain, "--- apply an ordered learner batch on the joint config");
+        {
+            let nested = ChangeMembers::Batch(vec![
+                ChangeMembers::add_learner(4, 41),
+                ChangeMembers::add_learner(5, 50),
+            ]);
+            let edit = ChangeMembers::Batch(vec![
+                ChangeMembers::RemoveNodes(btreeset! {4}),
+                nested,
+                ChangeMembers::SetNodes(btreemap! {5 => 51}),
+            ]);
+            let mut expected_nodes = btreemap! {2 => 20, 3 => 30, 4 => 41, 5 => 51};
+            if retain {
+                expected_nodes.insert(1, 10);
+            }
+            let expected = Membership::new(vec![btreeset! {2, 3}], expected_nodes)?;
+            assert_eq!(expected, edit.apply(&joint, retain)?);
+        }
+    }
+    Ok(())
+}
 
 #[test]
 fn nested_batch_applies_edits_in_order_before_finishing_target() {
@@ -25,11 +88,14 @@ fn nested_batch_applies_edits_in_order_before_finishing_target() {
 
 #[test]
 fn node_edit_without_config_returns_empty_membership() {
-    let edit = ChangeMembers::AddNodes(btreemap! {1 => 10});
     let membership = Membership::<u64, u64>::default();
-    let actual = edit.apply(&membership, true);
     let expected = Err(MembershipError::EmptyMembership(EmptyMembership {}));
-    assert_eq!(expected, actual);
+    for edit in [
+        ChangeMembers::AddNodes(btreemap! {1 => 10}),
+        ChangeMembers::add_learner(1, 10),
+    ] {
+        assert_eq!(expected, edit.apply(&membership, true));
+    }
 }
 
 #[test]
