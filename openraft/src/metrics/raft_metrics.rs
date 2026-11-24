@@ -225,11 +225,24 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
-    /// The last committed membership config.
+    /// The last membership config that this node knows to be committed.
     ///
-    /// It lags behind [`membership_config`](Self::membership_config) until the effective
-    /// membership config is committed: when the two are equal, the last membership log entry is
-    /// committed, i.e., a membership change is fully completed.
+    /// It lags behind [`membership_config`](Self::membership_config) until the log entry holding
+    /// that config is committed. When the two are equal, that entry is committed, or this node
+    /// knows no membership entry yet and both are the default, with no log ID.
+    ///
+    /// Equality does not mean that a membership change has finished, because the committed entry
+    /// can hold an intermediate joint config. When [`Raft::change_membership()`] needs a joint
+    /// config, it first commits an entry holding the joint config, and the two fields are equal
+    /// until this node appends the entry holding the target config. If the change fails between
+    /// these steps, the cluster can stay in the joint config.
+    ///
+    /// `change_membership()` returns `Ok` only after the entry holding the target config is
+    /// committed and applied, so a successful response shows that the change has finished. To
+    /// observe this in a node's metrics, wait until the log ID of this field reaches the `log_id`
+    /// of that response, which identifies the target entry.
+    ///
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
     #[since(version = "0.10.0")]
     pub committed_membership_config: Arc<StoredMembershipOf<C>>,
 
@@ -502,11 +515,12 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The current membership configuration.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
-    /// The last committed membership config.
+    /// The last membership config that this node knows to be committed.
     ///
-    /// It lags behind [`membership_config`](Self::membership_config) until the effective
-    /// membership config is committed: when the two are equal, the last membership log entry is
-    /// committed, i.e., a membership change is fully completed.
+    /// It lags behind [`membership_config`](Self::membership_config) until the log entry holding
+    /// that config is committed. When the two are equal, that entry is committed, or this node
+    /// knows no membership entry yet. Equality does not mean that a membership change has
+    /// finished: see [`RaftMetrics::committed_membership_config`].
     #[since(version = "0.10.0")]
     pub committed_membership_config: Arc<StoredMembershipOf<C>>,
 }
