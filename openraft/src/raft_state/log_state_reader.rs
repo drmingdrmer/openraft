@@ -1,4 +1,5 @@
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;

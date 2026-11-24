@@ -14,6 +14,7 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::Instant;
+use crate::LogIdOptionExt;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -82,7 +83,6 @@ use crate::errors::StorageIOResult;
 use crate::errors::Timeout;
 use crate::errors::UncommittedLeaderLog;
 use crate::impls::ProgressResponder;
-use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::membership::RaftMembershipExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::MetricsRecorder;

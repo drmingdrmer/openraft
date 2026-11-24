@@ -1,10 +1,10 @@
 use std::ops::RangeInclusive;
 
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;

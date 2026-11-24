@@ -3,6 +3,7 @@ use std::sync::Arc;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 
+use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -18,7 +19,6 @@ use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
-use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
