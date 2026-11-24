@@ -55,6 +55,8 @@ use crate::type_config::alias::WriteResponderOf;
 ///
 /// [`Raft::write()`]: crate::Raft::write
 /// [`.responder()`]: WriteRequest::responder
+#[must_use = "write requests must be awaited to submit them"]
+#[since(version = "0.10.2", change = "marked #[must_use]")]
 #[since(
     version = "0.10.1",
     change = "add generic future parameter F to avoid boxing when awaited"
