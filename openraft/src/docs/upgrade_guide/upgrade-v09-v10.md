@@ -539,6 +539,18 @@ and [server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv
 
   The v1 sender generates a new id for each transfer, so a retransmitted
   snapshot is never mistaken for the continuation of an aborted one.
+- A transport that serializes `InstallSnapshotRequest`,
+  `InstallSnapshotResponse` or the other moved types with Serde enables the
+  `serde` feature of `openraft-legacy`, which also enables `openraft/serde`:
+
+  ```toml
+  [dependencies]
+  openraft-legacy = { version = "0.10", features = ["serde"] }
+  ```
+
+  The moved types derive `Serialize` and `Deserialize` only with this
+  feature: `openraft/serde` derived them in 0.9 and no longer does. A
+  transport that encodes them without Serde does not need the feature.
 
 ### AppendEntries results
 
