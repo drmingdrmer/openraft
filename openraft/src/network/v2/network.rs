@@ -161,6 +161,16 @@ where C: RaftTypeConfig
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     ///
+    /// The caller may drop the returned future before it resolves, or the output stream before it
+    /// ends, such as after the stream yields an error or a conflict, and then call
+    /// `stream_append()` again on the same `self`. A dropped call must leave `self` safe for the
+    /// next one: discard a connection that it left with a partial request or unread responses, and
+    /// stop the work that it moved to another task, even while that work waits for `input`. The
+    /// default implementation starts no task, and dropping its stream drops `input` and the
+    /// [`append_entries()`] call in progress, so a dropped `append_entries()` call must leave
+    /// `self` safe as well. The cancellation section of [`NetStreamAppend::stream_append`]
+    /// describes the rules.
+    ///
     /// # Note
     ///
     /// This method returns `BoxFuture` and `BoxStream` instead of `impl Future`/`impl Stream`
