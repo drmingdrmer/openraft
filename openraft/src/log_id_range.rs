@@ -57,7 +57,7 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
-    use validit::Valid;
+    use validit::Validate;
 
     use crate::engine::testing::UTConfig;
     use crate::log_id_range::LogIdRange;
@@ -68,21 +68,19 @@ mod tests {
     }
 
     #[test]
-    fn test_log_id_range_validate() -> anyhow::Result<()> {
-        let res = std::panic::catch_unwind(|| {
-            let r = Valid::new(LogIdRange::<UTConfig>::new(Some(log_id(5)), None));
-            let _x = &r.last;
-        });
-        tracing::info!("res: {:?}", res);
-        assert!(res.is_err(), "prev(5) > last(None)");
+    fn test_log_id_range_validate() {
+        tracing::info!("reject a missing last log ID after prev index 5");
+        {
+            let range = LogIdRange::<UTConfig>::new(Some(log_id(5)), None);
+            let result = range.validate();
+            assert!(result.is_err(), "prev(5) > last(None)");
+        }
 
-        let res = std::panic::catch_unwind(|| {
-            let r = Valid::new(LogIdRange::<UTConfig>::new(Some(log_id(5)), Some(log_id(4))));
-            let _x = &r.last;
-        });
-        tracing::info!("res: {:?}", res);
-        assert!(res.is_err(), "prev(5) > last(4)");
-
-        Ok(())
+        tracing::info!("reject last index 4 after prev index 5 in the same leader's log");
+        {
+            let range = LogIdRange::<UTConfig>::new(Some(log_id(5)), Some(log_id(4)));
+            let result = range.validate();
+            assert!(result.is_err(), "prev(5) > last(4)");
+        }
     }
 }
