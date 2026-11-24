@@ -507,8 +507,21 @@ where C: RaftTypeConfig
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The ID of this Raft node.
     pub id: C::NodeId,
-    /// The current vote state.
+
+    /// The last flushed vote, the same as [`RaftMetrics::vote`]: the newest vote that
+    /// [`RaftLogStorage::save_vote()`] has persisted.
+    ///
+    /// When this node changes its vote, this field keeps the previous vote until storage persists
+    /// the new one. [`state`](Self::state), [`current_leader`](Self::current_leader), and
+    /// [`RaftMetrics::current_term`] follow the new vote at once, so they can reflect a newer vote
+    /// than this field does.
+    ///
+    /// While log storage holds no vote, this field is the initial vote: the default term and this
+    /// node's ID, not committed.
+    ///
+    /// [`RaftLogStorage::save_vote()`]: crate::storage::RaftLogStorage::save_vote
     pub vote: VoteOf<C>,
+
     /// The current server state (Leader, Follower, Candidate, etc.), or `Shutdown` once the node
     /// has stopped.
     pub state: ServerState,
