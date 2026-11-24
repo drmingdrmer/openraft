@@ -53,9 +53,10 @@ where
     WriteVoterWithoutReceiveLogs(#[from] WriteVoterWithoutReceiveLogs<NID>),
 
     /// A membership edit rejected the target for a reason of its own.
+    #[since(version = "0.10.2", change = "exposes `E` as the error source")]
     #[since(version = "0.10.0")]
     #[error("user-defined membership error: {0}")]
-    UserDefined(E),
+    UserDefined(#[source] E),
 }
 
 impl<NID, E> MembershipError<NID, E>
@@ -118,6 +119,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+    use std::fmt;
     use std::io;
 
     use anyerror::AnyError;
@@ -129,14 +132,35 @@ mod tests {
     use crate::membership::errors::UnprovenReadWriteIntersection;
     use crate::membership::errors::WriteVoterWithoutReceiveLogs;
 
+    #[derive(Debug, PartialEq, Eq, thiserror::Error)]
+    #[error("edit rejected node {0}")]
+    struct EditRejected(u64, #[source] fmt::Error);
+
+    #[test]
+    fn user_defined_exposes_native_error_and_its_cause() {
+        let error = MembershipError::<u64, _>::UserDefined(EditRejected(3, fmt::Error));
+        let source = error.source().expect("native error should be the source");
+        assert_eq!(
+            Some(&EditRejected(3, fmt::Error)),
+            source.downcast_ref::<EditRejected>()
+        );
+        assert_eq!(
+            Some(&fmt::Error),
+            source.source().and_then(|s| s.downcast_ref::<fmt::Error>())
+        );
+    }
+
     #[test]
     fn map_user_defined_wraps_native_error() {
         let source = io::Error::other("edit rejected");
         let expected = AnyError::new(&source);
-        let expected = MembershipError::UserDefined(expected);
         let error = MembershipError::<u64, _>::UserDefined(source);
         let actual = error.map_user_defined(|source| AnyError::new(&source));
-        assert_eq!(expected, actual);
+        assert_eq!(
+            Some(&expected),
+            actual.source().and_then(|s| s.downcast_ref::<AnyError>())
+        );
+        assert_eq!(MembershipError::UserDefined(expected), actual);
     }
 
     #[test]
