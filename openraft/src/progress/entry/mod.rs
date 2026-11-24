@@ -285,9 +285,17 @@ where C: RaftTypeConfig
         if is_probing {
             // Probe at the binary-search midpoint, but not below the purge boundary.
             // `start <= searching_end` still holds: `mid <= searching_end` by construction,
-            // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
+            // and `purge_upto_next <= searching_end` by snapshot condition 1 above. It is
+            // asserted here, not in `validate()`: while the probe is pending, a conflict may
+            // lower `searching_end` below `start`.
             let mid = Self::calc_mid(matching_next, self.data.searching_end);
             let start = std::cmp::max(mid, purge_upto_next);
+            debug_assert!(
+                start <= self.data.searching_end,
+                "expect: probe start: {} <= searching_end: {}",
+                start,
+                self.data.searching_end
+            );
             let end = std::cmp::min(start + max_entries, last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
@@ -346,10 +354,29 @@ where C: RaftTypeConfig
         match &self.data.inflight {
             Inflight::None => {}
             Inflight::Probe { log_id_range, .. } => {
-                // matching <= prev_log_id              <= last_log_id
-                //             prev_log_id.next_index() <= searching_end
+                // matching <= prev_log_id <= last_log_id
+                //
+                // `next_send()` plans a probe with `prev_log_id.next_index() <= searching_end`,
+                // but this is not checked here: a conflict that does not answer the pending
+                // probe, such as a heartbeat's, may lower `searching_end` below
+                // `prev_log_id.next_index()` and leave the probe pending.
+                //
+                // In practice this needs a follower that lost logs it had confirmed, such as after
+                // a disk wipe, and log reversion allowed for it through
+                // `Config::allow_log_reversion` or `Raft::trigger().allow_next_revert()`. Only
+                // such a follower answers a heartbeat with a conflict. Without log reversion
+                // allowed, `update_conflicting()` fails a `debug_assert!` on a conflict at or
+                // below `matching`. For example:
+                //
+                // 1. The leader has `matching = 8` and `searching_end = 20`, and sends the probe `(8, 16]`.
+                // 2. A heartbeat, sent with `prev_log_id = matching = 8`, gets a conflict at 8. The conflict has no
+                //    inflight ID, so `Updater::update_conflicting()` keeps the probe, lowers `searching_end` to 8,
+                //    and, as log reversion is allowed, resets `matching` to `None`.
+                // 3. Now the entry holds `matching = None`, `searching_end = 8`, and the probe `(8, 16]`, whose
+                //    `prev_log_id.next_index()` is 9. The probe's own response, a conflict at 8, ends it later.
+                //
+                // A conflict never raises `matching`, so the check below still holds after it.
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
-                validit::less_equal!(log_id_range.prev.next_index(), self.data.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
             Inflight::LogsSince { .. } => {}
