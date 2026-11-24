@@ -23,8 +23,13 @@ pub type AppendResult<C> = Result<Option<LogIdOf<C>>, AppendError<C>>;
 /// and from it, so a change to this type cannot silently change the bytes on the wire. To keep the
 /// existing format, convert to and from [`StreamAppendError`], which drops the conflict hint.
 ///
-/// The enum is exhaustive on purpose: a variant or field added later fails to compile in each
-/// transport's conversion, where the transport decides how to encode it.
+/// The enum is exhaustive on purpose, so that a transport's conversion can match every variant
+/// and name every field. Such a conversion fails to compile when a later release adds a variant
+/// or field, and the transport then decides how to encode it. A catch-all arm, such as `_ =>`,
+/// and a `..` in a pattern let a conversion compile unchanged: the arm handles a new variant the
+/// same way as the variants it already covers, and `..` drops a new field. To drop a field on
+/// purpose and still get a compile error for a field added later, bind it to `_` by name, as the
+/// conversion to [`StreamAppendError`] does with `AppendError::Conflict { log_id, hint: _ }`.
 ///
 /// [`Raft::stream_append()`]: crate::Raft::stream_append
 /// [`NetStreamAppend::stream_append()`]: crate::network::NetStreamAppend::stream_append
