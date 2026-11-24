@@ -86,16 +86,23 @@ where
 
 /// Translate a membership validation failure into a rejected change request.
 ///
+/// It handles the errors of applying a membership edit, and those of validating the target
+/// membership that a change asks for, such as the result of the edit.
+///
 /// The two enums overlap, but they describe different layers: [`MembershipError`] says a
 /// membership value is invalid, while [`ChangeMembershipError`] says a caller's request was
 /// refused. Embedding one in the other would collapse that distinction and, worse, lose the
 /// specific advice below.
 ///
-/// `NodeNotFound` deliberately becomes `LearnerNotFound`. The only way membership validation
-/// reports a missing node is a voter with no `Node` entry, which means the caller tried to promote
-/// a node it never added. `LearnerNotFound` says exactly that, whereas `NodeNotFound` would only
-/// say the node is missing. The `operation` field dropped in the process is always
-/// `Operation::None` on this path, so nothing diagnostic is lost.
+/// `NodeNotFound` deliberately becomes `LearnerNotFound`, whose message tells the caller which
+/// nodes the target has to hold. The missing node can be a voter of the target, such as a voter
+/// promoted before it was added as a learner, or a voter whose node the edit removed. It can also
+/// be a node that the edit refers to, such as by setting a role for an unknown node or for a
+/// learner that the same edit removes. `NodeNotFound` would only say that the node is missing.
+///
+/// The conversion keeps the node ID and drops `operation`. OpenRaft's validation and the edits of
+/// the `openraft-membership` crate always set it to `Operation::None`, so their errors lose
+/// nothing. A custom edit can set another value, and this conversion discards it.
 impl<CLID, NID, E> From<MembershipError<NID, E>> for ChangeMembershipError<CLID, NID, E>
 where
     CLID: RaftCommittedLeaderId,
