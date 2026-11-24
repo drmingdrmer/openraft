@@ -7,6 +7,9 @@ use crate::vote::RaftCommittedLeaderId;
 /// Log id is the globally unique identifier of a log entry.
 ///
 /// Equal log id means the same log entry.
+///
+/// This trait only reads a log ID, so both owned and borrowed log IDs implement it.
+#[since(version = "0.10.2", change = "removed `new` and `to_type`")]
 #[since(
     version = "0.10.0",
     change = "removed `C: RaftTypeConfig` generic parameter, added `CommittedLeaderId` associated type"
@@ -17,11 +20,6 @@ where Self: Eq + Clone + fmt::Debug
     /// The committed leader ID type used by this log ID.
     #[since(version = "0.10.0")]
     type CommittedLeaderId: RaftCommittedLeaderId;
-
-    /// Creates a log id proposed by a committed leader `leader_id` at the given index.
-    // This is only used internally
-    #[allow(dead_code)]
-    fn new(leader_id: Self::CommittedLeaderId, index: u64) -> Self;
 
     /// Returns a reference to the leader id that proposed this log id.
     ///
@@ -34,12 +32,6 @@ where Self: Eq + Clone + fmt::Debug
     /// Returns the index of the log id.
     fn index(&self) -> u64;
 
-    /// Converts this log ID into another type that implements [`RaftLogId`].
-    fn to_type<T>(&self) -> T
-    where T: RaftLogId<CommittedLeaderId = Self::CommittedLeaderId> {
-        T::new(self.committed_leader_id().clone(), self.index())
-    }
-
     /// Returns the parts of this log ID as a tuple of (committed_leader_id, index).
     fn log_id_parts(&self) -> (&Self::CommittedLeaderId, u64) {
         (self.committed_leader_id(), self.index())
@@ -50,10 +42,6 @@ impl<T> RaftLogId for &T
 where T: RaftLogId
 {
     type CommittedLeaderId = T::CommittedLeaderId;
-
-    fn new(_leader_id: Self::CommittedLeaderId, _index: u64) -> Self {
-        unreachable!("This method should not be called on a reference.")
-    }
 
     fn committed_leader_id(&self) -> &Self::CommittedLeaderId {
         T::committed_leader_id(self)

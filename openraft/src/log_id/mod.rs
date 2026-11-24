@@ -79,10 +79,6 @@ where CLID: RaftCommittedLeaderId
 {
     type CommittedLeaderId = CLID;
 
-    fn new(leader_id: CLID, index: u64) -> Self {
-        LogId { leader_id, index }
-    }
-
     fn committed_leader_id(&self) -> &CLID {
         &self.leader_id
     }
@@ -100,17 +96,18 @@ where CLID: RaftCommittedLeaderId
     }
 }
 
-/// Inherent counterparts of the [`RaftLogId`] methods, so callers do not have to import the trait.
+/// The constructor, and inherent counterparts of the [`RaftLogId`] methods, so callers do not have
+/// to import the trait.
 ///
-/// Each one delegates rather than reimplementing, so the trait impl stays the only definition. An
-/// inherent method shadows the trait method at every call site, so a second copy here would let the
-/// two drift apart without any call site changing.
+/// Each counterpart delegates rather than reimplementing, so the trait impl stays the only
+/// definition. An inherent method shadows the trait method at every call site, so a second copy
+/// here would let the two drift apart without any call site changing.
 impl<CLID> LogId<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CLID, index: u64) -> Self {
-        RaftLogId::new(leader_id, index)
+        LogId { leader_id, index }
     }
 
     /// Returns the leader id that proposed this log.
@@ -177,21 +174,6 @@ mod tests {
         let log_id2 = super::LogId::<TestCLID>::new(TestCLID::new(5), 100);
         assert_eq!(log_id1.index(), log_id2.index());
         assert_eq!(**log_id1.committed_leader_id(), **log_id2.committed_leader_id());
-    }
-
-    #[test]
-    fn test_to_type_log_id_to_tuple() {
-        let log_id = super::LogId::<TestCLID>::new_term_index(5, 100);
-        let tuple: (u64, u64) = log_id.to_type();
-        assert_eq!((5, 100), tuple);
-    }
-
-    #[test]
-    fn test_to_type_tuple_to_log_id() {
-        let tuple: (u64, u64) = (5, 100);
-        let log_id: super::LogId<TestCLID> = tuple.to_type();
-        assert_eq!(100, log_id.index());
-        assert_eq!(5, **log_id.committed_leader_id());
     }
 
     #[test]
