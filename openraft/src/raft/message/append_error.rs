@@ -111,11 +111,13 @@ mod tests {
             log_id: log_id(1, 1, 5),
             hint: None,
         };
-        assert_eq!(expected, AppendError::from(conflict));
+        let converted = AppendError::from(conflict);
+        assert_eq!(expected, converted);
 
         let higher = StreamAppendError::<UTConfig>::HigherVote(Vote::new(2, 1));
         let expected = AppendError::HigherVote(Vote::new(2, 1));
-        assert_eq!(expected, AppendError::from(higher));
+        let converted = AppendError::from(higher);
+        assert_eq!(expected, converted);
     }
 
     #[test]
@@ -126,7 +128,8 @@ mod tests {
             hint: Some(hint),
         };
         let expected = StreamAppendError::Conflict(log_id(1, 1, 5));
-        assert_eq!(expected, StreamAppendError::from(conflict));
+        let converted = StreamAppendError::from(conflict);
+        assert_eq!(expected, converted);
     }
 
     #[test]
@@ -140,7 +143,9 @@ mod tests {
             log_id: log_id(1, 1, 5),
             hint: None,
         };
-        assert_eq!("Conflict(T1-N1.5), hint: [T1-N1.3]", conflict.to_string());
-        assert_eq!("Conflict(T1-N1.5)", without_hint.to_string());
+        let conflict_text = conflict.to_string();
+        assert_eq!("Conflict(T1-N1.5), hint: [T1-N1.3]", conflict_text);
+        let without_hint_text = without_hint.to_string();
+        assert_eq!("Conflict(T1-N1.5)", without_hint_text);
     }
 }
