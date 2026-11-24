@@ -13,12 +13,12 @@ use crate::display_ext::DisplayInstantExt;
 
 /// Tracks timestamps at 6 lifecycle stages of log entries.
 ///
-/// Each stage uses a [`RangeMap`] that maps `(log_index, instant)` per batch.
+/// Each stage uses a `RangeMap` that maps `(log_index, instant)` per batch.
 /// The gap between stages reveals where latency accumulates
 /// (channel queue, storage, replication, state machine apply, etc.).
 ///
 /// Stages (in order): Proposed, Received, Submitted, Persisted, Committed, Applied.
-/// Access by name via [`Stage`] variants or the convenience methods.
+/// `RaftCore` records each stage by name; `segments()` and the display methods read them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogStages<I>
 where I: Instant

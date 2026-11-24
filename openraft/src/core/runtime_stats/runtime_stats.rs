@@ -24,6 +24,7 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+#[since(version = "0.10.2", change = "Make record_log_stage*() crate-private")]
 #[since(version = "0.10.2", change = "Add the re-arm wake and metrics send counters")]
 #[since(version = "0.10.0", change = "Add core_busy_histogram")]
 #[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
@@ -287,7 +288,7 @@ where C: RaftTypeConfig
     /// with `right = 8`.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage_now(&mut self, stage: Stage, right: u64) {
+    pub(crate) fn record_log_stage_now(&mut self, stage: Stage, right: u64) {
         #[cfg(feature = "runtime-stats")]
         self.record_log_stage(stage, right, C::now());
 
@@ -303,7 +304,7 @@ where C: RaftTypeConfig
     /// of the batch's last log plus one.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage(&mut self, stage: Stage, right: u64, now: InstantOf<C>) {
+    pub(crate) fn record_log_stage(&mut self, stage: Stage, right: u64, now: InstantOf<C>) {
         #[cfg(feature = "runtime-stats")]
         self.log_stage.record_stage(stage, right, now);
 
