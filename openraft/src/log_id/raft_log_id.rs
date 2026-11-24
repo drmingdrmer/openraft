@@ -2,11 +2,14 @@ use std::fmt;
 
 use openraft_macros::since;
 
+use crate::log_id::raft_log_id_from_parts::RaftLogIdFromParts;
 use crate::vote::RaftCommittedLeaderId;
 
 /// Log id is the globally unique identifier of a log entry.
 ///
-/// Equal log id means the same log entry.
+/// Equal log id means the same log entry. Both owned and borrowed log IDs implement this trait.
+/// To construct a log ID from its owned parts, use [`RaftLogIdFromParts`].
+#[since(version = "0.10.2", change = "moved `new` to `RaftLogIdFromParts`")]
 #[since(
     version = "0.10.0",
     change = "removed `C: RaftTypeConfig` generic parameter, added `CommittedLeaderId` associated type"
@@ -17,11 +20,6 @@ where Self: Eq + Clone + fmt::Debug
     /// The committed leader ID type used by this log ID.
     #[since(version = "0.10.0")]
     type CommittedLeaderId: RaftCommittedLeaderId;
-
-    /// Creates a log id proposed by a committed leader `leader_id` at the given index.
-    // This is only used internally
-    #[allow(dead_code)]
-    fn new(leader_id: Self::CommittedLeaderId, index: u64) -> Self;
 
     /// Returns a reference to the leader id that proposed this log id.
     ///
@@ -34,9 +32,19 @@ where Self: Eq + Clone + fmt::Debug
     /// Returns the index of the log id.
     fn index(&self) -> u64;
 
-    /// Converts this log ID into another type that implements [`RaftLogId`].
+    /// Converts this log ID into a type that can be constructed from the same parts.
+    ///
+    /// A reference can be the source, but it cannot be the destination:
+    ///
+    /// ```compile_fail,E0277
+    /// use openraft::log_id::RaftLogId;
+    ///
+    /// let log_id = (1_u64, 5_u64);
+    /// let _: &(u64, u64) = log_id.to_type();
+    /// ```
+    #[since(version = "0.10.2", change = "requires `RaftLogIdFromParts` on the destination")]
     fn to_type<T>(&self) -> T
-    where T: RaftLogId<CommittedLeaderId = Self::CommittedLeaderId> {
+    where T: RaftLogIdFromParts<CommittedLeaderId = Self::CommittedLeaderId> {
         T::new(self.committed_leader_id().clone(), self.index())
     }
 
@@ -50,10 +58,6 @@ impl<T> RaftLogId for &T
 where T: RaftLogId
 {
     type CommittedLeaderId = T::CommittedLeaderId;
-
-    fn new(_leader_id: Self::CommittedLeaderId, _index: u64) -> Self {
-        unreachable!("This method should not be called on a reference.")
-    }
 
     fn committed_leader_id(&self) -> &Self::CommittedLeaderId {
         T::committed_leader_id(self)

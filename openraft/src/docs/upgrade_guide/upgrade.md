@@ -16,6 +16,17 @@ A commit message starting with these keywords needs attention:
 
 - Fix: bug fix. No modification is required.
 
+## Upgrade from v0.10.1 to v0.10.2
+
+- `RaftLogId::new` moved to
+  [`openraft::log_id::RaftLogIdFromParts`](crate::log_id::RaftLogIdFromParts).
+  Import that trait to call its `new` method, and move the `new` method of
+  custom owned log IDs to a separate implementation of it. Use
+  `RaftLogIdFromParts` as the bound wherever generic code calls `T::new` or
+  uses `T` as the destination of `to_type()`. Read-only code and conversion
+  sources still use `RaftLogId`, including references. Inherent `LogId::new`
+  and conversions between owned log IDs and tuples are unchanged.
+
 ## Upgrade from [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9) to [v0.10](https://github.com/databendlabs/openraft/tree/release-0.10):
 
 [Change log v0.10.0](https://github.com/databendlabs/openraft/blob/release-0.10/change-log.md)

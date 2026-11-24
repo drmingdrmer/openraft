@@ -6,6 +6,8 @@
 //! ## Key Types
 //!
 //! - [`LogId`] - Unique identifier for a log entry `(leader_id, index)`
+//! - [`RaftLogId`] - Read an owned or borrowed log ID
+//! - [`RaftLogIdFromParts`] - Construct a log ID from its owned parts
 //! - [`LogIdOptionExt`] - Extension trait for `Option<LogId>` comparisons
 //! - [`LogIndexOptionExt`] - Extension trait for `Option<u64>` index comparisons
 //!
@@ -36,6 +38,7 @@ pub(crate) mod option_raft_log_id_ext;
 pub(crate) mod option_ref_log_id_ext;
 pub(crate) mod raft_log_id;
 pub(crate) mod raft_log_id_ext;
+mod raft_log_id_from_parts;
 pub(crate) mod ref_log_id;
 mod std_log_id;
 
@@ -47,6 +50,7 @@ pub use log_index_option_ext::LogIndexOptionExt;
 use openraft_macros::since;
 
 pub use self::raft_log_id::RaftLogId;
+pub use self::raft_log_id_from_parts::RaftLogIdFromParts;
 use crate::vote::RaftCommittedLeaderId;
 use crate::vote::RaftTerm;
 use crate::vote::leader_id_std;
@@ -79,16 +83,20 @@ where CLID: RaftCommittedLeaderId
 {
     type CommittedLeaderId = CLID;
 
-    fn new(leader_id: CLID, index: u64) -> Self {
-        LogId { leader_id, index }
-    }
-
     fn committed_leader_id(&self) -> &CLID {
         &self.leader_id
     }
 
     fn index(&self) -> u64 {
         self.index
+    }
+}
+
+impl<CLID> RaftLogIdFromParts for LogId<CLID>
+where CLID: RaftCommittedLeaderId
+{
+    fn new(leader_id: CLID, index: u64) -> Self {
+        LogId { leader_id, index }
     }
 }
 
@@ -100,17 +108,16 @@ where CLID: RaftCommittedLeaderId
     }
 }
 
-/// Inherent counterparts of the [`RaftLogId`] methods, so callers do not have to import the trait.
+/// Inherent counterparts of methods in [`RaftLogId`] and [`RaftLogIdFromParts`].
 ///
-/// Each one delegates rather than reimplementing, so the trait impl stays the only definition. An
-/// inherent method shadows the trait method at every call site, so a second copy here would let the
-/// two drift apart without any call site changing.
+/// Each delegates to its trait implementation so that the inherent method and the trait method
+/// cannot drift apart.
 impl<CLID> LogId<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CLID, index: u64) -> Self {
-        RaftLogId::new(leader_id, index)
+        RaftLogIdFromParts::new(leader_id, index)
     }
 
     /// Returns the leader id that proposed this log.
@@ -192,6 +199,18 @@ mod tests {
         let log_id: super::LogId<TestCLID> = tuple.to_type();
         assert_eq!(100, log_id.index());
         assert_eq!(5, **log_id.committed_leader_id());
+    }
+
+    #[test]
+    fn test_to_type_borrowed_sources() {
+        let log_id = super::LogId::<TestCLID>::new_term_index(5, 100);
+
+        let tuple: (u64, u64) = <&super::LogId<TestCLID> as RaftLogId>::to_type(&&log_id);
+        assert_eq!((5, 100), tuple);
+
+        let borrowed = super::ref_log_id::RefLogId::new(log_id.committed_leader_id(), log_id.index());
+        let owned: super::LogId<TestCLID> = borrowed.to_type();
+        assert_eq!(log_id, owned);
     }
 
     #[test]
