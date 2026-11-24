@@ -19,6 +19,14 @@ use crate::type_config::alias::OneshotSenderOf;
 /// 1. When the entry is committed, but not necessarily applied
 /// 2. When the entry is applied and the result is available
 ///
+/// The commit notification is optional. A write rejected before it is committed, such as one
+/// submitted to a follower, completes with its error and no commit notification. Completion drops
+/// the unused commit sender, so the commit receiver then returns an error instead of a log id.
+///
+/// If the responder is dropped without a result, such as when RaftCore stops, the complete receiver
+/// returns an error. No result arrived, but that alone does not mean that the write was rolled
+/// back: its entry may still be committed and applied.
+///
 /// With relaxed reads
 /// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)),
 /// commit notification is not enough to acknowledge a successful write. State-machine reads after
@@ -29,20 +37,53 @@ use crate::type_config::alias::OneshotSenderOf;
 ///
 /// # Example
 ///
-/// ```ignore
+/// [`Raft::client_write_ff`] accepts the responder type that the type config selects as
+/// `Responder<T>`. [`declare_raft_types!`] selects `ProgressResponder` by default.
+///
+/// ```no_run
+/// # use openraft::Raft;
+/// # use openraft::storage::RaftStateMachine;
+/// use openraft::impls::ProgressResponder;
+///
+/// # openraft::declare_raft_types!(
+/// #     TypeConfig:
+/// #         Responder<T> = ProgressResponder<Self, T>,
+/// # );
+/// #
+/// # async fn example<SM>(
+/// #     raft: &Raft<TypeConfig, SM>,
+/// #     request: String,
+/// # ) -> Result<(), Box<dyn std::error::Error>>
+/// # where SM: RaftStateMachine<TypeConfig>
+/// # {
 /// let (responder, commit_rx, complete_rx) = ProgressResponder::new();
 ///
-/// // Send write request with the responder
-/// raft.client_write_ff(request, responder).await;
+/// // `Err` means that RaftCore has stopped and did not receive the write.
+/// raft.client_write_ff(request, Some(responder)).await?;
 ///
-/// // Wait for commit notification
-/// let commit_log_id = commit_rx.await.unwrap();
-/// // Commit alone does not make the update visible to relaxed reads.
+/// // A write that completes without being committed, such as one submitted to a follower, closes
+/// // the commit channel without a log id.
+/// if let Ok(log_id) = commit_rx.await {
+///     // Committed, but maybe not applied: do not acknowledge the write from this alone.
+///     println!("committed at {log_id}");
+/// }
 ///
-/// // Wait for completion
-/// let result = complete_rx.await.unwrap();
-/// // Now have the final result
+/// let result = match complete_rx.await {
+///     Ok(result) => result,
+///     // No result arrived. The write may still be committed and applied.
+///     Err(_) => return Err("no result arrived for the write".into()),
+/// };
+///
+/// // The result arrived: the applied write's response, or the write's error, such as
+/// // `ForwardToLeader` from a follower.
+/// let response = result?;
+/// println!("applied at {}: {}", response.log_id, response.data);
+/// # Ok(())
+/// # }
 /// ```
+///
+/// [`Raft::client_write_ff`]: crate::Raft::client_write_ff
+/// [`declare_raft_types!`]: crate::declare_raft_types
 pub struct ProgressResponder<C, T>
 where
     C: RaftTypeConfig,
