@@ -95,10 +95,19 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Returns `true` if the response indicates that the target node has granted a vote to the
-    /// candidate.
+    /// Returns `true` if the target node granted `candidate_vote` in this RequestVote response.
+    ///
+    /// A grant requires both [`vote_granted`](Self::vote_granted) and a [`vote`](Self::vote) equal
+    /// to `candidate_vote`. A denial that carries the candidate's vote returns `false`, and so does
+    /// a grant of another vote, such as a delayed reply to an earlier election.
+    ///
+    /// Use it only on a response from [`Raft::vote()`](crate::Raft::vote). A node grants a
+    /// Pre-Vote without adopting the requested vote, so a Pre-Vote grant from
+    /// [`Raft::pre_vote()`](crate::Raft::pre_vote) can carry another `vote`: check only its
+    /// `vote_granted`.
+    #[since(version = "0.10.2", change = "requires `vote_granted` to be `true`")]
     pub fn is_granted_to(&self, candidate_vote: &VoteOf<C>) -> bool {
-        &self.vote == candidate_vote
+        self.vote_granted && &self.vote == candidate_vote
     }
 }
 
@@ -151,5 +160,41 @@ mod tests {
 
         let decoded = serde_json::from_str::<VoteRequest<UTConfig>>(old).unwrap();
         assert_eq!(ordinary, decoded);
+    }
+
+    #[test]
+    fn test_vote_response_is_granted_to() {
+        use crate::Vote;
+        use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
+        use crate::raft::VoteResponse;
+
+        let candidate = Vote::new(2, 1);
+        let last_log_id = Some(log_id(1, 2, 3));
+
+        tracing::info!(%candidate, "--- a response with the candidate's vote grants it only with vote_granted");
+        {
+            let granted = VoteResponse::<UTConfig>::new(candidate, last_log_id, true);
+            assert!(granted.is_granted_to(&candidate));
+
+            let denied = VoteResponse::<UTConfig>::new(candidate, last_log_id, false);
+            assert!(!denied.is_granted_to(&candidate));
+        }
+
+        tracing::info!(%candidate, "--- a response with another vote never grants the candidate's vote");
+        {
+            let same_leader_committed = Vote::new_committed(2, 1);
+            let earlier_election = Vote::new(1, 1);
+
+            for other in [same_leader_committed, earlier_election] {
+                for vote_granted in [true, false] {
+                    let resp = VoteResponse::<UTConfig>::new(other, last_log_id, vote_granted);
+                    assert!(
+                        !resp.is_granted_to(&candidate),
+                        "vote: {other}, vote_granted: {vote_granted}"
+                    );
+                }
+            }
+        }
     }
 }
