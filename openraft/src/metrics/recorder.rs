@@ -6,9 +6,20 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! Implement the trait, then install the recorder with [`Raft::set_metrics_recorder`]. The setter
+//! is async: it sends the recorder to `RaftCore` only when its returned future is awaited.
+//! `Ok(())` means that the command is queued for `RaftCore`. The recorder is installed, and
+//! receives callbacks, only after `RaftCore` handles the command.
+//!
+//! ```no_run
+//! # #![deny(unused_must_use)]
 //! use std::sync::Arc;
+//!
 //! use openraft::metrics::MetricsRecorder;
+//! # use openraft::Raft;
+//! # use openraft::RaftTypeConfig;
+//! # use openraft::errors::Fatal;
+//! # use openraft::storage::RaftStateMachine;
 //!
 //! #[derive(Debug)]
 //! struct MyRecorder;
@@ -29,9 +40,18 @@
 //!     fn increment_append(&self) { /* ... */ }
 //! }
 //!
-//! // Install in Raft instance
-//! raft.set_metrics_recorder(Some(Arc::new(MyRecorder)));
+//! # async fn install<C, SM>(raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+//! # where
+//! #     C: RaftTypeConfig,
+//! #     SM: RaftStateMachine<C>,
+//! # {
+//! // Queue the recorder for RaftCore to install.
+//! raft.set_metrics_recorder(Some(Arc::new(MyRecorder))).await?;
+//! # Ok(())
+//! # }
 //! ```
+//!
+//! [`Raft::set_metrics_recorder`]: crate::Raft::set_metrics_recorder
 
 use openraft_macros::since;
 
