@@ -14,12 +14,6 @@ where T: RaftLogId
     /// If self is `None`, it returns 0.
     fn next_index(&self) -> u64;
 
-    /// Returns the leader id that proposed this log id.
-    ///
-    /// In standard raft, committed leader id is just `term`.
-    #[allow(dead_code)]
-    fn committed_leader_id(&self) -> Option<&T::CommittedLeaderId>;
-
     /// Converts this `Option<T: RaftLogId>` into a reference-based log ID.
     ///
     /// Returns `Some(RefLogId)` if `self` is `Some(T)`, `None` otherwise.
@@ -38,10 +32,6 @@ where T: RaftLogId
             None => 0,
             Some(log_id) => log_id.index() + 1,
         }
-    }
-
-    fn committed_leader_id(&self) -> Option<&T::CommittedLeaderId> {
-        self.as_ref().map(|x| x.committed_leader_id())
     }
 
     fn to_ref(&self) -> Option<RefLogId<'_, T::CommittedLeaderId>> {
