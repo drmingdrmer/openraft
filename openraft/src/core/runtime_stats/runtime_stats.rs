@@ -280,8 +280,8 @@ where C: RaftTypeConfig
         None
     }
 
-    /// Add one core-loop busy interval to [`Self::core_busy_duration`] and
-    /// [`Self::core_busy_histogram`].
+    /// Add one core-loop busy interval to `core_busy_duration` and `core_busy_histogram`, which
+    /// exist only with the `runtime-stats` feature.
     ///
     /// The histogram sample is the elapsed time since `since`, in microseconds.
     /// `None` records nothing.

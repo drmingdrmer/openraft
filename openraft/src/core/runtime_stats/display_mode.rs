@@ -1,4 +1,4 @@
-/// Display mode for [`RuntimeStatsDisplay`](super::RuntimeStatsDisplay).
+/// Display mode for [`RuntimeStatsDisplay`](super::runtime_stats_display::RuntimeStatsDisplay).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayMode {
     /// Compact single-line format (default).
