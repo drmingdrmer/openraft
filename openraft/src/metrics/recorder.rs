@@ -133,10 +133,14 @@ pub trait MetricsRecorder: Send + Sync + std::fmt::Debug {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use openraft::metrics::{RaftMetrics, MetricsRecorder, forward_metrics};
+/// ```
+/// use openraft::RaftTypeConfig;
+/// use openraft::metrics::MetricsRecorder;
+/// use openraft::metrics::RaftMetrics;
+/// use openraft::metrics::forward_metrics;
 ///
-/// fn on_metrics_update<C: RaftTypeConfig>(metrics: &RaftMetrics<C>, recorder: &dyn MetricsRecorder) {
+/// fn on_metrics_update<C>(metrics: &RaftMetrics<C>, recorder: &dyn MetricsRecorder)
+/// where C: RaftTypeConfig {
 ///     forward_metrics(metrics, recorder);
 /// }
 /// ```
