@@ -23,6 +23,13 @@ use crate::node::NodeId;
 
 /// Defines various actions to change the membership, including adding or removing learners or
 /// voters.
+///
+/// A voter edit, `AddVoterIds`, `AddVoters`, `RemoveVoters` or `ReplaceAllVoters`, gives the
+/// target one voter set: the last voter set with the voters added or removed, or the given set. A
+/// node edit, `AddNodes`, `SetNodes`, `RemoveNodes` or `ReplaceAllNodes`, changes only nodes. An
+/// edit with no voter edit, such as a `Batch` of node edits, keeps every voter set of a joint
+/// membership and demotes no voter.
+#[since(version = "0.10.2", change = "node edits keep every voter set of a joint membership")]
 #[since(
     version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
@@ -210,15 +217,16 @@ where
                 }
             };
 
+            // Only a voter edit replaces the voter sets. A node edit keeps all of them, so it
+            // demotes no voter of an earlier set of a joint membership.
             if let Some(voter_ids) = new_voter_ids {
                 target.configs = vec![voter_ids];
             }
         }
 
-        let Some(target_voter_ids) = target.configs.pop() else {
+        if target.configs.is_empty() {
             return Err(EmptyMembership {}.into());
-        };
-        target.configs = vec![target_voter_ids];
+        }
         if !retain {
             for node_id in membership.voter_ids() {
                 let demoted = target.is_learner(&node_id);
