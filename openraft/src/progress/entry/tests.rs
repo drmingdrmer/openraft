@@ -1,8 +1,11 @@
+use validit::Validate;
+
 use crate::LogId;
 use crate::RaftState;
 use crate::engine::EngineConfig;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
+use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight_id::InflightId;
@@ -69,6 +72,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(6)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     // A response acknowledging prev completes the probe.
@@ -80,6 +84,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.new_updater(&engine_config).update_matching(Some(log_id(5)), Some(InflightId::new(0)));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(5)), pe.matching());
+        assert!(pe.validate().is_ok());
     }
 
     // A local progress update acknowledges its entire range immediately.
@@ -91,6 +96,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(10)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     // `searching_end` should be updated
@@ -101,6 +107,7 @@ fn test_update_matching() -> anyhow::Result<()> {
 
         pe.new_updater(&engine_config).update_matching(Some(log_id(20)), Some(InflightId::new(0)));
         assert_eq!(21, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     Ok(())
@@ -119,6 +126,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     assert_eq!(Inflight::None, pe.data.inflight);
     assert_eq!(Some(&log_id(3)), pe.matching());
     assert_eq!(5, pe.data.searching_end);
+    assert!(pe.validate().is_ok());
 
     Ok(())
 }
@@ -137,6 +145,7 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
 
         assert!(!applied);
         assert_eq!(expected, pe);
+        assert!(pe.validate().is_ok());
     }
 
     tracing::info!(
@@ -149,6 +158,7 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
         assert!(applied);
         assert_eq!(inflight_probe(10, 15), pe.data.inflight);
         assert_eq!(8, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     tracing::info!(
@@ -161,6 +171,44 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
         assert!(applied);
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(8, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_validate_rejects_malformed_entries() -> anyhow::Result<()> {
+    tracing::info!(
+        matching = 5,
+        searching_end = 5,
+        "reject a search range that excludes matching"
+    );
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5);
+        pe.matching = Some(log_id(5));
+
+        assert!(pe.validate().is_err(), "matching.next_index(6) > searching_end(5)");
+    }
+
+    tracing::info!(prev = 15, last = 10, "reject a probe whose range ends before its prev");
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
+        pe.data.inflight = Inflight::Probe {
+            log_id_range: LogIdRange::new(Some(log_id(15)), Some(log_id(10))),
+            inflight_id: InflightId::new(0),
+        };
+
+        assert!(pe.validate().is_err(), "prev(15) > last(10)");
+    }
+
+    tracing::info!(matching = 12, prev = 10, "reject a probe whose prev is below matching");
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
+        pe.matching = Some(log_id(12));
+        pe.data.inflight = inflight_probe(10, 15);
+
+        assert!(pe.validate().is_err(), "matching(12) > prev(10)");
     }
 
     Ok(())

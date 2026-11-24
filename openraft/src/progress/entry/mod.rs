@@ -288,6 +288,12 @@ where C: RaftTypeConfig
             // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
             let mid = Self::calc_mid(matching_next, self.data.searching_end);
             let start = std::cmp::max(mid, purge_upto_next);
+            debug_assert!(
+                start <= self.data.searching_end,
+                "expect: probe start: {} <= searching_end: {}",
+                start,
+                self.data.searching_end
+            );
             let end = std::cmp::min(start + max_entries, last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
@@ -346,10 +352,13 @@ where C: RaftTypeConfig
         match &self.data.inflight {
             Inflight::None => {}
             Inflight::Probe { log_id_range, .. } => {
-                // matching <= prev_log_id              <= last_log_id
-                //             prev_log_id.next_index() <= searching_end
+                // matching <= prev_log_id <= last_log_id
+                //
+                // `next_send()` plans a probe with `prev_log_id.next_index() <= searching_end`,
+                // but this is not checked here: while the probe is pending, a conflict that does
+                // not answer it, such as a heartbeat's, may lower `searching_end` below
+                // `prev_log_id.next_index()`.
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
-                validit::less_equal!(log_id_range.prev.next_index(), self.data.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
             Inflight::LogsSince { .. } => {}
