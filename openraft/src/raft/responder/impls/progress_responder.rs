@@ -170,6 +170,8 @@ where
 mod tests {
     use std::time::Duration;
 
+    use tokio::sync::oneshot::error::TryRecvError;
+
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::raft::responder::ProgressResponder;
@@ -182,9 +184,12 @@ mod tests {
             let (_responder, mut commit_rx, mut complete_rx): (ProgressResponder<UTConfig, String>, _, _) =
                 ProgressResponder::new();
 
-            // Receivers should be created but not yet have values
-            assert!(commit_rx.try_recv().is_err());
-            assert!(complete_rx.try_recv().is_err());
+            // The live responder holds both senders, so both channels are open and still empty.
+            let commit = commit_rx.try_recv();
+            assert_eq!(Err(TryRecvError::Empty), commit);
+
+            let complete = complete_rx.try_recv();
+            assert_eq!(Err(TryRecvError::Empty), complete);
         });
     }
 
@@ -194,8 +199,9 @@ mod tests {
             let (_responder, mut complete_rx): (ProgressResponder<UTConfig, String>, _) =
                 ProgressResponder::complete_only();
 
-            // Receiver should be created but not yet have a value.
-            assert!(complete_rx.try_recv().is_err());
+            // The live responder holds the sender, so the channel is open and still empty.
+            let complete = complete_rx.try_recv();
+            assert_eq!(Err(TryRecvError::Empty), complete);
         });
     }
 
@@ -312,8 +318,10 @@ mod tests {
             let received_result = complete_rx.await.unwrap();
             assert_eq!(test_result, received_result);
 
-            // Commit receiver should not have received anything
-            assert!(commit_rx.try_recv().is_err());
+            // Completion consumed the responder and dropped the unused commit sender, so the
+            // commit channel is closed without a value.
+            let commit = commit_rx.try_recv();
+            assert_eq!(Err(TryRecvError::Closed), commit);
         });
     }
 
