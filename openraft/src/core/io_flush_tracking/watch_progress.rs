@@ -1,3 +1,5 @@
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -20,6 +22,8 @@ use crate::type_config::alias::WatchReceiverOf;
 /// [`Raft::new`]: crate::Raft::new
 /// [`Raft::run`]: crate::Raft::run
 /// [`Raft::build`]: crate::Raft::build
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 
 /// Handle for tracking vote I/O flush progress.
@@ -28,24 +32,32 @@ pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 /// the vote it recovered from storage, or the default vote when storage holds none, so `Some`
 /// alone does not mean that a vote was saved. Later values are the votes that storage reports as
 /// flushed.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type VoteProgress<C> = WatchProgress<C, Option<Vote<LeaderIdOf<C>>>>;
 
 /// Handle for tracking commit log progress.
 ///
 /// Returns `None` if no log has been committed yet.
 /// Returns `Some(LogId)` containing the latest committed log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type CommitProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Handle for tracking snapshot persistence progress.
 ///
 /// Returns `None` if no snapshot has been persisted yet.
 /// Returns `Some(LogId)` containing the last persisted snapshot log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type SnapshotProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Handle for tracking applied log progress.
 ///
 /// Returns `None` if no log has been applied yet.
 /// Returns `Some(LogId)` containing the last applied log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type AppliedProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Watch handle for tracking I/O flush progress.
