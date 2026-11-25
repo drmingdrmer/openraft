@@ -1868,13 +1868,16 @@ where
 
     /// Initialize a pristine Raft node with the given config.
     ///
-    /// This command should be called on pristine nodes — where the log index is 0 and the node is
-    /// in Learner state — as if either of those constraints are false, it indicates that the
-    /// cluster is already formed and in motion. If `InitializeError::NotAllowed` is returned
-    /// from this function, it is safe to ignore, as it simply indicates that the cluster is
-    /// already up and running, which is ultimately the goal of this function. You can check
-    /// if the cluster is initialized with [`Raft::is_initialized()`] and then avoid re-initialize
-    /// it in case you want to get rid of this error.
+    /// A node is pristine when it has no log and its vote has the default term. A node that starts
+    /// with empty storage is pristine. A node that has voted for a candidate is not, even if it
+    /// has no log, because its vote has a greater term. [`Raft::is_initialized()`] returns `false`
+    /// only while the node is pristine.
+    ///
+    /// On a node that is not pristine, `initialize()` changes nothing and returns
+    /// `InitializeError::NotAllowed`. This error only says that the node can no longer be
+    /// initialized. It does not mean that the cluster has a leader or that a quorum of its voters
+    /// is reachable, and neither does a successful `initialize()`. To learn when a leader is
+    /// elected, watch [`Raft::metrics()`] or wait for it with [`Raft::wait()`].
     ///
     /// ## Recommended Usage
     ///
@@ -1889,11 +1892,24 @@ where
     /// However, calling `initialize()` with **different configurations** on different nodes
     /// may lead to a split-brain condition and must be avoided.
     ///
+    /// To change the membership of an initialized cluster, such as to grow a single-node cluster,
+    /// call [`Raft::add_learner()`] and [`Raft::change_membership()`] on the leader. A node that
+    /// joins this way starts with empty storage and is not initialized.
+    ///
     /// ## Behavior
     ///
-    /// Once a node is successfully initialized, it will commit a new membership config
-    /// log entry to store, then enter Candidate state and attempt to elect itself as the
-    /// leader.
+    /// On success, this node:
+    ///
+    /// 1. Appends the membership config as the log at index 0. The membership takes effect on this
+    ///    node at once, before the log is committed.
+    /// 2. Starts an election to become the leader, and enters the Candidate state.
+    /// 3. Returns `Ok(())` once the membership log is flushed to this node's storage, without
+    ///    waiting for the election.
+    ///
+    /// The election needs the votes of a quorum of the voters: a single-node cluster elects this
+    /// node by itself, while a multi-node cluster has no leader until a quorum of its voters is
+    /// reachable. The elected leader then commits a blank log of its own term, which also commits
+    /// the membership log.
     ///
     /// `members` converts into the first membership config. The default [`Membership`] converts
     /// from a `BTreeMap` or a `HashMap` of nodes, and from a `BTreeSet` of node ids when the node
@@ -1908,21 +1924,59 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use std::collections::BTreeMap;
-    /// use openraft::BasicNode;
+    /// Initialize a single-node cluster on node 1:
     ///
-    /// // Initialize a single-node cluster
+    /// ```no_run
+    /// use std::collections::BTreeMap;
+    ///
+    /// use openraft::impls::BasicNode;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64, Node = BasicNode>,
+    /// #     BTreeMap<u64, BasicNode>: Into<C::Membership>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    ///
     /// let mut nodes = BTreeMap::new();
     /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
     /// raft.initialize(nodes).await?;
     ///
-    /// // Initialize a three-node cluster
+    /// // `initialize()` does not wait for the election
+    /// raft.wait(None).current_leader(1, "node 1 is elected").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Or initialize a three-node cluster by calling `initialize()` on node 1 only. Nodes 2 and 3
+    /// start with empty storage. Node 1 becomes the leader once one of them votes for it, then
+    /// replicates the membership log to both:
+    ///
+    /// ```no_run
+    /// use std::collections::BTreeMap;
+    ///
+    /// use openraft::impls::BasicNode;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64, Node = BasicNode>,
+    /// #     BTreeMap<u64, BasicNode>: Into<C::Membership>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    ///
     /// let mut nodes = BTreeMap::new();
     /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
     /// nodes.insert(2, BasicNode { addr: "127.0.0.1:8081".to_string() });
     /// nodes.insert(3, BasicNode { addr: "127.0.0.1:8082".to_string() });
     /// raft.initialize(nodes).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.0", change = "takes `Into<C::Membership>` instead of `IntoNodes`")]
     #[tracing::instrument(level = "debug", skip(self))]
