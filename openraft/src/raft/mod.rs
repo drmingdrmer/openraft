@@ -1573,12 +1573,49 @@ where
         self.app_api().client_write(C::Payload::blank()).await.into_raft_result()
     }
 
-    /// Submit a mutating client request to Raft to update the state machine, returns an application
-    /// defined response receiver [`Responder::Receiver`].
+    /// Submit a mutating client request to Raft without waiting for its result.
     ///
-    /// `_ff` means fire and forget.
+    /// `_ff` means fire and forget. Unlike [`Self::client_write()`], this method does not wait for
+    /// the write to be applied and does not return its result. RaftCore reports the result to
+    /// `responder` instead.
     ///
-    /// It is same as [`Self::client_write`] but does not wait for the response.
+    /// The caller observes each stage of the write in a different place:
+    ///
+    /// - Submission: this method returns `Ok(())` once the write is queued for RaftCore. It means
+    ///   only that the write was submitted: RaftCore may still reject it, and a write that RaftCore
+    ///   admits may never be committed or applied. `Err(Fatal)` means RaftCore has stopped and the
+    ///   write was not submitted.
+    /// - Commit: once the log entry of the write is committed, RaftCore calls
+    ///   [`Responder::on_commit()`] with its log id. The state machine may not have applied the
+    ///   write yet. A rejected or discarded write gets no commit notification.
+    /// - Completion: RaftCore calls [`Responder::on_complete()`] with the write's
+    ///   [`ClientWriteResult`]: `Ok` with a [`ClientWriteResponse`] once the state machine has
+    ///   applied the write, or `Err` with a [`ClientWriteError`] if the write fails, such as
+    ///   [`ClientWriteError::ForwardToLeader`] when RaftCore rejects it without appending it, or
+    ///   [`ClientWriteError::LogEntryDiscarded`] when its appended entry is discarded, which leaves
+    ///   its commit status unknown.
+    ///
+    /// This method returns no receiver. The caller creates a responder of the type that the type
+    /// config selects as [`Responder<T>`](RaftTypeConfig::Responder), keeps its receiver, and
+    /// passes `Some(responder)`. The success or rejection of the write arrives at that receiver.
+    /// With `None`, nothing reports whether the write was rejected, committed, or applied.
+    ///
+    /// [`declare_raft_types!`] selects [`ProgressResponder`] by default.
+    /// [`ProgressResponder::new()`] returns a commit receiver and a complete receiver, and
+    /// [`ProgressResponder::complete_only()`] returns only the complete receiver. The
+    /// [`ProgressResponder`] documentation shows an example that submits a write with this method.
+    /// If the responder is dropped without a result, for example because RaftCore stopped, the
+    /// complete receiver of a [`ProgressResponder`] returns an error. That error does not tell
+    /// whether the write was committed or applied.
+    ///
+    /// [`Responder::on_commit()`]: crate::raft::responder::Responder::on_commit
+    /// [`Responder::on_complete()`]: crate::raft::responder::Responder::on_complete
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    /// [`declare_raft_types!`]: crate::declare_raft_types
+    /// [`ProgressResponder`]: crate::impls::ProgressResponder
+    /// [`ProgressResponder::new()`]: crate::impls::ProgressResponder::new
+    /// [`ProgressResponder::complete_only()`]: crate::impls::ProgressResponder::complete_only
     #[since(version = "0.10.0", date = "2025-10-27", change = "add responder arg")]
     #[since(version = "0.10.0")]
     pub async fn client_write_ff(
