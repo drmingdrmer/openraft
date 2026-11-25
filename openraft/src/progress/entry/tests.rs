@@ -418,6 +418,27 @@ fn test_next_send_probe_clamped_to_purge_boundary() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_next_send_probe_clamped_to_purge_boundary_near_max_index() -> anyhow::Result<()> {
+    //  matching=None                end
+    //                               MAX
+    //                               v
+    // -------------+---------------+--->
+    //              purged/snap     last
+    //              MAX-4           MAX-1
+    //
+    // `MAX` is `u64::MAX`. The binary-search midpoint, calc_mid(0, MAX), is below the purge
+    // boundary, so the probe starts at MAX-3. `start + max_entries` would exceed `MAX`; the probe
+    // ends at the local tail: prev = log id MAX-4, last = log id MAX-1.
+    let max = u64::MAX;
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), max);
+
+    let res = pe.next_send(&mut new_raft_state(max - 4, max - 4, max - 1), 8);
+    assert_eq!(Ok(&inflight_probe(max - 4, max - 1).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
 fn test_next_send_pipeline_at_purge_boundary() -> anyhow::Result<()> {
     //      matching,end
     //      6,7
@@ -692,6 +713,26 @@ fn test_next_send_probe_start_limited_by_max_entries() -> anyhow::Result<()> {
 
     let res = pe.next_send(&mut new_raft_state(6, 10, 20), 2);
     assert_eq!(Ok(&inflight_probe(16, 18).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_start_near_max_index() -> anyhow::Result<()> {
+    //                   probe,end
+    //                   MAX-1
+    //                   v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    MAX-1
+    //
+    // `MAX` is `u64::MAX`. The probe tries the last log first, as for a new leader's noop entry.
+    // `start + max_entries` would exceed `MAX`; the probe ends at the local tail: (MAX-2, MAX-1].
+    let max = u64::MAX;
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), max - 1).with_probe_start(max - 1);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, max - 1), 8);
+    assert_eq!(Ok(&inflight_probe(max - 2, max - 1).with_id(1)), res);
 
     Ok(())
 }

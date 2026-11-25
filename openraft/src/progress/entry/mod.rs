@@ -275,7 +275,9 @@ where C: RaftTypeConfig
         if let Some(probe_start) = probe_start {
             // Like a binary-search probe, start no lower than the purge boundary.
             let start = std::cmp::max(probe_start, purge_upto_next);
-            let end = std::cmp::min(start + max_entries, last_next);
+            // `start + max_entries` can exceed `u64::MAX` near the index limit. Saturating it
+            // keeps the cap exact, because `last_next` is at most `u64::MAX`.
+            let end = std::cmp::min(start.saturating_add(max_entries), last_next);
 
             // Responses received since the probe was chosen may have narrowed the search range.
             let in_search_range = matching_next <= start && start <= self.data.searching_end;
@@ -304,7 +306,8 @@ where C: RaftTypeConfig
                 start,
                 self.data.searching_end
             );
-            let end = std::cmp::min(start + max_entries, last_next);
+            // Saturating, as for the pending probe above.
+            let end = std::cmp::min(start.saturating_add(max_entries), last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
             // for the probe to carry.
