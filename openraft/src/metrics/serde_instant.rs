@@ -16,9 +16,13 @@ use crate::display_ext::DisplayInstantExt;
 /// resulting in minor variations each time. These deviations (could be smaller or greater) are
 /// typically less than a microsecond (10^-6 seconds).
 ///
-/// Serialization returns an error for a time that the encoding cannot represent. Deserialization
-/// returns an error for a time that the runtime's clock cannot represent, such as a time before a
-/// simulated clock started.
+/// Serialization and deserialization return an error for a time that the encoding cannot
+/// represent. Deserialization also returns an error for a time that the runtime's clock cannot
+/// represent, such as a time before a simulated clock started.
+#[since(
+    version = "0.10.2",
+    change = "deserialization rejects a time past `i64::MAX` nanoseconds, as serialization does"
+)]
 #[since(
     version = "0.10.2",
     change = "a time out of a clock's range returns a serde error instead of panicking"
@@ -90,6 +94,11 @@ mod serde_impl {
     use super::SerdeInstant;
     use crate::Instant;
 
+    /// The latest time the encoding represents, in nanoseconds since the Unix epoch: `i64::MAX`,
+    /// in year 2262, so that the value also fits an `i64`. Serialization and deserialization
+    /// both reject a later time.
+    const MAX_NANOS: u64 = i64::MAX as u64;
+
     impl<I> Serialize for SerdeInstant<I>
     where I: Instant
     {
@@ -109,14 +118,14 @@ mod serde_impl {
                 }
             };
 
-            // Nanoseconds since the Unix epoch. Reject times before the epoch or past
-            // `i64::MAX` nanoseconds (year 2262), so the value also fits an `i64`.
+            // Nanoseconds since the Unix epoch. Reject times before the epoch or past `MAX_NANOS`.
             let nano = system_time
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .and_then(|d| i64::try_from(d.as_nanos()).ok())
+                .and_then(|d| u64::try_from(d.as_nanos()).ok())
+                .filter(|nano| *nano <= MAX_NANOS)
                 .ok_or_else(|| serde::ser::Error::custom("time out of range"))?;
 
-            serializer.serialize_u64(nano as u64)
+            serializer.serialize_u64(nano)
         }
     }
 
@@ -136,6 +145,12 @@ mod serde_impl {
 
                 fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
                 where E: de::Error {
+                    // Reject a time past `MAX_NANOS`, as serialization does, even when both clocks
+                    // can represent it.
+                    if value > MAX_NANOS {
+                        return Err(E::custom("time out of range"));
+                    }
+
                     let system_time = UNIX_EPOCH
                         .checked_add(Duration::from_nanos(value))
                         .ok_or_else(|| E::custom("time out of range"))?;
