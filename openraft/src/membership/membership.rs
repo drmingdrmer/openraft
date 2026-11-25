@@ -16,12 +16,20 @@ use crate::node::NodeId;
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
+///
+/// Deserialization checks the decoded membership as [`Membership::new()`] does: it fails when a
+/// voter has no node, and accepts every membership that `new()` accepts.
+#[since(version = "0.10.2", change = "deserialization rejects a voter without a node")]
 #[since(
     version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
 )]
 #[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(bound = "", try_from = "MembershipFields<NID, N>")
+)]
 pub struct Membership<NID, N>
 where
     NID: NodeId,
@@ -351,6 +359,37 @@ where
         }
 
         res
+    }
+}
+
+/// The fields of an encoded [`Membership`], which decoding checks before it builds one.
+///
+/// It has the name, the fields, and the field order that a `Membership` is encoded with, so it
+/// decodes every encoded `Membership`. It ignores unknown fields.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(bound = "", rename = "Membership")]
+struct MembershipFields<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    configs: Vec<BTreeSet<NID>>,
+    nodes: BTreeMap<NID, N>,
+}
+
+/// Builds the decoded membership with [`Membership::new()`], which checks that every voter has a
+/// node.
+#[cfg(feature = "serde")]
+impl<NID, N> TryFrom<MembershipFields<NID, N>> for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    type Error = NodeNotFound<NID>;
+
+    fn try_from(fields: MembershipFields<NID, N>) -> Result<Self, Self::Error> {
+        Membership::new(fields.configs, fields.nodes)
     }
 }
 
