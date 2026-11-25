@@ -300,8 +300,9 @@ fn test_next_send_probe_at_purge_boundary() -> anyhow::Result<()> {
     //      6      10    20
     //
     // searching_end == purge_upto_next: the purge boundary (6) is itself still a
-    // candidate matching position, and its log id is known as the snapshot's last
-    // log id. Probe with prev at the boundary instead of falling back to a snapshot.
+    // candidate matching position. The purge is only scheduled here, as when it waits for
+    // replication: the log id at 6 comes from the leader's log ids, not from the snapshot,
+    // which ends at 10. Probe with prev at the boundary instead of falling back to a snapshot.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 7);
     pe.matching = Some(log_id(4));
 

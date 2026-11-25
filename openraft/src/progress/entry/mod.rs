@@ -212,10 +212,16 @@ where C: RaftTypeConfig
     /// to the purge boundary and used only if it then lies in
     /// `[matching.next_index(), searching_end]`. Every send consumes it.
     ///
-    /// Purging constrains what AppendEntries can be built: log entries at index
-    /// `<= purge_upto` are deleted, and only the log id at `purge_upto` itself is still
-    /// known, as the snapshot's last log id. Thus the lowest usable `prev` is `purge_upto`.
-    /// A snapshot must be sent instead of logs in exactly two situations:
+    /// Purging constrains what AppendEntries can be built. `purge_upto` is the boundary of a
+    /// scheduled purge, which may not have happened yet: the leader postpones it while a pending
+    /// replication may still read entries at or below it, see
+    /// [`ReplicationHandler::try_purge_log`]. A new payload never includes entries at index
+    /// `<= purge_upto`, so that new sends cannot keep postponing the purge. The log id at
+    /// `purge_upto` stays known: [`RaftState::log_ids`] holds it as a stored entry's id while the
+    /// purge waits, and as the last purged log id afterwards. It does not come from the snapshot,
+    /// which may end later, such as when the purge keeps the last
+    /// [`Config::max_in_snapshot_log_to_keep`] logs of the snapshot. Thus the lowest usable `prev`
+    /// is `purge_upto`. A snapshot must be sent instead of logs in exactly two situations:
     ///
     /// 1. `searching_end < purge_upto_next`, in either regime: every candidate matching position
     ///    lies strictly below the purge boundary. The lowest possible probe, `prev = purge_upto`,
@@ -225,13 +231,15 @@ where C: RaftTypeConfig
     ///    progress. `searching_end == purge_upto_next` is excluded: `prev = purge_upto` is then at
     ///    index `searching_end - 1`, still a candidate position worth probing.
     ///
-    /// 2. Probing while the leader log is fully purged (`purge_upto == last_log_id`, which makes
-    ///    the send range empty: `start == end`): the probe cannot carry any entry, and
+    /// 2. Probing while the purge boundary covers the leader log (`purge_upto == last_log_id`,
+    ///    which makes the send range empty: `start == end`): the probe cannot carry any entry, and
     ///    [`Inflight::probe`] cannot represent an AppendEntries without payload — an empty range
     ///    collapses to [`Inflight::None`]. Pipeline mode is not affected: [`Inflight::LogsSince`]
     ///    is an open-ended stream, and an empty tail is valid.
     ///
     /// [algo]: crate::docs::protocol::replication::log_replication#algorithm-to-find-the-last-matching-log-id-on-a-follower
+    /// [`ReplicationHandler::try_purge_log`]: crate::engine::handler::replication_handler::ReplicationHandler::try_purge_log
+    /// [`Config::max_in_snapshot_log_to_keep`]: crate::Config::max_in_snapshot_log_to_keep
     /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
     pub(crate) fn next_send(
         &mut self,
