@@ -844,9 +844,20 @@ where
         self.inner.call_core_oneshot(|tx| RaftMsg::GetRuntimeStats { tx }).await
     }
 
-    /// Check if this node is currently the leader.
+    /// Check if this node is the leader, as its latest metrics show.
     ///
-    /// Returns `true` if the node's current state is [`ServerState::Leader`].
+    /// Returns `true` if the latest [`RaftMetrics`] of this node show it as
+    /// [`ServerState::Leader`]. The check reads only the metrics of this node and contacts no other
+    /// node, so it does not confirm that this node still leads: a leader cut off from a quorum
+    /// keeps its role until it learns of a higher vote, while another node may already lead in a
+    /// higher term.
+    ///
+    /// A `true` result also does not protect a read of application state from stale data: even a
+    /// current leader may not have applied every committed entry yet, such as one that an earlier
+    /// leader committed. Before such a read, call [`ensure_linearizable()`], which confirms the
+    /// leadership by a quorum or a lease, then waits for the state machine to apply the entries
+    /// that the read must observe. Or call [`get_read_linearizer()`], then
+    /// [`Linearizer::await_ready()`] or [`Linearizer::try_await_ready()`].
     ///
     /// # Example
     ///
@@ -857,6 +868,8 @@ where
     /// ```
     ///
     /// [`ServerState::Leader`]: crate::core::ServerState::Leader
+    /// [`ensure_linearizable()`]: Self::ensure_linearizable
+    /// [`get_read_linearizer()`]: Self::get_read_linearizer
     #[since(version = "0.10.0")]
     pub fn is_leader(&self) -> bool {
         self.inner.rx_metrics.borrow_watched().state.is_leader()
@@ -1243,11 +1256,29 @@ where
         self.protocol_api().install_full_snapshot(vote, snapshot).await
     }
 
-    /// Get the ID of the current leader from this Raft node.
+    /// Get the ID of the current leader, as this node knows it.
     ///
-    /// This method is based on the Raft metrics system which does a good job at staying
-    /// up-to-date; however, the `is_leader` method must still be used to guard against stale
-    /// reads. This method is perfect for making decisions on where to route client requests.
+    /// Returns [`RaftMetrics::current_leader`] from the latest metrics of this node, without
+    /// contacting other nodes. It is the ID of the elected leader of the current term of this node,
+    /// which can be this node. It is `None` until this node learns of that leader, such as during
+    /// an election. The ID can be out of date: a node cut off from the cluster can keep naming the
+    /// leader it knew, while another node may already lead in a higher term. It can also name this
+    /// node after this node stops leading, such as when it steps down as a removed leader or shuts
+    /// down.
+    ///
+    /// Use it to choose where to send client requests. Because the ID can be out of date, the node
+    /// that receives a request can still answer with a [`ForwardToLeader`] error, which names the
+    /// leader that node knows of, if any.
+    ///
+    /// Neither this ID nor [`is_leader()`] protects a read of application state from stale data.
+    /// Before such a read, call [`ensure_linearizable()`], which confirms the leadership by a
+    /// quorum or a lease, then waits for the state machine to apply the entries that the read must
+    /// observe. [`get_read_linearizer()`] followed by [`Linearizer::await_ready()`] or
+    /// [`Linearizer::try_await_ready()`] does the same in two steps.
+    ///
+    /// [`is_leader()`]: Self::is_leader
+    /// [`ensure_linearizable()`]: Self::ensure_linearizable
+    /// [`get_read_linearizer()`]: Self::get_read_linearizer
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn current_leader(&self) -> Option<C::NodeId> {
         self.metrics().borrow_watched().current_leader.clone()
