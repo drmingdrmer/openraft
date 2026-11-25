@@ -127,27 +127,31 @@ where C: RaftTypeConfig
         true
     }
 
-    /// Update the matching log id for this follower when replication succeeds.
+    /// Update the matching log id for this follower with a success that answers the tracked
+    /// operation `inflight_id`.
     ///
-    /// If `inflight_id` is `Some`, the inflight state is acknowledged because the response
-    /// corresponds to a replication request with log payload. If `None`, the response is from
-    /// an RPC without payload (e.g., heartbeat), and inflight state is not modified.
-    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, inflight_id: Option<InflightId>) {
+    /// The success acknowledges the operation, and may complete it, only while the operation is in
+    /// flight, see [`Inflight::ack()`]. A success for any other operation changes nothing.
+    ///
+    /// A success that answers no tracked operation, such as the answer to an update of the commit
+    /// index sent on its own, never updates the matching log id: it may report a log that the
+    /// follower has lost since it answered, and [`ReplicationHandler::update_progress()`] drops it.
+    ///
+    /// [`ReplicationHandler::update_progress()`]: crate::engine::handler::replication_handler::ReplicationHandler::update_progress
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, inflight_id: InflightId) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
             self.entry,
             matching.display()
         );
 
-        if let Some(inflight_id) = inflight_id {
-            let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
-            if !applied {
-                // Stale payload ack: a newer request superseded this one, or a concurrent log
-                // reversion dropped it (see `update_conflicting`). Do not advance `matching`: the
-                // follower no longer holds the acked logs, and counting them as matched could form
-                // a false quorum over data the follower has reverted.
-                return;
-            }
+        let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
+        if !applied {
+            // Stale ack: a newer request superseded this one, or a concurrent log reversion
+            // dropped it (see `update_conflicting`). Do not advance `matching`: the follower no
+            // longer holds the acked logs, and counting them as matched could form a false quorum
+            // over data the follower has reverted.
+            return;
         }
 
         // An acknowledgement may clear inflight without advancing matching.

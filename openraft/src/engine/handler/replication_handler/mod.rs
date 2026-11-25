@@ -237,13 +237,11 @@ where
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
+    ///
+    /// `inflight_id` names the tracked operation that the success answers. The success updates the
+    /// progress only while that operation is in flight, see [`Updater::update_matching()`].
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(
-        &mut self,
-        node_id: C::NodeId,
-        log_id: Option<LogIdOf<C>>,
-        inflight_id: Option<InflightId>,
-    ) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogIdOf<C>>, inflight_id: InflightId) {
         tracing::debug!("{}: node_id: {}, log_id: {}", func_name!(), node_id, log_id.display());
 
         // The value granted by a quorum may not yet be a committed.
@@ -416,6 +414,11 @@ where
     }
 
     /// Update replication progress when a response is received.
+    ///
+    /// `inflight_id` names the tracked operation that the response answers. A success without it,
+    /// such as the answer to an update of the commit index sent on its own, changes no progress,
+    /// while a conflict without it may still find the target's log reverted, see
+    /// [`Self::update_conflicting()`].
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(
         &mut self,
@@ -446,7 +449,12 @@ where
         match repl_res {
             Ok(p) => match p.0 {
                 Ok(matching) => {
-                    self.update_matching(target, matching, inflight_id);
+                    // A success without an inflight id may report a log that the target has lost
+                    // since it answered, as when a heartbeat's conflict has reset `matching`
+                    // meanwhile, and no inflight state tells that it is stale.
+                    if let Some(inflight_id) = inflight_id {
+                        self.update_matching(target, matching, inflight_id);
+                    }
                 }
                 Err(conflict) => {
                     let applied = self.update_conflicting(target.clone(), conflict, inflight_id);
@@ -714,7 +722,7 @@ where
             })
             .is_some()
         {
-            self.update_matching(id, upto, Some(inflight_id));
+            self.update_matching(id, upto, inflight_id);
         }
     }
 

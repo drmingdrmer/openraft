@@ -631,7 +631,7 @@ fn hinted_prefix_waits_for_durable_acknowledgement() {
     assert_eq!(None, quorum);
 
     eng.replication_handler().initiate_replication();
-    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 10)), Some(InflightId::new(1)));
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 10)), InflightId::new(1));
     let quorum = quorum_accepted(&eng);
     let expected = Some(log_id(2, 1, 10));
     assert_eq!(expected, quorum);

@@ -68,7 +68,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(6)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(6)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(6)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
@@ -81,7 +81,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(5));
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(5)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(5)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(5)), pe.matching());
         assert!(pe.validate().is_ok());
@@ -92,7 +92,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(10)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
@@ -105,7 +105,7 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.data.inflight = inflight_probe(5, 20);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(20)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(20)), InflightId::new(0));
         assert_eq!(21, pe.data.searching_end);
         assert!(pe.validate().is_ok());
     }
@@ -214,7 +214,7 @@ fn test_update_conflicting_reversion_drops_the_operation_in_flight() -> anyhow::
         {
             let expected = pe.clone();
 
-            pe.new_updater(&engine_config).update_matching(Some(log_id(9)), Some(InflightId::new(0)));
+            pe.new_updater(&engine_config).update_matching(Some(log_id(9)), InflightId::new(0));
 
             assert_eq!(expected, pe);
         }
@@ -590,7 +590,7 @@ fn test_next_send_probe_partial_ack_recomputes_midpoint() -> anyhow::Result<()> 
     assert_eq!(Ok(&inflight_probe(52, 60).with_id(1)), res);
 
     // The log reader returned just the first entry from (52, 60].
-    pe.new_updater(&engine_config).update_matching(Some(log_id(53)), Some(InflightId::new(1)));
+    pe.new_updater(&engine_config).update_matching(Some(log_id(53)), InflightId::new(1));
     assert_eq!(Inflight::None, pe.data.inflight);
     assert_eq!(Some(&log_id(53)), pe.matching());
 
@@ -802,7 +802,7 @@ fn test_next_send_snapshot_consumes_probe_start() -> anyhow::Result<()> {
         "after the snapshot ack, stream logs instead of probing again"
     );
     {
-        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(1)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), InflightId::new(1));
 
         let res = pe.next_send(&mut state, 100);
         assert_eq!(Ok(&Inflight::logs_since(Some(log_id(10)), InflightId::new(2))), res);
