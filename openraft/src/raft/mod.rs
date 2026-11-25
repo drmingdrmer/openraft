@@ -2136,14 +2136,17 @@ where
     /// The `start` and `stop` callbacks are guaranteed to be called in alternating order:
     /// `start` → `stop` → `start` → `stop` → ...
     ///
-    /// Even if a node transitions directly from leader in Term 1 to leader in Term 2,
-    /// `stop` will be called with the old `leader_id` before `start` is called with the
-    /// new `leader_id`. This ensures proper resource cleanup between leadership terms.
+    /// Each callback is called only after the future returned by the previous one completes.
+    /// Even if a node transitions directly from leader in Term 1 to leader in Term 2, `start` is
+    /// called with the new `leader_id` only after the future that `stop` returned for the old one
+    /// completes, so no code of `start` overlaps the cleanup of Term 1.
     ///
     /// When the node stops, by [`shutdown()`](Self::shutdown), by dropping every `Raft` handle,
     /// or on a fatal error, the watch calls `stop` if `start` was called last, then ends. Closing
     /// or dropping the [`WatchChangeHandle`] ends the watch without calling `stop`: the caller
-    /// stops a service that still runs.
+    /// stops a service that still runs. Either takes effect once the callbacks for the current
+    /// change return: closing the handle while `stop` runs for Term 1 still calls `start` for
+    /// Term 2 before [`close()`](WatchChangeHandle::close) returns.
     ///
     /// # Limits
     ///
@@ -2179,6 +2182,10 @@ where
     /// [`ServerState::Leader`]: crate::core::ServerState::Leader
     #[since(
         version = "0.10.2",
+        change = "calls `start` only after the future of the preceding `stop` completes"
+    )]
+    #[since(
+        version = "0.10.2",
         change = "follows the role of this node, and calls `stop` when the node stops"
     )]
     #[since(version = "0.10.0")]
@@ -2212,19 +2219,16 @@ where
                 };
 
                 if leader_id != prev_leader_id {
-                    // Call stop first if transitioning from one leadership to another
-                    // (e.g., Term 1 leader -> Term 2 leader)
-                    // This guarantees alternating start/stop calls.
-                    let stop_fut = prev_leader_id.take().map(&stop);
-                    let start_fut = leader_id.clone().map(&start);
+                    // Finish `stop` of the old leadership before calling `start` of the new one,
+                    // e.g., from leading in term 1 to leading in term 2: `start` can begin its
+                    // work before it returns a future, and that work must not overlap the cleanup.
+                    if let Some(old) = prev_leader_id.take() {
+                        stop(old).await;
+                    }
+                    if let Some(new) = &leader_id {
+                        start(new.clone()).await;
+                    }
                     prev_leader_id = leader_id;
-
-                    if let Some(f) = stop_fut {
-                        f.await;
-                    }
-                    if let Some(f) = start_fut {
-                        f.await;
-                    }
                 }
 
                 let selected = C::select2(&mut cancel_rx, rx_metrics.changed()).await;

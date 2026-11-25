@@ -7,6 +7,7 @@ use openraft::StepDownPolicy;
 use openraft::Vote;
 use openraft::WatchChangeHandle;
 use openraft::async_runtime::WatchReceiver;
+use openraft::async_runtime::WatchSender;
 use openraft::type_config::TypeConfigExt;
 use openraft::vote::RaftLeaderId;
 use openraft_memstore::TypeConfig;
@@ -530,6 +531,92 @@ async fn on_leader_change_when_leader_campaigns_again() -> Result<()> {
 
         let got = events.wait(3).await?;
         assert_eq!(vec![("start", 1, 0), ("stop", 1, 0), ("start", term, 0)], got);
+    }
+
+    handle.close().await;
+
+    Ok(())
+}
+
+/// A leader that leads again in a new term, with no other role seen by the watch in between:
+/// `start` for the new term is called only after the future of `stop` for the old term completes.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn on_leader_change_calls_start_after_stop_completes() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- bring up a single-node cluster");
+    let mut log_index = router.new_cluster([0], []).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let events = Events::<LeaderEvent>::default();
+    let (gate_tx, gate_rx) = TypeConfig::watch_channel(false);
+
+    tracing::info!(
+        log_index,
+        "--- watch node-0: `start` records its call at once, then waits for the gate; \
+         `stop` records its call when its future completes"
+    );
+    let mut handle = {
+        let started = events.clone();
+        let stopped = events.clone();
+        let handle = n0.on_leader_change(
+            move |leader_id| {
+                started.push(("start", leader_id.term(), *leader_id.node_id()));
+                let mut gate = gate_rx.clone();
+                async move {
+                    let _ = gate.wait_until_ge(&true).await;
+                }
+            },
+            move |leader_id| {
+                let stopped = stopped.clone();
+                async move {
+                    TypeConfig::yield_now().await;
+                    stopped.push(("stop", leader_id.term(), *leader_id.node_id()));
+                }
+            },
+        );
+
+        let got = events.wait(1).await?;
+        assert_eq!(vec![("start", 1, 0)], got);
+
+        handle
+    };
+
+    tracing::info!(
+        log_index,
+        "--- while `start` for term 1 waits, transfer leadership to absent node-1: \
+         elections are on, so node-0 campaigns once the transfer times out, and leads in term 2"
+    );
+    {
+        n0.trigger().transfer_leader(1).await?;
+
+        let want = Vote::new_committed(2, 0);
+        router
+            .wait(&0)
+            .metrics(
+                |m| m.state == ServerState::Leader && m.vote == want,
+                "node-0 leads in term 2",
+            )
+            .await?;
+        log_index += 1;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- open the gate: the watch sees term 2 right after term 1, \
+         and calls `start` for term 2 once `stop` for term 1 completes"
+    );
+    {
+        gate_tx.send(true)?;
+
+        let got = events.wait(3).await?;
+        assert_eq!(vec![("start", 1, 0), ("stop", 1, 0), ("start", 2, 0)], got);
     }
 
     handle.close().await;
