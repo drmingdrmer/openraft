@@ -2489,9 +2489,14 @@ where
 
     /// Get a handle to wait for the metrics to satisfy some condition.
     ///
+    /// A wait checks the metrics it observes and returns the first that satisfy its condition. It
+    /// returns [`WaitError::ShuttingDown`] if the metrics channel closes first, which happens when
+    /// the node stops.
     ///
-    /// If `timeout` is `None`, then it will wait forever(10 years).
-    /// If `timeout` is `Some`, then it will wait for the specified duration.
+    /// If `timeout` is `Some`, the wait returns [`WaitError::Timeout`] when no observed metrics
+    /// satisfy the condition within that duration. If `timeout` is `None`, the wait sets no
+    /// timeout: it ends only when observed metrics satisfy the condition or the metrics channel
+    /// closes.
     ///
     /// ```no_run
     /// # use std::time::Duration;
@@ -2510,7 +2515,7 @@ where
     /// // wait for raft log-3 to be applied:
     /// r.wait(Some(timeout)).applied_index(Some(3), "log-3 applied").await?;
     ///
-    /// // wait for ever for raft node's current leader to become 2:
+    /// // wait with no timeout for raft node's current leader to become 2:
     /// r.wait(None).current_leader(2, "wait for leader").await?;
     ///
     /// // wait for raft state to become a follower
