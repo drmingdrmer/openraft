@@ -864,9 +864,16 @@ where
 
     /// Get leader information if this node is currently a leader.
     ///
-    /// Returns [`Leader`] containing the leader ID and health metadata if this node is the leader
-    /// (i.e., its vote has been accepted by a quorum), otherwise returns
-    /// [`ForwardToLeader`] error containing the current known leader information.
+    /// Returns [`Leader`], containing the leader ID and health metadata, if the latest
+    /// [`RaftMetrics`] report shows this node running as [`ServerState::Leader`], with a committed
+    /// [`vote`](RaftMetrics::vote) that names this node. A leader that the membership keeps only
+    /// as a learner qualifies.
+    ///
+    /// Otherwise it returns [`ForwardToLeader`]. If the committed vote names another node, the
+    /// error holds that node's ID and, if the effective membership has the node, its node
+    /// information. The error holds no leader if the vote is not committed, or if the vote names
+    /// this node but this node does not run as leader. The metrics still report this node's
+    /// committed vote after it restarts, shuts down, or steps down as a removed leader.
     ///
     /// # Example
     ///
@@ -881,12 +888,13 @@ where
     /// }
     /// ```
     ///
+    /// [`ServerState::Leader`]: crate::core::ServerState::Leader
     /// [`ForwardToLeader`]: crate::errors::ForwardToLeader
+    #[since(version = "0.10.2", change = "also requires this node to run as `Leader`")]
     #[since(version = "0.10.0")]
     pub fn as_leader(&self) -> Result<Leader<C, SM>, ForwardToLeader<C>> {
-        // Do not use `is_leader()`, which depends on other state to determine, which may result in
-        // inconsistent state. And `is_leader()` just do another reading from the metrics, which also may be
-        // inconsistent.
+        // Read the role and the vote with one metrics borrow, so that both come from the same
+        // report. Calling `is_leader()` here would borrow the metrics a second time.
 
         let metrics = self.inner.rx_metrics.borrow_watched();
 
@@ -898,6 +906,13 @@ where
         let node_id = leader_id.node_id();
 
         if node_id == &self.inner.id {
+            // After a restart, a shutdown, or a step down, the committed vote still names this
+            // node, so the vote alone does not show that this node leads.
+            let runs_as_leader = metrics.running_state.is_ok() && metrics.state.is_leader();
+            if !runs_as_leader {
+                return Err(ForwardToLeader::empty());
+            }
+
             Ok(Leader {
                 raft: self.clone(),
                 leader_id: leader_id.clone(),
