@@ -643,6 +643,9 @@ async fn snapshot_install_waits_behind_queued_applies() -> Result<()> {
 }
 
 /// A worker panic drops buffered commands and releases their client responders.
+///
+/// RaftCore sends the worker no further command, so it does not stop, and the writes get
+/// `Fatal::NoResponse`.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn worker_exit_releases_buffered_responders() -> Result<()> {
@@ -694,7 +697,7 @@ async fn worker_exit_releases_buffered_responders() -> Result<()> {
     {
         drop(release_worker);
 
-        let fatal = RaftError::Fatal(Fatal::Stopped);
+        let fatal = RaftError::Fatal(Fatal::NoResponse);
 
         let mut errors = vec![];
         for write in writes {
@@ -706,7 +709,7 @@ async fn worker_exit_releases_buffered_responders() -> Result<()> {
         assert_eq!(expected, errors);
     }
 
-    tracing::info!(log_index, "--- shut down the stopped node 0");
+    tracing::info!(log_index, "--- shut down node 0, whose state machine worker exited");
     {
         TypeConfig::timeout(WAIT_TIMEOUT, router.stop_node(0)).await??;
     }

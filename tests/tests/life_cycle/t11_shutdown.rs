@@ -8,6 +8,8 @@ use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Fatal;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
@@ -161,9 +163,10 @@ async fn return_error_after_panic() -> Result<()> {
 
 /// A state-machine worker that dies while RaftCore stays alive must not hang callers.
 ///
-/// `get_snapshot()` sends a command straight to the state-machine worker's channel, bypassing
-/// RaftCore. When the worker has panicked, resolving the stop cause must fall back to
-/// `Fatal::Stopped` within the bounded wait, instead of joining the still-running core forever.
+/// A write whose apply panics the worker gets no response, and returns `Fatal::NoResponse` once
+/// the bounded wait for a RaftCore stop ends. `get_snapshot()` then sends a command straight to
+/// the stopped worker's channel, bypassing RaftCore, and returns `Fatal::Stopped` within the
+/// bounded wait, instead of joining the still-running core forever.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
@@ -176,6 +179,7 @@ async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
 
     tracing::info!("--- initializing single-node cluster");
     let _log_index = router.new_cluster([0], []).await?;
+    let raft = router.get_raft_handle(&0)?;
 
     tracing::info!("--- arm the state machine to panic on the next apply");
     {
@@ -183,20 +187,25 @@ async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
         sm.panic_on_apply(true);
     }
 
-    tracing::info!("--- a client write makes the SM worker panic and die; RaftCore stays up");
+    tracing::info!("--- a client write makes the SM worker panic and die; the write gets no response");
     {
-        let res = router.client_request(0, "c", 1).await;
-        assert!(
-            res.is_err(),
-            "write must fail: the SM worker panicked while applying it"
-        );
+        let write = router.client_request(0, "c", 1);
+        let res = TypeConfig::timeout(WAIT_TIMEOUT, write).await?;
+        let err = res.unwrap_err();
+        assert_eq!(Some(Fatal::NoResponse), err.into_fatal());
     }
 
-    tracing::info!("--- get_snapshot() must resolve to Fatal::Stopped, not hang");
+    tracing::info!("--- get_snapshot() finds the worker stopped: Fatal::Stopped, not a hang");
     {
-        let raft = router.get_raft_handle(&0)?;
-        let err = raft.get_snapshot().await.unwrap_err();
-        assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
+        let res = TypeConfig::timeout(WAIT_TIMEOUT, raft.get_snapshot()).await?;
+        let err = res.unwrap_err();
+        assert_eq!(Some(Fatal::Stopped), err.into_fatal());
+    }
+
+    tracing::info!("--- RaftCore still answers after both fallbacks");
+    {
+        let server_state = raft.with_raft_state(|state| state.server_state).await?;
+        assert_eq!(ServerState::Leader, server_state);
     }
 
     Ok(())
@@ -205,11 +214,11 @@ async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
 /// `with_state_machine` must not hang when its function panics the state-machine worker.
 ///
 /// The user function runs in the SM worker; a panic there kills the worker and drops the
-/// responder while RaftCore keeps running. Resolving the stop cause must fall back to
-/// `Fatal::Stopped` within the bounded wait instead of joining the still-running core forever.
+/// responder while RaftCore keeps running. The call returns `Fatal::NoResponse` once the bounded
+/// wait for a RaftCore stop ends, instead of joining the still-running core forever.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
+async fn with_state_machine_returns_no_response_when_func_panics() -> Result<()> {
     let config = Config {
         enable_heartbeat: false,
         ..Default::default()
@@ -220,13 +229,12 @@ async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
     tracing::info!("--- initializing single-node cluster");
     let _log_index = router.new_cluster([0], []).await?;
 
-    tracing::info!("--- a panicking with_state_machine func kills the worker; the call must return Fatal::Stopped");
+    tracing::info!("--- a panicking with_state_machine func kills the worker; the call must return Fatal::NoResponse");
     {
         let raft = router.get_raft_handle(&0)?;
-        let res = raft
-            .with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }))
-            .await;
-        assert_eq!(Fatal::Stopped, res.unwrap_err());
+        let call = raft.with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }));
+        let res = TypeConfig::timeout(WAIT_TIMEOUT, call).await?;
+        assert_eq!(Err(Fatal::NoResponse), res);
     }
 
     Ok(())
@@ -253,7 +261,7 @@ async fn write_after_sm_worker_died_returns_stopped() -> Result<()> {
         let res = raft
             .with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }))
             .await;
-        assert_eq!(Fatal::Stopped, res.unwrap_err());
+        assert_eq!(Fatal::NoResponse, res.unwrap_err());
         let server_state = raft.with_raft_state(|state| state.server_state).await?;
         assert_eq!(ServerState::Leader, server_state);
     }

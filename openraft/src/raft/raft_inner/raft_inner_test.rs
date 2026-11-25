@@ -5,11 +5,13 @@ use std::time::Duration;
 
 use futures_util::FutureExt;
 
+use super::RECV_CORE_STOP_TIMEOUT;
 use super::RaftInner;
 use crate::Config;
 use crate::Extensions;
 use crate::Raft;
 use crate::RaftMetrics;
+use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::OneshotSender;
@@ -162,6 +164,79 @@ fn shutdown_retry_waits_for_core_after_cancelled_shutdown() {
             core_tx.send(()).unwrap();
             UTConfig::timeout(Duration::from_secs(1), retry).await.unwrap().unwrap();
             let fatal = raft.inner.get_core_stop_error().await;
+            assert_eq!(Fatal::Stopped, fatal);
+            let result = raft.try_shutdown().await;
+            let expected = Ok(());
+            assert_eq!(expected, result);
+        }
+    });
+}
+
+const STOP_LOOKUP_DEADLINE: Duration = Duration::from_secs(5);
+
+#[test]
+fn channel_failure_reports_the_error_that_stopped_core() {
+    UTConfig::run(async {
+        let source = std::io::Error::other("injected storage failure");
+        let storage_error = StorageError::read_state_machine(UTConfig::err_from_error(&source));
+        let returned = Fatal::StorageError(storage_error);
+        let cases = [
+            (UTConfig::spawn(async { Err(Fatal::Stopped) }), Fatal::Stopped),
+            (
+                UTConfig::spawn(async { panic!("injected core task panic") }),
+                Fatal::Panicked,
+            ),
+            (UTConfig::spawn(std::future::ready(Err(returned.clone()))), returned),
+        ];
+
+        for (core, expected) in cases {
+            tracing::info!(
+                %expected,
+                "the dropped metrics sender shows RaftCore stopped: its error takes precedence over the channel failure"
+            );
+            let raft = raft_with_core(core);
+            let (tx, rx) = UTConfig::oneshot::<()>();
+            drop(tx);
+            let lookups = futures_util::future::join(raft.inner.recv_msg(rx), raft.inner.sm_worker_unavailable_error());
+            let (received, unavailable) = UTConfig::timeout(STOP_LOOKUP_DEADLINE, lookups).await.unwrap();
+            assert_eq!(Err(expected.clone()), received);
+            assert_eq!(expected, unavailable);
+        }
+    });
+}
+
+#[test]
+fn channel_failure_while_core_runs_reports_the_failure() {
+    UTConfig::run(async {
+        let (core_tx, core_rx) = UTConfig::oneshot();
+        let mut raft = raft_with_core(UTConfig::spawn(async move {
+            core_rx.await.unwrap();
+            Err(Fatal::Stopped)
+        }));
+        let (tx_metrics, rx_metrics) = UTConfig::watch_channel(RaftMetrics::new_initial(0));
+        let inner = Arc::get_mut(&mut raft.inner).unwrap();
+        inner.rx_metrics = rx_metrics;
+
+        tracing::info!(
+            timeout = ?RECV_CORE_STOP_TIMEOUT,
+            "close a response channel and refuse a worker command while RaftCore runs"
+        );
+        {
+            let (tx, rx) = UTConfig::oneshot::<()>();
+            drop(tx);
+            let lookups = futures_util::future::join(raft.inner.recv_msg(rx), raft.inner.sm_worker_unavailable_error());
+            let (received, unavailable) = UTConfig::timeout(STOP_LOOKUP_DEADLINE, lookups).await.unwrap();
+            assert_eq!(Err(Fatal::NoResponse), received);
+            assert_eq!(Fatal::Stopped, unavailable);
+            let pending = raft.inner.join_core_task().now_or_never();
+            assert!(pending.is_none(), "RaftCore must still run");
+        }
+
+        tracing::info!("stop RaftCore: its result is still available after the fallbacks");
+        {
+            core_tx.send(()).unwrap();
+            drop(tx_metrics);
+            let fatal = UTConfig::timeout(STOP_LOOKUP_DEADLINE, raft.inner.get_core_stop_error()).await.unwrap();
             assert_eq!(Fatal::Stopped, fatal);
             let result = raft.try_shutdown().await;
             let expected = Ok(());

@@ -313,7 +313,7 @@ async fn client_write_many_core_stopped() -> Result<()> {
 }
 
 /// When the state machine drops the responders of a batch while RaftCore keeps running, the
-/// stream of `Raft::client_write_many()` yields `Fatal::Stopped` once the bounded wait for a
+/// stream of `Raft::client_write_many()` yields `Fatal::NoResponse` once the bounded wait for a
 /// RaftCore stop ends, instead of joining the running RaftCore.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
@@ -341,7 +341,7 @@ async fn client_write_many_dropped_responder() -> Result<()> {
         let requests = (1..=2).map(|i| ClientRequest::make_request("foo", i));
         let stream = n0.client_write_many(requests, WriteOption::default()).await?;
         let items = read_to_end(stream).await?;
-        let expected: Vec<Item> = vec![Err(Fatal::Stopped)];
+        let expected: Vec<Item> = vec![Err(Fatal::NoResponse)];
         assert_eq!(expected, items);
     }
 

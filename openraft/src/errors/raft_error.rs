@@ -11,8 +11,8 @@ use crate::try_as_ref::TryAsRef;
 /// Error returned by Raft API methods.
 ///
 /// `RaftError` wraps either a [`Fatal`] error indicating the Raft node has stopped (due to storage
-/// failure, panic, or shutdown), or an API-specific error `E` (such as [`ClientWriteError`] or
-/// [`LinearizableReadError`]).
+/// failure, panic, or shutdown) or that a request got no response, or an API-specific error `E`
+/// (such as [`ClientWriteError`] or [`LinearizableReadError`]).
 ///
 /// # Usage
 ///
@@ -45,7 +45,7 @@ where C: RaftTypeConfig
     #[error(transparent)]
     APIError(E),
 
-    /// Fatal error indicating the Raft node has stopped.
+    /// Fatal error indicating the Raft node has stopped, or that a request got no response.
     // Reset serde trait bound for C but not for E
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     #[error(transparent)]

@@ -672,9 +672,10 @@ and links the trait, protocol page, or test suite that defines it.
 - **Metrics, fatal errors and shutdown.** Watch [`Raft::metrics()`] for
   leadership, replication lag and membership
   ([monitoring and maintenance][`docs::monitoring-maintenance`]). A [`Fatal`]
-  error means the Raft core has stopped and will not recover on its own: take
-  the node out of service instead of retrying against it. Call
-  [`Raft::shutdown()`] and await its completion before the process exits.
+  error means the Raft core has stopped, or that a request got no response, and
+  the node will not recover on its own: take the node out of service instead of
+  retrying against it. Call [`Raft::shutdown()`] and await its completion before
+  the process exits.
 
 - **On-disk compatibility before an upgrade.** Data written by one Openraft
   version is not automatically readable by the next. Before upgrading, read the

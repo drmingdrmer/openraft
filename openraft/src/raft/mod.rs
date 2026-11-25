@@ -1238,8 +1238,13 @@ where
     /// Get the latest snapshot from the state machine.
     ///
     /// The request is served directly by the state-machine worker, not `RaftCore`. It returns an
-    /// error only when that worker fails to serve it, e.g., encountering a storage error or having
-    /// stopped (`Fatal::Stopped`), which can occur while `RaftCore` is still running.
+    /// error when that worker does not serve it:
+    ///
+    /// - The error that stopped `RaftCore`, when `RaftCore` has stopped or is seen to stop, such as
+    ///   the storage error of a failed snapshot read.
+    /// - Otherwise, while `RaftCore` runs, `Fatal::Stopped` if the worker stopped before the
+    ///   request reached it, such as after a panic, and `Fatal::NoResponse` if the worker dropped
+    ///   the request without a reply, such as by a panic while serving it.
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
@@ -1577,6 +1582,10 @@ where
     /// These are application specific requirements, and must be implemented by the application
     /// which is being built on top of Raft.
     ///
+    /// If the result of the write does not arrive, this returns the error that stopped RaftCore,
+    /// or [`Fatal::NoResponse`] if RaftCore is not seen to stop, such as after a panic in the
+    /// state machine. Either way, whether the write was committed or applied is unknown.
+    ///
     /// # Examples
     ///
     /// ```ignore
@@ -1672,11 +1681,13 @@ where
     /// top of a given log entry. To attach your own responders instead of reading a stream, use
     /// [`Self::write_many()`].
     ///
-    /// `Err(Fatal)` from this method means the batch was not submitted. If RaftCore stops before
-    /// the result of an entry arrives, the stream yields the error that stopped RaftCore in place
-    /// of that result, as [`client_write()`](Self::client_write) returns it, and ends. The stream
-    /// does not keep the node running: once every `Raft` handle is dropped, RaftCore stops, and
-    /// the stream yields `Err(Fatal::Stopped)` in place of a result that has not arrived.
+    /// `Err(Fatal)` from this method means the batch was not submitted. If the result of an entry
+    /// does not arrive, the stream yields the error that [`client_write()`](Self::client_write)
+    /// returns in that case in place of that result, and ends: the error that stopped RaftCore, or
+    /// `Fatal::NoResponse` if RaftCore is not seen to stop, such as after a panic in the state
+    /// machine. The stream does not keep the node running: once every `Raft` handle is dropped,
+    /// RaftCore stops, and the stream yields `Err(Fatal::Stopped)` in place of a result that has
+    /// not arrived.
     ///
     /// # Admission
     ///
@@ -2791,6 +2802,11 @@ where
     /// - Raft core task is stopped normally.
     /// - Raft core task is panicked due to programming error.
     /// - Raft core task is encountered a storage error.
+    /// - The state machine worker has stopped, such as after a panic in an earlier call:
+    ///   `Fatal::Stopped`, also while the Raft core task runs.
+    /// - The function panics, or the state machine worker stops before it runs the function, and
+    ///   the Raft core task is not seen to stop: `Fatal::NoResponse`. A function that panicked may
+    ///   have changed the state machine.
     ///
     /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
     /// provided):
@@ -2842,7 +2858,7 @@ where
         // Use the bounded receive: the state-machine worker owns the responder and can die on its
         // own (e.g. a panic in `func`) while RaftCore keeps running. An unbounded join on the core
         // would then hang forever. `recv_msg` waits only up to `RECV_CORE_STOP_TIMEOUT` before
-        // resolving to `Fatal::Stopped`.
+        // resolving to `Fatal::NoResponse`.
         self.inner.recv_msg(rx).await
     }
 
@@ -2859,6 +2875,8 @@ where
     /// - Raft core task is stopped normally.
     /// - Raft core task is panicked due to programming error.
     /// - Raft core task is encountered a storage error.
+    /// - The state machine worker has stopped, such as after a panic in an earlier request:
+    ///   `Fatal::Stopped`, also while the Raft core task runs.
     #[since(version = "0.10.0")]
     pub async fn external_state_machine_request<F>(&self, req: F) -> Result<(), Fatal<C>>
     where

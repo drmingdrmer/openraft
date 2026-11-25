@@ -140,10 +140,11 @@ where C: RaftTypeConfig
     /// Return the error for a response channel that was closed without a reply.
     ///
     /// Usually this means RaftCore has stopped, and the error is the fatal error that stopped it.
-    /// But a malfunctioning state machine can drop the responder without replying while RaftCore
-    /// is still running; joining the core then would block forever. So the wait is bounded: if the
-    /// core has not stopped within [`RECV_CORE_STOP_TIMEOUT`], the dropped responder is itself the
-    /// error, and this returns `Fatal::Stopped` instead of waiting any longer.
+    /// But a task that serves the request, such as the state machine worker after a panic, can
+    /// drop the responder without replying while RaftCore runs; joining the core then would block
+    /// forever. So the wait is bounded: if RaftCore is not seen to stop within
+    /// [`RECV_CORE_STOP_TIMEOUT`], this returns `Fatal::NoResponse`, which says only that no
+    /// response arrived.
     ///
     /// The returned future borrows nothing from `self`, so a caller that must not keep the node
     /// running can drop its handle before awaiting it.
@@ -158,10 +159,11 @@ where C: RaftTypeConfig
                 }
                 None => {
                     tracing::error!(
-                        "{}: response dropped without a reply while RaftCore is running",
-                        func_name!()
+                        "{}: response dropped without a reply, and RaftCore was not seen to stop within {:?}",
+                        func_name!(),
+                        RECV_CORE_STOP_TIMEOUT
                     );
-                    Fatal::Stopped
+                    Fatal::NoResponse
                 }
             }
         }
@@ -210,8 +212,8 @@ where C: RaftTypeConfig
     /// and drops the metrics sender when its task ends -- including on panic. Either is a reliable
     /// signal that the core has stopped.
     ///
-    /// Returns `true` if a stop was observed, `false` if the core is still running after `timeout`
-    /// (e.g. the response channel was closed by a dropped responder rather than a core shutdown).
+    /// Returns `true` if a stop was observed, `false` if none was observed within `timeout`, such
+    /// as when a dropped responder, not a core shutdown, closed the response channel.
     /// The returned future borrows nothing from `self`.
     fn wait_core_stopped(&self, timeout: Duration) -> impl Future<Output = bool> + OptionalSend + use<C> {
         let mut rx = self.rx_metrics.clone();
@@ -267,9 +269,19 @@ where C: RaftTypeConfig
     /// The worker, not RaftCore, owns the receiver of its command channel, and it can stop on its
     /// own, such as after a panic in a state machine method, while RaftCore runs. So this does not
     /// block on RaftCore as [`Self::get_core_stop_error`] would: if RaftCore is not seen to stop
-    /// within [`RECV_CORE_STOP_TIMEOUT`], this returns `Fatal::Stopped`.
+    /// within [`RECV_CORE_STOP_TIMEOUT`], this returns `Fatal::Stopped`, the error that RaftCore
+    /// stops with when it finds the worker stopped. It is not `Fatal::NoResponse`: the command was
+    /// never submitted, and a fire-and-forget command expects no response.
     pub(crate) async fn sm_worker_unavailable_error(&self) -> Fatal<C> {
-        self.bounded_core_stop_error().await.unwrap_or(Fatal::Stopped)
+        let core_stop_error = self.bounded_core_stop_error().await;
+        core_stop_error.unwrap_or_else(|| {
+            tracing::error!(
+                "{}: the state machine worker did not accept a command, and RaftCore was not seen to stop within {:?}",
+                func_name!(),
+                RECV_CORE_STOP_TIMEOUT
+            );
+            Fatal::Stopped
+        })
     }
 
     /// Wait for `RaftCore` and return its result and whether its runtime join failed.
