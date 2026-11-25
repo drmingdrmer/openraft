@@ -91,6 +91,10 @@ where
     /// Returns the current progress state once the condition is satisfied. If the progress
     /// is already >= `target`, returns immediately.
     ///
+    /// For log progress, the returned state can be a [`FlushPoint`] under a greater vote than the
+    /// target's, with any log id or none. It does not show that the target's log id was flushed,
+    /// so check the vote of the returned state; see [`Raft::watch_log_progress()`].
+    ///
     /// The wait does not mark the returned state as seen: if this handle had not seen that state
     /// when the wait began, a following [`next()`](Self::next) or [`changed()`](Self::changed)
     /// returns at once for the same state.
@@ -101,11 +105,40 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let target = Some(FlushPoint::new(Vote::new(2, node_id), Some(log_id(2, node_id, 100))));
+    /// Wait until storage flushes the entry `log_id`, which node `node_id` proposed as the leader
+    /// of `term`:
+    ///
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// # use openraft::type_config::alias::LogIdOf;
+    /// use openraft::Vote;
+    /// use openraft::raft::FlushPoint;
+    ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     term: C::Term,
+    /// #     node_id: C::NodeId,
+    /// #     log_id: LogIdOf<C>,
+    /// # ) -> Result<bool, Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let mut log_progress = raft.watch_log_progress();
+    ///
+    /// let vote = Vote::new_committed(term, node_id);
+    /// let target = Some(FlushPoint::new(vote.clone(), Some(log_id)));
     /// let state = log_progress.wait_until_ge(&target).await?;
-    /// // state is guaranteed to be >= target
+    ///
+    /// // `state >= target` also holds under a greater vote, with any log id or none.
+    /// let flushed = state.is_some_and(|point| point.vote == vote);
+    /// # Ok(flushed)
+    /// # }
     /// ```
+    ///
+    /// [`Raft::watch_log_progress()`]: crate::Raft::watch_log_progress
     pub async fn wait_until_ge(&mut self, target: &T) -> Result<T, RecvError> {
         self.inner.wait_until_ge(target).await
     }
