@@ -90,8 +90,22 @@ where
 
     /// Apply multiple changes to membership config.
     ///
-    /// The changes are applied in the order they are given.
-    /// And it still finishes in a two-step joint config change.
+    /// The changes are applied in the order they are given, each to the result of the one before,
+    /// and together they produce one target membership.
+    ///
+    /// [`Raft::change_membership()`] appends this target as it appends the target of any other
+    /// edit. It appends the target directly when it can prove that every quorum of the current
+    /// membership intersects every quorum of the target, such as when the batch changes only
+    /// nodes. Otherwise it first appends the joint membership of the two, and then the target once
+    /// the joint commits. The whole batch thus writes one or two log entries, whatever the number
+    /// of its changes.
+    ///
+    /// For example, from `{1,2,3}`, a batch that removes voter 2 and adds voter 5 writes two
+    /// entries, the joint `[{1,2,3}, {1,3,5}]` and then `{1,3,5}`, because quorum `{1,2}` of
+    /// `{1,2,3}` misses quorum `{3,5}` of `{1,3,5}`. From that committed joint, the same batch
+    /// writes one entry, `{1,3,5}`.
+    ///
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
     #[since(version = "0.10.0")]
     Batch(Vec<ChangeMembers<NID, N>>),
 }
