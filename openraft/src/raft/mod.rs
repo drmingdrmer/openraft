@@ -2030,56 +2030,74 @@ where
         self.inner.progress_watcher.apply_progress()
     }
 
-    /// Watch for any leader changes in the cluster and invoke callback on each change.
+    /// Call `callback` each time the vote of this node names a new leader ID.
     ///
     /// Returns a [`WatchChangeHandle`] that must be held to keep watching.
     /// If the handle is dropped or [`WatchChangeHandle::close()`] is called,
     /// the background task will be terminated and the callback will no longer be invoked.
     ///
+    /// The watch reads the votes of this node that storage has flushed, which
+    /// [`watch_vote_progress()`] reports. A vote names a leader ID, of this node or of another
+    /// one, and tells whether a quorum granted that leader ID. A committed vote names an elected
+    /// leader. An uncommitted vote names a candidate, such as this node while it campaigns; a node
+    /// that has never voted holds an uncommitted vote for itself in the default term. A leader ID
+    /// includes the term, so a node elected again in a new term has a new leader ID.
+    ///
     /// The callback receives:
-    /// - `old`: The previous leader state `(leader_id, committed)`, or `None` on the first callback
-    /// - `new`: The current leader state `(leader_id, committed)`
+    /// - `old`: `(leader_id, committed)` of the vote that the watch read last, or `None` on the
+    ///   first callback.
+    /// - `new`: `(leader_id, committed)` of the vote that names the new leader ID.
     ///
-    /// This fires on ANY leader change in the cluster, not just when this node's leadership
-    /// changes. For a simpler API that only fires when THIS node becomes or loses leadership,
-    /// see [`on_leader_change()`].
+    /// # Observed changes
     ///
-    /// # Note on Start/Stop Service Pattern
+    /// The watch calls back only for a new leader ID, not when the vote of the same leader ID
+    /// becomes committed. When `new` shows a candidate with `committed == false`, no callback
+    /// follows when that candidate wins. The watch still reads the committed vote, so the next
+    /// callback can get that leader ID in `old` with `committed == true`, although its own callback
+    /// got `false`. To observe the commitment, use [`watch_vote_progress()`].
     ///
-    /// If you use this API to start/stop services based on leadership, be aware that
-    /// consecutive callbacks may show the same node as leader with different Terms
-    /// (e.g., Term 1 → Term 2). The simple `if is_leader { start } else { stop }` pattern
-    /// could call `start` twice without an intervening `stop`.
+    /// The watch reads only the latest vote, so the votes flushed between two reads coalesce: a
+    /// leader ID that is replaced before the watch reads it gets no callback, and does not show as
+    /// `old`. The future that the callback returns is awaited before the watch reads the vote
+    /// again.
     ///
-    /// For the start/stop service pattern, prefer [`on_leader_change()`] which guarantees
-    /// alternating `start`/`stop` callbacks.
+    /// # Leader-only services
+    ///
+    /// The callback does not show whether this node leads. When this node campaigns, a callback
+    /// can report it as a candidate, and none follows when it wins. After this node restarts, or
+    /// steps down as a removed leader, its vote can still name it as committed. To start and stop
+    /// services while this node leads, use [`on_leader_change()`], which follows the role of this
+    /// node.
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let my_node_id = 1;
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::vote::RaftLeaderId;
     ///
-    /// let mut handle = raft.on_cluster_leader_change(move |_old, (leader_id, committed)| {
-    ///     let is_leader = leader_id.node_id == my_node_id && committed;
-    ///
-    ///     async move {
-    ///         if is_leader {
-    ///             // This node just became the committed leader
-    ///             // Start leader-only services (e.g., cron jobs, cache warming)
-    ///             start_leader_services().await;
-    ///         } else {
-    ///             // This node is no longer the leader
-    ///             // Stop leader-only services to avoid duplicate work
-    ///             stop_leader_services().await;
-    ///         }
-    ///     }
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>)
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let mut handle = raft.on_cluster_leader_change(|_old, (leader_id, committed)| {
+    ///     // `committed` is how the vote stood when this leader ID showed first: a candidate is
+    ///     // reported once, with `false`, and not again when it wins.
+    ///     let term = leader_id.term();
+    ///     let node_id = leader_id.node_id();
+    ///     println!("leader ID of term {term}: node {node_id}, committed: {committed}");
+    ///     async {}
     /// });
     ///
     /// // Later, stop watching
     /// handle.close().await;
+    /// # }
     /// ```
     ///
     /// [`on_leader_change()`]: Self::on_leader_change
+    /// [`watch_vote_progress()`]: Self::watch_vote_progress
     #[since(version = "0.10.0")]
     #[must_use = "handle must be held to keep the watch task running"]
     pub fn on_cluster_leader_change<F, Fut>(&self, mut callback: F) -> WatchChangeHandle<C>
