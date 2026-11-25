@@ -1682,6 +1682,14 @@ where
     /// expected log entries are flushed.
     /// Otherwise, it just resets the Leader lease to allow the `to` node to become the Leader.
     ///
+    /// It does not wait for RaftCore to act on the request: a response of `Ok(())` means only that
+    /// the request is queued, and RaftCore ignores it unless this node's vote equals the request's
+    /// vote when RaftCore handles it. Before queueing, the `to` node waits up to
+    /// [`Config::election_timeout_min`] for the expected log entries to be flushed under the
+    /// request's vote, and otherwise returns a [`TransferLeaderError`] in the response. See
+    /// [`TransferLeaderResponse`] for what each response reports, and how to learn whether
+    /// leadership moved.
+    ///
     /// The application calls
     /// [`Raft::trigger().transfer_leader()`](crate::raft::trigger::Trigger::transfer_leader) to
     /// submit Transfer Leader command. Then, the current Leader will broadcast it to every node in
