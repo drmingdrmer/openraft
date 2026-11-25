@@ -30,8 +30,8 @@ where C: RaftTypeConfig
     ///
     /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
     /// to a replication request with log payload. If `None`, the response is from an RPC without
-    /// payload (e.g., heartbeat), and inflight state is not modified. A payload response with a
-    /// stale inflight ID leaves the entire progress entry unchanged.
+    /// payload (e.g., heartbeat), and inflight state is not modified, except by the reset below.
+    /// A payload response with a stale inflight ID leaves the entire progress entry unchanged.
     ///
     /// Normally, the `conflict` index should be greater than or equal to the `matching` index
     /// when follower data is intact. However, for testing purposes, a follower may clean its
@@ -44,6 +44,12 @@ where C: RaftTypeConfig
     /// must apply it via `VecProgress::reset_entry_with()`, which moves the entry down to keep
     /// the progress ordering while keeping the already quorum-accepted value: a value accepted
     /// by a quorum must never be withdrawn.
+    ///
+    /// The reset also drops the operation in flight: a probe, a log stream, or a snapshot
+    /// transfer. An answer that the follower sent before it lost its log carries the operation's
+    /// ID, and acknowledging it would raise `matching` to logs the follower no longer holds. A
+    /// pending [`Inflight::Clear`] stays: no follower answers it, and it holds back the purge of
+    /// the logs that a dropped plan's stream may still read.
     ///
     /// Returns `false` only for a stale payload response, which changes nothing.
     ///
@@ -97,9 +103,14 @@ where C: RaftTypeConfig
                 self.entry.matching = None;
                 self.entry.data.allow_log_reversion = false;
 
-                // Reset pipeline mode when logs are reverted
-                if self.entry.data.inflight.is_logs_since() {
-                    self.entry.data.inflight = Inflight::None;
+                // Drop the operation in flight, so that no answer to it raises `matching` again.
+                // `ReplicationHandler::update_conflicting()` turns a dropped log plan into an
+                // `Inflight::Clear`, which holds back the purge until its stream stops reading.
+                match self.entry.data.inflight {
+                    Inflight::Probe { .. } | Inflight::LogsSince { .. } | Inflight::Snapshot { .. } => {
+                        self.entry.data.inflight = Inflight::None;
+                    }
+                    Inflight::None | Inflight::Clear { .. } => {}
                 }
             }
         } else {
@@ -132,9 +143,9 @@ where C: RaftTypeConfig
             let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
             if !applied {
                 // Stale payload ack: a newer request superseded this one, or a concurrent log
-                // reversion cleared the inflight to `None` (see `update_conflicting`). Do not
-                // advance `matching`: the follower no longer holds the acked logs, and counting
-                // them as matched could form a false quorum over data the follower has reverted.
+                // reversion dropped it (see `update_conflicting`). Do not advance `matching`: the
+                // follower no longer holds the acked logs, and counting them as matched could form
+                // a false quorum over data the follower has reverted.
                 return;
             }
         }

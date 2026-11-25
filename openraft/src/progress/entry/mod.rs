@@ -374,14 +374,18 @@ where C: RaftTypeConfig
                 // `Config::allow_log_reversion` or `Raft::trigger().allow_next_revert()`. Only
                 // such a follower answers a heartbeat with a conflict. Without log reversion
                 // allowed, `update_conflicting()` fails a `debug_assert!` on a conflict at or
-                // below `matching`. For example:
+                // below `matching`. The conflict that resets `matching` drops the probe in flight,
+                // but the conflict of a request sent before the reset may arrive after the leader
+                // has sent a new probe, and it no longer reverts `matching`. For example:
                 //
-                // 1. The leader has `matching = 8` and `searching_end = 20`, and sends the probe `(8, 16]`.
-                // 2. A heartbeat, sent with `prev_log_id = matching = 8`, gets a conflict at 8. The conflict has no
-                //    inflight ID, so `Updater::update_conflicting()` keeps the probe, lowers `searching_end` to 8,
-                //    and, as log reversion is allowed, resets `matching` to `None`.
-                // 3. Now the entry holds `matching = None`, `searching_end = 8`, and the probe `(8, 16]`, whose
-                //    `prev_log_id.next_index()` is 9. The probe's own response, a conflict at 8, ends it later.
+                // 1. With `matching = 5`, a heartbeat is sent and delayed. `matching` then advances to 8, the logs
+                //    up to 5 are purged, and the follower loses its log.
+                // 2. A commit update sent with `prev_log_id = 8` gets a conflict at 8. It resets `matching` to
+                //    `None`, lowers `searching_end` to 8, and drops the plan in flight. The leader later sends the
+                //    probe `(5, 13]`, above the purged logs.
+                // 3. The heartbeat gets a conflict at 5, which is not below `matching`. It lowers `searching_end`
+                //    to 5 and keeps the probe, whose `prev_log_id` is 5. Its own response, a conflict at 5, ends it
+                //    later.
                 //
                 // A conflict never raises `matching`, so the check below still holds after it.
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());

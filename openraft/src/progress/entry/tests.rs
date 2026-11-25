@@ -177,6 +177,91 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A permitted reversion drops the operation in flight, so that an answer that the follower sent
+/// before it lost its log acknowledges nothing. A clear stays: no follower answers it.
+#[test]
+fn test_update_conflicting_reversion_drops_the_operation_in_flight() -> anyhow::Result<()> {
+    let mut engine_config = EngineConfig::new_default(1);
+    engine_config.allow_log_reversion = true;
+
+    let clear = inflight_probe(5, 9).into_clear(InflightId::new(1)).unwrap();
+    let cases = [
+        (inflight_probe(5, 9), Inflight::None),
+        (
+            Inflight::logs_since(Some(log_id(5)), InflightId::new(0)),
+            Inflight::None,
+        ),
+        (Inflight::snapshot(InflightId::new(0)), Inflight::None),
+        (clear, clear),
+    ];
+
+    for (inflight, kept) in cases {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 10);
+        pe.matching = Some(log_id(5));
+        pe.data.inflight = inflight;
+
+        tracing::info!(%inflight, conflict = 5, "a heartbeat conflict at matching resets the entry");
+        {
+            let applied = pe.new_updater(&engine_config).update_conflicting(5, None);
+
+            assert!(applied);
+            let expected = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5).with_inflight(kept);
+            assert_eq!(expected, pe);
+            assert!(pe.validate().is_ok());
+        }
+
+        tracing::info!(inflight_id = 0, "an answer of the dropped operation changes nothing");
+        {
+            let expected = pe.clone();
+
+            pe.new_updater(&engine_config).update_matching(Some(log_id(9)), Some(InflightId::new(0)));
+
+            assert_eq!(expected, pe);
+        }
+    }
+
+    Ok(())
+}
+
+/// The one-shot reversion permission of a target is used only by a conflict that reverts
+/// `matching`.
+#[test]
+fn test_update_conflicting_uses_the_one_shot_permission_only_to_revert() -> anyhow::Result<()> {
+    let engine_config = EngineConfig::new_default(1);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 10);
+    pe.matching = Some(log_id(5));
+    pe.data.inflight = inflight_probe(5, 9);
+    pe.data.allow_log_reversion = true;
+
+    tracing::info!(
+        conflict = 7,
+        "a conflict above matching keeps the permission and the probe"
+    );
+    {
+        let mut expected = pe.clone();
+        expected.data.searching_end = 7;
+
+        let applied = pe.new_updater(&engine_config).update_conflicting(7, None);
+
+        assert!(applied);
+        assert_eq!(expected, pe);
+    }
+
+    tracing::info!(
+        conflict = 5,
+        "a conflict at matching uses the permission and drops the probe"
+    );
+    {
+        let applied = pe.new_updater(&engine_config).update_conflicting(5, None);
+
+        assert!(applied);
+        let expected = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5);
+        assert_eq!(expected, pe);
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_validate_rejects_malformed_entries() -> anyhow::Result<()> {
     tracing::info!(

@@ -204,6 +204,8 @@ where C: RaftTypeConfig
         matches!(self, Inflight::Probe { .. })
     }
 
+    // test it if used
+    #[allow(dead_code)]
     pub(crate) fn is_logs_since(&self) -> bool {
         matches!(self, Inflight::LogsSince { .. })
     }
@@ -231,12 +233,12 @@ where C: RaftTypeConfig
     ///
     /// Returns `true` if the ack matched the current inflight request and was applied; `false` if
     /// it was stale and ignored. An ack is stale when its `from_inflight_id` does not match the
-    /// current request, or when there is no inflight request at all ([`Inflight::None`]): in
-    /// pipeline ([`Inflight::LogsSince`]) mode several acks share one [`InflightId`], and a
-    /// concurrent log reversion can clear the inflight to `None` (see
-    /// [`Updater::update_conflicting`]) while acks queued before the reset are still arriving. The
-    /// caller must not advance `matching` when this returns `false`: the follower state such an ack
-    /// reports no longer holds.
+    /// current request, or when there is no inflight request at all ([`Inflight::None`]): a
+    /// concurrent log reversion drops the request in flight (see [`Updater::update_conflicting`])
+    /// while acks sent before the reset are still arriving, several of them in pipeline
+    /// ([`Inflight::LogsSince`]) mode, where acks share one [`InflightId`]. The caller must not
+    /// advance `matching` when this returns `false`: the follower state such an ack reports no
+    /// longer holds.
     ///
     /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
     pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) -> bool {
