@@ -240,13 +240,27 @@ where C: RaftTypeConfig
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
     /// use openraft::raft::WriteOption;
     ///
-    /// let term = raft.as_leader()?.term();
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     my_data: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// // Admit the write only while the leader that `as_leader()` returned still leads.
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
     /// raft.write(my_data)
-    ///     .with_option(WriteOption::expect_leader(term))
+    ///     .with_option(WriteOption::expect_leader(leader_id))
     ///     .await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.1")]
     pub fn with_option(mut self, write_option: WriteOption<C>) -> Self {

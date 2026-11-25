@@ -37,9 +37,26 @@ where C: RaftTypeConfig
     /// The same as `WriteOption::default().with_leader(expected_leader)`; see
     /// [`with_leader()`](Self::with_leader).
     ///
-    /// ```ignore
-    /// let term = raft.as_leader()?.term();
-    /// raft.client_write_many([data1, data2], WriteOption::expect_leader(term)).await?;
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::raft::WriteOption;
+    ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// // Admit the writes only while the leader that `as_leader()` returned still leads.
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    /// raft.client_write_many([data1, data2], WriteOption::expect_leader(leader_id)).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.1")]
     pub fn expect_leader(expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
