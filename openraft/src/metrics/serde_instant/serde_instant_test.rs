@@ -1,3 +1,4 @@
+use std::io;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Sub;
@@ -7,6 +8,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
+use serde::Serialize;
 use serde::de::value::U64Deserializer;
 
 use super::SerdeInstant;
@@ -84,36 +86,132 @@ impl<const NOW_SECS: u64> Instant for TestInstant<NOW_SECS> {
     }
 }
 
+/// A JSON formatter that writes `u64:` before an integer that the serializer receives as a `u64`.
+/// Plain JSON writes such an integer as it writes a nonnegative `i64`.
+struct MarkU64;
+
+impl serde_json::ser::Formatter for MarkU64 {
+    fn write_u64<W>(&mut self, writer: &mut W, value: u64) -> io::Result<()>
+    where W: ?Sized + io::Write {
+        write!(writer, "u64:{value}")
+    }
+}
+
+/// A round trip through the runtime's clock moves an instant an hour before now, now, or an hour
+/// after now by at most the time that the round trip takes.
+///
+/// Encoding and decoding each read the system clock and the runtime's clock. The round trip moves
+/// the instant later by the time the runtime's clock advanced between its two reads, at most
+/// `elapsed`, and earlier by the time the system clock advanced between its two reads, at most
+/// `sys_elapsed`.
 #[test]
 fn test_serde_instant() {
+    let hour = Duration::from_secs(3600);
     let now = UTConfig::<()>::now();
-    let serde_instant = SerdeInstant::new(now);
-    let json = serde_json::to_string(&serde_instant).unwrap();
-    println!("json: {}", json);
-    println!("Now: {:?}", now);
 
-    let deserialized: SerdeInstantOf<UTConfig> = serde_json::from_str(&json).unwrap();
-    println!("Des: {:?}", *deserialized);
+    for instant in [now - hour, now, now + hour] {
+        let start = UTConfig::<()>::now();
+        let sys_start = SystemTime::now();
 
-    // Convert Instant to SerdeInstant is inaccurate.
-    if now > *deserialized {
-        assert!((now - *deserialized) < Duration::from_millis(5));
-    } else {
-        assert!((*deserialized - now) < Duration::from_millis(5));
+        let json = serde_json::to_string(&SerdeInstant::new(instant)).unwrap();
+        let decoded: SerdeInstantOf<UTConfig> = serde_json::from_str(&json).unwrap();
+
+        let sys_elapsed = sys_start.elapsed().unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(
+            (instant - sys_elapsed..=instant + elapsed).contains(&*decoded),
+            "{instant:?} decoded as {decoded:?}, more than {sys_elapsed:?} earlier or {elapsed:?} later"
+        );
+    }
+}
+
+/// Encoding passes the time to the serializer as a `u64`. This checks only the type;
+/// `test_serialize_past_and_future` checks the value.
+#[test]
+fn test_serialize_as_u64() {
+    let mut out = Vec::new();
+    let mut serializer = serde_json::Serializer::with_formatter(&mut out, MarkU64);
+    SerdeInstant::new(UTConfig::<()>::now()).serialize(&mut serializer).unwrap();
+
+    let out = String::from_utf8(out).unwrap();
+    let nanos = out.strip_prefix("u64:").map(str::parse::<u64>);
+    assert!(matches!(nanos, Some(Ok(_))), "expected u64:<nanos>, got {out}");
+}
+
+/// Encoding an instant an hour after or before now writes the nanoseconds since the Unix epoch of
+/// the system time an hour after or before now.
+///
+/// `StartedDayAgo`'s clock always reads the same `now`, so only the system clock moves the result.
+/// Encoding reads it between `before` and `after`.
+#[test]
+fn test_serialize_past_and_future() {
+    let hour = Duration::from_secs(3600);
+
+    tracing::info!("an instant an hour after now encodes as the system time an hour after now");
+    {
+        let before = SystemTime::now();
+        let json = serde_json::to_string(&SerdeInstant::new(StartedDayAgo::now() + hour)).unwrap();
+        let after = SystemTime::now();
+
+        let encoded = UNIX_EPOCH + Duration::from_nanos(json.parse().unwrap());
+        assert!(
+            (before + hour..=after + hour).contains(&encoded),
+            "{encoded:?} is not an hour after {before:?}..={after:?}"
+        );
     }
 
-    // Test serialization format
+    tracing::info!("an instant an hour before now encodes as the system time an hour before now");
+    {
+        let before = SystemTime::now();
+        let json = serde_json::to_string(&SerdeInstant::new(StartedDayAgo::now() - hour)).unwrap();
+        let after = SystemTime::now();
 
-    let nano = "1721829051211301916";
-    let deserialized: SerdeInstantOf<UTConfig> = serde_json::from_str(nano).unwrap();
-    let serialized = serde_json::to_string(&deserialized).unwrap();
+        let encoded = UNIX_EPOCH + Duration::from_nanos(json.parse().unwrap());
+        assert!(
+            (before - hour..=after - hour).contains(&encoded),
+            "{encoded:?} is not an hour before {before:?}..={after:?}"
+        );
+    }
+}
 
-    assert_eq!(
-        nano[0..nano.len() - 6],
-        serialized[0..serialized.len() - 6],
-        "compare up to milli seconds: {}",
-        &nano[0..nano.len() - 6]
-    );
+/// Decoding the nanoseconds since the Unix epoch of the system time an hour after or before now
+/// gives the instant an hour after or before now.
+///
+/// `StartedDayAgo`'s clock always reads the same `now`, so only the system clock moves the result.
+/// Decoding reads it at most `elapsed` after `before`, so the decoded instant lies at most
+/// `elapsed` before the expected one.
+#[test]
+fn test_deserialize_past_and_future() {
+    let hour = Duration::from_secs(3600);
+
+    tracing::info!("the system time an hour after now decodes as the instant an hour after now");
+    {
+        let before = SystemTime::now();
+        let nanos = (before + hour).duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let decoded: SerdeInstant<StartedDayAgo> = serde_json::from_str(&nanos.to_string()).unwrap();
+        let elapsed = before.elapsed().unwrap();
+
+        let expected = StartedDayAgo::now() + hour;
+        assert!(
+            (expected - elapsed..=expected).contains(&*decoded),
+            "{decoded:?} is not at most {elapsed:?} before {expected:?}"
+        );
+    }
+
+    tracing::info!("the system time an hour before now decodes as the instant an hour before now");
+    {
+        let before = SystemTime::now();
+        let nanos = (before - hour).duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let decoded: SerdeInstant<StartedDayAgo> = serde_json::from_str(&nanos.to_string()).unwrap();
+        let elapsed = before.elapsed().unwrap();
+
+        let expected = StartedDayAgo::now() - hour;
+        assert!(
+            (expected - elapsed..=expected).contains(&*decoded),
+            "{decoded:?} is not at most {elapsed:?} before {expected:?}"
+        );
+    }
 }
 
 /// Decoding returns an error for a time that the runtime's clock cannot represent, before or after
