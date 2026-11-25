@@ -9,16 +9,24 @@ use crate::display_ext::DisplayInstantExt;
 
 /// A wrapper for [`Instant`] that supports serialization and deserialization.
 ///
-/// This struct serializes an `Instant` into an `i64` which is the number of non-leap-nanoseconds
-/// since January 1, 1970 UTC.
+/// With the `serde` feature of `openraft`, `SerdeInstant` implements `Serialize` and
+/// `Deserialize`. It encodes an instant as its wall-clock time: a `u64` in the serde data model,
+/// the number of nanoseconds since the Unix epoch, 1970-01-01 00:00:00 UTC. Deserialization
+/// accepts only an unsigned integer, so a format that delivers the value as a signed integer
+/// fails with a type error.
 ///
-/// Note: Serialization and deserialization are not perfectly accurate and can be indeterministic,
-/// resulting in minor variations each time. These deviations (could be smaller or greater) are
-/// typically less than a microsecond (10^-6 seconds).
+/// The value ranges from 0, the Unix epoch, to `i64::MAX`, 2262-04-11 23:47:16.854775807 UTC,
+/// so that it also fits an `i64`. Serialization and deserialization return an error for a time
+/// outside this range. Deserialization also returns an error for a time that the runtime's clock
+/// cannot represent, such as a time before a simulated clock started.
 ///
-/// Serialization and deserialization return an error for a time that the encoding cannot
-/// represent. Deserialization also returns an error for a time that the runtime's clock cannot
-/// represent, such as a time before a simulated clock started.
+/// The conversion is approximate. Each serialization or deserialization reads the system clock
+/// and the runtime's clock one after the other, and maps the instant through the offset between
+/// them. An immediate round trip on one machine typically shifts an instant by less than a
+/// microsecond. The shift is larger when the offset changes between the two conversions, such as
+/// when the system clock is adjusted, or when the runtime's clock does not follow real time. A
+/// value decoded on another machine also differs by the offset between the two machines' system
+/// clocks.
 #[since(
     version = "0.10.2",
     change = "deserialization rejects a time past `i64::MAX` nanoseconds, as serialization does"
