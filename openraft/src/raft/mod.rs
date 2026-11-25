@@ -1045,22 +1045,32 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use std::sync::Arc;
-    /// use openraft::metrics::MetricsRecorder;
+    /// `recorder` below is an `Arc<dyn MetricsRecorder>`. The [`metrics::recorder`] module shows
+    /// how to implement [`MetricsRecorder`].
     ///
-    /// struct MyRecorder;
-    /// impl MetricsRecorder for MyRecorder {
-    ///     fn record_apply_batch(&self, entry_count: u64) { /* ... */ }
-    ///     fn record_append_batch(&self, entry_count: u64) { /* ... */ }
-    /// }
-    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::metrics::MetricsRecorder;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>, recorder: Arc<dyn MetricsRecorder>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// // Enable metrics recording
-    /// raft.set_metrics_recorder(Some(Arc::new(MyRecorder))).await?;
+    /// raft.set_metrics_recorder(Some(recorder)).await?;
     ///
     /// // Disable metrics recording
     /// raft.set_metrics_recorder(None).await?;
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// [`metrics::recorder`]: crate::metrics::recorder
     ///
     /// # Errors
     ///
@@ -1395,12 +1405,28 @@ where
     /// using [`Linearizer::try_await_ready`].
     ///
     /// # Examples
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ReadPolicy;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # trait Read {
+    /// #     fn read(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(my_raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Read,
+    /// # {
     /// let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
     /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
-    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Follower Read
@@ -1409,16 +1435,46 @@ where
     /// then use [`Linearizer::try_await_ready`] to wait for local state machine to catch
     /// up.
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ReadPolicy;
+    /// # use openraft::raft::linearizable_read::Linearizer;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # trait Read {
+    /// #     fn read(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # trait AppRpc<C>
+    /// # where C: RaftTypeConfig
+    /// # {
+    /// #     async fn get_read_linearizer(
+    /// #         &self,
+    /// #         leader_id: C::NodeId,
+    /// #         read_policy: ReadPolicy,
+    /// #     ) -> Result<Linearizer<C>, Box<dyn std::error::Error>>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM, R>(my_raft: Raft<C, SM>, my_app_rpc: R) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Read,
+    /// #     R: AppRpc<C>,
+    /// # {
+    /// // `current_leader()` returns `None` while no leader is known, such as during an election
+    /// let leader_id = my_raft.current_leader().await.ok_or("no known leader")?;
+    ///
     /// // Application defined RPC to get the `read_log_id` from the remote leader
-    /// let leader_id = my_raft.current_leader().await?.unwrap();
     /// let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
     ///
-    /// // Block waiting local state machine to apply up to to the `read_log_id`
+    /// // Block waiting local state machine to apply up to the `read_log_id`
     /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
-    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
@@ -1632,23 +1688,41 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ClientWriteResult;
+    /// # use openraft::storage::RaftStateMachine;
     /// use openraft::impls::ProgressResponder;
     ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// #     data3: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<Responder<ClientWriteResult<C>> = ProgressResponder<C, ClientWriteResult<C>>>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// // Fire-and-forget
-    /// raft.write(my_data).await?;
+    /// raft.write(data1).await?;
     ///
     /// // With responder
-    /// let (responder, rx) = ProgressResponder::complete_only();
-    /// raft.write(my_data).responder(responder).await?;
-    /// let result = rx.await??;
+    /// let (responder2, rx2) = ProgressResponder::complete_only();
+    /// raft.write(data2).responder(responder2).await?;
+    /// let response2 = rx2.await??;
     ///
     /// // Conditional write (fails if leader changed)
+    /// let (responder3, rx3) = ProgressResponder::complete_only();
     /// let leader_id = raft.as_leader()?.to_committed_leader_id();
-    /// raft.write(my_data)
+    /// raft.write(data3)
     ///     .with_leader(leader_id)
-    ///     .responder(responder)
+    ///     .responder(responder3)
     ///     .await?;
+    /// let response3 = rx3.await??;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// [`.responder()`]: WriteRequest::responder
@@ -1868,9 +1942,21 @@ where
     /// - Raft core task is panicked due to programming error.
     /// - Raft core task is encountered a storage error.
     ///
-    /// Example for getting the current committed log id:
-    /// ```ignore
-    /// let committed = my_raft.with_raft_state(|st| st.committed).await?;
+    /// Example for getting the local committed log id:
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(my_raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let committed = my_raft.with_raft_state(|st| st.local_committed().cloned()).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C>>
     where
@@ -2257,8 +2343,20 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let handle = raft.on_leader_change(
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn start_leader_services() {}
+    /// # async fn stop_leader_services() {}
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>)
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let mut handle = raft.on_leader_change(
     ///     |leader_id| async move {
     ///         println!("Became leader: {:?}", leader_id);
     ///         start_leader_services().await;
@@ -2271,6 +2369,7 @@ where
     ///
     /// // Later, stop watching
     /// handle.close().await;
+    /// # }
     /// ```
     ///
     /// [`on_cluster_leader_change()`]: Self::on_cluster_leader_change
@@ -2394,20 +2493,30 @@ where
     /// If `timeout` is `None`, then it will wait forever(10 years).
     /// If `timeout` is `Some`, then it will wait for the specified duration.
     ///
-    /// ```ignore
+    /// ```no_run
     /// # use std::time::Duration;
-    /// # use openraft::{State, Raft};
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::ServerState;
     ///
+    /// # async fn example<C, SM>(r: &Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// let timeout = Duration::from_millis(200);
     ///
     /// // wait for raft log-3 to be applied:
     /// r.wait(Some(timeout)).applied_index(Some(3), "log-3 applied").await?;
     ///
-    /// // wait for ever for raft node's current leader to become 3:
+    /// // wait for ever for raft node's current leader to become 2:
     /// r.wait(None).current_leader(2, "wait for leader").await?;
     ///
     /// // wait for raft state to become a follower
-    /// r.wait(None).state(State::Follower, "state").await?;
+    /// r.wait(None).state(ServerState::Follower, "state").await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
         self.inner.wait(timeout)
@@ -2556,10 +2665,30 @@ where
     /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
     /// provided):
     ///
-    /// ```rust,ignore
+    /// ```no_run
+    /// # use std::future::Future;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::storage::RaftStateMachine;
+    /// # use openraft::type_config::alias::LogIdOf;
+    /// #
+    /// # trait LastApplied<C>
+    /// # where C: RaftTypeConfig
+    /// # {
+    /// #     fn last_applied(&mut self) -> impl Future<Output = Option<LogIdOf<C>>> + Send;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(my_raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + LastApplied<C>,
+    /// # {
     /// let last_applied_log_id = my_raft.with_state_machine(|sm| {
-    ///     async move { sm.last_applied().await }
+    ///     Box::pin(async move { sm.last_applied().await })
     /// }).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.0")]
     pub async fn with_state_machine<F, V>(&self, func: F) -> Result<V, Fatal<C>>
