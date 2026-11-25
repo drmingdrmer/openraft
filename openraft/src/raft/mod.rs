@@ -2111,7 +2111,7 @@ where
         })
     }
 
-    /// Register callbacks for when this node becomes or stops being the committed leader.
+    /// Register callbacks for when this node starts or stops leading.
     ///
     /// Returns a [`WatchChangeHandle`] that must be held to keep watching.
     /// If the handle is dropped or [`WatchChangeHandle::close()`] is called,
@@ -2120,8 +2120,16 @@ where
     /// Unlike [`on_cluster_leader_change()`] which fires on any leader change in the cluster,
     /// this method only fires when THIS node becomes or stops being the leader.
     ///
-    /// - `start`: Called when this node becomes the leader (committed, quorum-acknowledged)
-    /// - `stop`: Called when this node is no longer the leader (another node becomes leader)
+    /// The callbacks follow the [`RaftMetrics`] of this node. The metrics show this node leading
+    /// when they show it running as [`ServerState::Leader`] with a committed
+    /// [`vote`](RaftMetrics::vote) that names it, as [`as_leader()`](Self::as_leader) requires.
+    /// The vote alone does not show it: the metrics keep the committed vote of this node after it
+    /// restarts, steps down as a removed leader, or shuts down.
+    ///
+    /// - `start`: Called with the leader ID of the vote when the metrics show this node leading, at
+    ///   once if it already leads.
+    /// - `stop`: Called with the same leader ID when the metrics stop showing that leadership: this
+    ///   node becomes a follower, a candidate, or a learner, leads in a new term, or stops.
     ///
     /// # Callback Guarantees
     ///
@@ -2131,6 +2139,22 @@ where
     /// Even if a node transitions directly from leader in Term 1 to leader in Term 2,
     /// `stop` will be called with the old `leader_id` before `start` is called with the
     /// new `leader_id`. This ensures proper resource cleanup between leadership terms.
+    ///
+    /// When the node stops, by [`shutdown()`](Self::shutdown), by dropping every `Raft` handle,
+    /// or on a fatal error, the watch calls `stop` if `start` was called last, then ends. Closing
+    /// or dropping the [`WatchChangeHandle`] ends the watch without calling `stop`: the caller
+    /// stops a service that still runs.
+    ///
+    /// # Limits
+    ///
+    /// The watch reads only the latest metrics, so updates between two reads coalesce: a
+    /// leadership that begins and ends between them gets neither callback.
+    ///
+    /// The callbacks report what the local metrics showed; they do not confirm that this node
+    /// still leads. A callback runs after the update it reports, and a leader cut off from a
+    /// quorum keeps its role, so the services of an old and a new leader can run at the same time.
+    /// Do not use the callbacks to authorize a read, which [`ensure_linearizable()`] does, or to
+    /// keep an old leader from acting.
     ///
     /// # Example
     ///
@@ -2151,6 +2175,12 @@ where
     /// ```
     ///
     /// [`on_cluster_leader_change()`]: Self::on_cluster_leader_change
+    /// [`ensure_linearizable()`]: Self::ensure_linearizable
+    /// [`ServerState::Leader`]: crate::core::ServerState::Leader
+    #[since(
+        version = "0.10.2",
+        change = "follows the role of this node, and calls `stop` when the node stops"
+    )]
     #[since(version = "0.10.0")]
     #[must_use = "handle must be held to keep the watch task running"]
     pub fn on_leader_change<F1, F2, Fut1, Fut2>(&self, start: F1, stop: F2) -> WatchChangeHandle<C>
@@ -2160,46 +2190,67 @@ where
         Fut1: Future<Output = ()> + OptionalSend + 'static,
         Fut2: Future<Output = ()> + OptionalSend + 'static,
     {
-        let mut prev_leader_id = None;
+        let my_node_id = self.inner.id().clone();
+        // Hold the metrics receiver, not a `Raft`: a `Raft` handle would keep the node running
+        // after the application drops its own handles.
+        let mut rx_metrics = self.metrics();
+        let (cancel_tx, mut cancel_rx) = C::oneshot::<()>();
 
-        self.watch_vote_change(move |vote, my_node_id| {
-            let leader_id = vote.leader_id().clone();
+        let handle = C::spawn(async move {
+            // The leadership that `start` has been called for, and `stop` has not.
+            let mut prev_leader_id: Option<C::LeaderId> = None;
 
-            // Fire `start` when THIS node becomes committed leader
-            // and it's a new leadership (different from current)
-            #[allow(clippy::collapsible_else_if)]
-            let (stop_fut, start_fut) = if leader_id.node_id() == my_node_id {
-                if vote.is_committed() && prev_leader_id.as_ref() != Some(&leader_id) {
+            loop {
+                // The committed vote keeps naming this node after it stops leading, so this node
+                // leads only while the same metrics also show it running as leader.
+                let leader_id = {
+                    let metrics = rx_metrics.borrow_and_update();
+                    let vote = &metrics.vote;
+                    let leads = metrics.running_state.is_ok() && metrics.state.is_leader() && vote.is_committed();
+                    let leader_id = vote.leader_id();
+                    (leads && leader_id.node_id() == &my_node_id).then(|| leader_id.clone())
+                };
+
+                if leader_id != prev_leader_id {
                     // Call stop first if transitioning from one leadership to another
                     // (e.g., Term 1 leader -> Term 2 leader)
                     // This guarantees alternating start/stop calls.
                     let stop_fut = prev_leader_id.take().map(&stop);
-                    let start_fut = Some(start(leader_id.clone()));
-                    prev_leader_id = Some(leader_id);
-                    (stop_fut, start_fut)
-                } else {
-                    (None, None)
-                }
-            } else {
-                let stop_fut = prev_leader_id.take().map(&stop);
-                (stop_fut, None)
-            };
+                    let start_fut = leader_id.clone().map(&start);
+                    prev_leader_id = leader_id;
 
-            async move {
-                if let Some(f) = stop_fut {
-                    f.await;
+                    if let Some(f) = stop_fut {
+                        f.await;
+                    }
+                    if let Some(f) = start_fut {
+                        f.await;
+                    }
                 }
-                if let Some(f) = start_fut {
-                    f.await;
+
+                let selected = C::select2(&mut cancel_rx, rx_metrics.changed()).await;
+                match selected {
+                    // The handle is closed or dropped: the caller ends the watch, without `stop`.
+                    Select2::First(_) => return,
+                    Select2::Second(Ok(())) => {}
+                    // The core is gone: it reported `Shutdown`, or it panicked without a report.
+                    Select2::Second(Err(_)) => break,
                 }
             }
-        })
+
+            if let Some(leader_id) = prev_leader_id {
+                stop(leader_id).await;
+            }
+        });
+
+        WatchChangeHandle {
+            cancel_tx: Some(cancel_tx),
+            join_handle: Some(handle),
+        }
     }
 
     /// Spawn a task that watches vote changes and invokes async callback on each change.
     ///
-    /// This is an internal helper used by [`Self::on_leader_change()`] and
-    /// [`Self::on_cluster_leader_change()`].
+    /// This is an internal helper used by [`Self::on_cluster_leader_change()`].
     ///
     /// The callback returns a future that will be awaited before processing
     /// the next vote change.
