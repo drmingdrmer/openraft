@@ -8,20 +8,34 @@ use crate::RaftTypeConfig;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
-/// An RPC sent by candidates to gather votes (§5.2).
+/// A vote request, used by both RequestVote and Pre-Vote.
+///
+/// - RequestVote (§5.2): a candidate asks each voter to accept the vote that it has adopted for its
+///   new term. A voter handles it with [`Raft::vote()`].
+/// - Pre-Vote: without changing its own vote or term, a pre-candidate asks whether each voter would
+///   accept a vote for the next term. A voter handles it with [`Raft::pre_vote()`].
+///
+/// A voter answers either one with a [`VoteResponse`].
+///
+/// [`Raft::vote()`]: crate::Raft::vote
+/// [`Raft::pre_vote()`]: crate::Raft::pre_vote
 #[since]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<C: RaftTypeConfig> {
-    /// The candidate's vote requesting support.
+    /// The vote that the candidate or pre-candidate asks for.
+    ///
+    /// In RequestVote, it is the candidate's vote. In Pre-Vote, it is a vote for the
+    /// pre-candidate's next term, which the pre-candidate has not adopted.
     pub vote: VoteOf<C>,
-    /// The candidate's last log id.
+
+    /// The last log id of the candidate or pre-candidate.
     pub last_log_id: Option<LogIdOf<C>>,
 
     /// The vote of the Leader that authorized this election as a leadership transfer, or `None`
     /// for an ordinary election.
     ///
-    /// A voter whose vote equals it processes the request even if the leader lease has not
+    /// A voter whose vote equals it processes a RequestVote even if the leader lease has not
     /// expired: the disruption the lease protects against is legitimate when the Leader itself
     /// initiates the election ("I have permission to disrupt the leader--it told me to!").
     /// See: Raft dissertation, section 4.2.3.
@@ -29,6 +43,12 @@ pub struct VoteRequest<C: RaftTypeConfig> {
     /// A voter that follows another Leader still applies its lease. Otherwise a delayed transfer
     /// authorized by an older Leader could elect its target while a newer Leader holds a valid
     /// lease, and a lease read on that newer Leader could miss writes.
+    ///
+    /// Pre-Vote ignores this field: [`Raft::pre_vote()`] applies the leader lease to every
+    /// request. The target of a leadership transfer campaigns without a Pre-Vote round, so a
+    /// Pre-Vote request from Openraft holds `None`.
+    ///
+    /// [`Raft::pre_vote()`]: crate::Raft::pre_vote
     #[since(
         version = "0.10.0",
         change = "replaced `leadership_transfer: bool` with the authorizing Leader's vote"
@@ -65,21 +85,42 @@ where C: RaftTypeConfig
     }
 }
 
-/// The response to a `VoteRequest`.
+/// The response to a [`VoteRequest`], used by both RequestVote and Pre-Vote.
+///
+/// A voter returns it from [`Raft::vote()`] or [`Raft::pre_vote()`], built from the voter's state
+/// after it handled the request `req`. The fields below describe such a response.
+///
+/// The default implementations of [`RaftNetworkV2::pre_vote()`] and [`NetVote::pre_vote()`]
+/// build a response without contacting the voter: a grant whose `vote` is `req.vote` and whose
+/// `last_log_id` is `None`. No field of such a response comes from the voter.
+///
+/// [`Raft::vote()`]: crate::Raft::vote
+/// [`Raft::pre_vote()`]: crate::Raft::pre_vote
+/// [`RaftNetworkV2::pre_vote()`]: crate::network::RaftNetworkV2::pre_vote
+/// [`NetVote::pre_vote()`]: crate::network::NetVote::pre_vote
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteResponse<C: RaftTypeConfig> {
-    /// vote after a node handling vote-request.
-    /// Thus, `resp.vote >= req.vote` always holds.
+    /// The voter's vote after it handled the request.
     ///
-    /// `vote` that equals the candidate.vote does not mean the vote is granted.
-    /// The `vote` may be updated when a previous Leader sees a higher vote.
+    /// A RequestVote grant carries `req.vote`. A denial, and every Pre-Vote response, carries the
+    /// voter's current vote, which can be lower than, equal to, higher than, or not comparable
+    /// with `req.vote`: a voter checks its leader lease and its last log id before it compares
+    /// votes, and a Pre-Vote never changes the voter's vote. So a `vote` equal to `req.vote` does
+    /// not mean the vote is granted, and a `vote` lower than `req.vote` is a valid response.
+    ///
+    /// A candidate or pre-candidate that receives a denial with a `vote` higher than its own adopts
+    /// that vote, uncommitted, to catch up with the term of the cluster.
     pub vote: VoteOf<C>,
 
-    /// It is true if a node accepted and saved the VoteRequest.
+    /// Whether the voter grants `req.vote`.
+    ///
+    /// In RequestVote, `true` means that the voter accepted `req.vote` and saved it before it
+    /// replied. In Pre-Vote, `true` means only that the voter would grant a RequestVote for
+    /// `req.vote`: the voter changed and saved nothing.
     pub vote_granted: bool,
 
-    /// The last log id stored on the remote voter.
+    /// The last log id stored on the voter.
     pub last_log_id: Option<LogIdOf<C>>,
 }
 
