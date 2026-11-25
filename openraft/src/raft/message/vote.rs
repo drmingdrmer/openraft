@@ -98,6 +98,7 @@ where C: RaftTypeConfig
 /// [`Raft::pre_vote()`]: crate::Raft::pre_vote
 /// [`RaftNetworkV2::pre_vote()`]: crate::network::RaftNetworkV2::pre_vote
 /// [`NetVote::pre_vote()`]: crate::network::NetVote::pre_vote
+#[since(version = "0.10.2", change = "the display shows `vote_granted`")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteResponse<C: RaftTypeConfig> {
@@ -158,9 +159,10 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{{}, last_log:{:?}}}",
+            "{{{}, last_log:{:?}, vote_granted:{}}}",
             self.vote,
-            self.last_log_id.as_ref().map(|x| x.to_string())
+            self.last_log_id.as_ref().map(|x| x.to_string()),
+            self.vote_granted,
         )
     }
 }
@@ -236,6 +238,39 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_vote_response_display() {
+        use crate::Vote;
+        use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
+        use crate::raft::VoteResponse;
+
+        let vote = Vote::new(2, 1);
+
+        tracing::info!(%vote, "--- a grant and a denial with the same vote and last log id display their decisions");
+        {
+            let last_log_id = Some(log_id(1, 2, 3));
+
+            let granted = VoteResponse::<UTConfig>::new(vote, last_log_id, true);
+            assert_eq!(
+                granted.to_string(),
+                r#"{<T2-N1:->, last_log:Some("T1-N2.3"), vote_granted:true}"#
+            );
+
+            let denied = VoteResponse::<UTConfig>::new(vote, last_log_id, false);
+            assert_eq!(
+                denied.to_string(),
+                r#"{<T2-N1:->, last_log:Some("T1-N2.3"), vote_granted:false}"#
+            );
+        }
+
+        tracing::info!(%vote, "--- a response without a last log id displays it as None");
+        {
+            let denied = VoteResponse::<UTConfig>::new(vote, None, false);
+            assert_eq!(denied.to_string(), "{<T2-N1:->, last_log:None, vote_granted:false}");
         }
     }
 }
