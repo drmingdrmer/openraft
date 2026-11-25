@@ -105,14 +105,15 @@ where
     async fn send_sm_command(&self, cmd: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
         // The state machine worker, not RaftCore, owns the receiving end of this channel: it can
         // die on its own (e.g. a panic in a state machine method) while RaftCore keeps running.
-        // Resolve the stop cause via the bounded variant so a dead worker can't hang this call.
+        // `sm_worker_unavailable_error()` bounds its wait for RaftCore, so a dead worker can't
+        // hang this call.
         let Some(tx) = self.sm_cmd_tx.upgrade() else {
-            return Err(self.inner.get_core_stop_error_bounded().await);
+            return Err(self.inner.sm_worker_unavailable_error().await);
         };
 
         let send_res = tx.send(cmd).await;
         if send_res.is_err() {
-            return Err(self.inner.get_core_stop_error_bounded().await);
+            return Err(self.inner.sm_worker_unavailable_error().await);
         }
         Ok(())
     }

@@ -2866,14 +2866,14 @@ where
         F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
     {
         let Some(tx) = self.sm_cmd_tx.upgrade() else {
-            return Err(self.inner.get_core_stop_error_bounded().await);
+            return Err(self.inner.sm_worker_unavailable_error().await);
         };
 
         let sm_cmd = sm::Command::ExternalFunc {
             func: Box::new(move |sm| req(sm)),
         };
         if tx.send(sm_cmd).await.is_err() {
-            return Err(self.inner.get_core_stop_error_bounded().await);
+            return Err(self.inner.sm_worker_unavailable_error().await);
         }
         Ok(())
     }
