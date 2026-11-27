@@ -17,8 +17,16 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// ## Lifecycle Callbacks
 ///
-/// - [`on_commit()`](Self::on_commit): Called when locally committed (optional)
-/// - [`on_complete()`](Self::on_complete): Sends the final result
+/// - [`on_commit()`](Self::on_commit) is called when the entry is locally committed. Implementing
+///   this callback is optional, and receiving it does not guarantee a later completion callback.
+/// - [`on_complete()`](Self::on_complete) delivers the result after the state machine applies the
+///   entry, or an error if the request is rejected. Rejection can happen without a commit callback.
+///
+/// The responder can be dropped without a result, before or after the commit callback. This can
+/// happen during shutdown or after a fatal error, but work already handed off to the state machine
+/// may still complete after the Raft core shuts down. Custom implementations should release or
+/// notify any waiter when dropped, for example by owning a channel sender whose drop closes the
+/// channel.
 ///
 /// # Type Parameters
 ///
@@ -46,12 +54,10 @@ where
     #[since(version = "0.10.0")]
     fn on_commit(&mut self, _log_id: LogIdOf<C>) {}
 
-    /// Called when the request completes (applied; previously it is `send`).
-    /// Send the final result to the client.
+    /// Consumes the responder to deliver the final result.
     ///
-    /// Invoked in two scenarios:
-    /// - **Normal**: Log entry applied to the state machine
-    /// - **Early termination**: Request failed (e.g., `ForwardToLeader` error)
+    /// This callback is not guaranteed to run. A missing reply means no result arrived; it does
+    /// not undo a known commit or prove that the write was not applied.
     #[since(version = "0.10.0")]
     fn on_complete(self, result: T);
 }
