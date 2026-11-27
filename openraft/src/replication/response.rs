@@ -68,12 +68,13 @@ mod tests {
 
     #[test]
     fn test_replication_result_display() {
-        let result = ReplicationResult::<UTConfig>(Ok(Some(log_id(1, 2, 3))));
-        let want = format!("(Match:{})", log_id(1, 2, 3));
-        assert!(result.to_string().ends_with(&want), "{}", result.to_string());
+        let displayed = ReplicationResult::<UTConfig>(Ok(Some(log_id(1, 2, 3)))).to_string();
+        assert_eq!(displayed, format!("(Match:{})", log_id(1, 2, 3)));
 
-        let result = ReplicationResult::<UTConfig>(Err(log_id(1, 2, 3)));
-        let want = format!("(Conflict:{})", log_id(1, 2, 3));
-        assert!(result.to_string().ends_with(&want), "{}", result.to_string());
+        let displayed = ReplicationResult::<UTConfig>(Err(log_id(1, 2, 3))).to_string();
+        assert_eq!(displayed, format!("(Conflict:{})", log_id(1, 2, 3)));
+
+        let displayed = ReplicationResult::<UTConfig>(Ok(None)).to_string();
+        assert_eq!(displayed, "(Match:None)");
     }
 }
