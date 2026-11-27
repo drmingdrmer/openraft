@@ -2,6 +2,7 @@
 //!
 //! The `AsyncRuntime` trait is made of static functions (`spawn`, `sleep`, `Instant::now`), so the
 //! executor is reached through a thread-local that [`block_on`] installs for the duration of a run.
+//! Task teardown temporarily installs the owning runtime, then restores the prior runtime.
 //!
 //! Scheduling is FIFO: a task is polled in the order it became runnable. When nothing is runnable,
 //! virtual time jumps to the earliest pending timer; timers sharing a deadline fire in creation
@@ -37,7 +38,7 @@ thread_local! {
     static CURRENT: RefCell<Option<Arc<Shared>>> = const { RefCell::new(None) };
 }
 
-/// The runtime installed on this thread. Panics outside `block_on`.
+/// The runtime installed on this thread. Panics if no runtime is installed.
 #[track_caller]
 pub(crate) fn current() -> Arc<Shared> {
     try_current().expect("rt-sim: this must be called inside SimRuntime::block_on")

@@ -10,6 +10,9 @@ use crate::executor::enter::Enter;
 use crate::executor::state::State;
 use crate::executor::task_future::TaskFuture;
 
+#[cfg(test)]
+mod shared_test;
+
 /// Everything one runtime owns, shared with the wakers and timers of its tasks.
 pub(crate) struct Shared {
     state: Mutex<State>,
@@ -43,7 +46,7 @@ impl Shared {
     /// Drops every remaining task with this runtime installed, so drop code that reads the clock
     /// or cancels timers still works. Tasks spawned while dropping are dropped too.
     pub(crate) fn drop_tasks(self: &Arc<Self>) {
-        let _enter = Enter::try_new(self.clone());
+        let _enter = Enter::for_teardown(self.clone());
         #[cfg(feature = "sim-log")]
         let _log = crate::sim_log::enter();
         loop {
