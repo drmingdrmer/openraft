@@ -1,6 +1,7 @@
 //! The executor state: virtual time, tasks, the run queue, timers and the trace.
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::Waker;
@@ -21,7 +22,9 @@ pub(crate) struct State {
     pub(super) next_task_id: TaskId,
     next_timer_seq: u64,
 
-    pub(super) run_queue: VecDeque<TaskId>,
+    run_queue: VecDeque<TaskId>,
+    /// Exactly the IDs in `run_queue`. Never iterated: only the FIFO determines poll order.
+    queued: HashSet<TaskId>,
 
     /// `None` while the task is out of the map being polled.
     pub(super) tasks: BTreeMap<TaskId, Option<Pin<Box<dyn TaskFuture>>>>,
@@ -46,6 +49,7 @@ impl State {
             next_task_id: MAIN_TASK + 1,
             next_timer_seq: 0,
             run_queue: VecDeque::new(),
+            queued: HashSet::new(),
             tasks: BTreeMap::new(),
             timers: BTreeMap::new(),
             seed,
@@ -72,12 +76,11 @@ impl State {
     }
 
     pub(super) fn enqueue(&mut self, id: TaskId) -> bool {
-        if !self.run_queue.contains(&id) {
-            self.run_queue.push_back(id);
-            true
-        } else {
-            false
+        if !self.queued.insert(id) {
+            return false;
         }
+        self.run_queue.push_back(id);
+        true
     }
 
     pub(super) fn wake(&mut self, id: TaskId) {
@@ -95,7 +98,14 @@ impl State {
     }
 
     pub(super) fn pop_runnable(&mut self) -> Option<TaskId> {
-        self.run_queue.pop_front()
+        let id = self.run_queue.pop_front()?;
+        self.queued.remove(&id);
+        Some(id)
+    }
+
+    pub(super) fn clear_runnable(&mut self) {
+        self.run_queue.clear();
+        self.queued.clear();
     }
 
     pub(super) fn begin_poll(&mut self, id: TaskId) {
@@ -159,6 +169,77 @@ mod tests {
     use super::MAX_POLLS_PER_INSTANT;
     use crate::executor::Shared;
     use crate::executor::block_on;
+
+    #[test]
+    fn duplicate_wakes_keep_the_first_fifo_position() {
+        let shared = Shared::new(0);
+        shared.set_record(true);
+
+        #[cfg(feature = "sim-log")]
+        tracing::info!("Wake t0 on both sides of enqueueing t2; poll t0 in its first FIFO position");
+        {
+            let mut repoll = false;
+            let root = poll_fn(|cx| {
+                if repoll {
+                    return Poll::Ready(());
+                }
+                repoll = true;
+                shared.spawn(Box::pin(ready(())));
+                cx.waker().wake_by_ref();
+                shared.spawn(Box::pin(ready(())));
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            });
+            block_on(&shared, root);
+        }
+
+        #[cfg(feature = "sim-log")]
+        tracing::info!("Drain t2 ahead of the next root and verify the wake and poll trace order");
+        {
+            block_on(&shared, ready(()));
+            assert_eq!(shared.take_trace(), [
+                "block_on",
+                "poll t0 @0",
+                "spawn t1 by t0",
+                "wake t0 by t0",
+                "spawn t2 by t0",
+                "poll t1 @0",
+                "ready t1",
+                "poll t0 @0",
+                "ready t0",
+                "block_on",
+                "poll t2 @0",
+                "ready t2",
+                "poll t0 @0",
+                "ready t0",
+            ]);
+        }
+    }
+
+    #[test]
+    fn teardown_clears_runnable_membership() {
+        let shared = Shared::new(0);
+
+        #[cfg(feature = "sim-log")]
+        tracing::info!("Leave t1 and a self-woken t0 queued when the root completes");
+        {
+            let root = poll_fn(|cx| {
+                shared.spawn(Box::pin(ready(())));
+                cx.waker().wake_by_ref();
+                Poll::Ready(())
+            });
+            block_on(&shared, root);
+        }
+
+        #[cfg(feature = "sim-log")]
+        tracing::info!("Tear down the runtime and check both runnable structures are empty");
+        {
+            shared.drop_tasks();
+            let mut st = shared.lock();
+            assert_eq!(st.pop_runnable(), None);
+            assert!(st.queued.is_empty());
+        }
+    }
 
     #[test]
     fn completed_root_runs_do_not_share_a_poll_allowance() {

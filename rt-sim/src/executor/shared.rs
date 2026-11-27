@@ -54,7 +54,7 @@ impl Shared {
                 let mut st = self.lock();
                 // A panicked poll leaves `current` set; label the drops below as `exec`.
                 st.current = None;
-                st.run_queue.clear();
+                st.clear_runnable();
                 std::mem::take(&mut st.tasks).into_values().flatten().collect()
             };
             if tasks.is_empty() {
