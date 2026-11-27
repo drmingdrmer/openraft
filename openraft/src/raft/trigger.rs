@@ -195,16 +195,16 @@ where C: RaftTypeConfig
     ///
     /// ### Production Considerations
     ///
-    /// In production environments, state reversion is a critical issue that should not be
-    /// automatically handled. However, there may be scenarios where a Follower's data is
-    /// intentionally removed and needs to rejoin the cluster(without membership changes). In such
-    /// cases, the Leader should reinitialize replication for that node with the following steps:
-    /// - Shut down the target node.
-    /// - call [`Self::allow_next_revert`] on the Leader.
-    /// - Clear the target node's data directory.
-    /// - Restart the target node.
+    /// This one-shot permission only lets the current leader reset its replication progress for
+    /// the target when it detects log reversion. It does not check whether future quorums will
+    /// preserve committed data, nor does it restore the target's lost durable vote or log history.
+    ///
+    /// Neither this permission nor [`Config::allow_log_reversion`] makes it safe to erase a
+    /// node's data and restart it under the same ID. See the [recovery FAQ][wipe-one-node] for
+    /// the narrow conditions under which erasing one voter cannot lose committed data.
     ///
     /// [`Config::allow_log_reversion`]: `crate::Config::allow_log_reversion`
+    /// [wipe-one-node]: crate::docs::faq#can-i-wipe-out-the-data-of-one-node-and-wait-for-the-leader-to-replicate-all-data-to-it-again
     pub async fn allow_next_revert(
         &self,
         to: &C::NodeId,
