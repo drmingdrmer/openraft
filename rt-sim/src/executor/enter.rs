@@ -5,8 +5,10 @@ use std::sync::Arc;
 use crate::executor::CURRENT;
 use crate::executor::Shared;
 
-/// Installs a runtime on this thread and removes it on drop, including during a panic.
-pub(super) struct Enter;
+/// Installs a runtime on this thread and restores the previous slot on drop, even during a panic.
+pub(super) struct Enter {
+    previous: Option<Arc<Shared>>,
+}
 
 impl Enter {
     pub(super) fn new(shared: Arc<Shared>) -> Self {
@@ -14,7 +16,7 @@ impl Enter {
     }
 
     /// Installs `shared` unless a runtime is already installed on this thread.
-    pub(super) fn try_new(shared: Arc<Shared>) -> Option<Self> {
+    fn try_new(shared: Arc<Shared>) -> Option<Self> {
         CURRENT
             .try_with(|c| {
                 let mut c = c.borrow_mut();
@@ -22,16 +24,26 @@ impl Enter {
                     return None;
                 }
                 *c = Some(shared);
-                Some(Enter)
+                Some(Enter { previous: None })
             })
             .ok()
             .flatten()
+    }
+
+    /// Temporarily installs the task owner for teardown, even inside another runtime.
+    /// Returns `None` if the thread-local has already been destroyed.
+    pub(super) fn for_teardown(shared: Arc<Shared>) -> Option<Self> {
+        CURRENT
+            .try_with(|c| Enter {
+                previous: c.replace(Some(shared)),
+            })
+            .ok()
     }
 }
 
 impl Drop for Enter {
     fn drop(&mut self) {
-        let _ = CURRENT.try_with(|c| c.borrow_mut().take());
+        let _ = CURRENT.try_with(|c| c.replace(self.previous.take()));
     }
 }
 
