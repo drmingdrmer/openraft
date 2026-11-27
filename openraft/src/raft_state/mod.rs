@@ -148,11 +148,6 @@ impl<C> Validate for RaftState<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        if self.log_ids.purged().is_none() {
-            // Nothing purged - first log should exist at index 0 or later
-            validit::less_equal!(self.log_ids.first().map(|r| r.index()), Some(0));
-        }
-
         validit::less_equal!(self.last_purged_log_id(), self.purge_upto());
         if self.snapshot_last_log_id().is_none() {
             // There is no snapshot, it is possible the application does not store snapshot, and
