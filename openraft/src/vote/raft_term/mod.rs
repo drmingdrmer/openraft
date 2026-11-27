@@ -13,13 +13,20 @@ use crate::base::OptionalFeatures;
 /// such as old leaders. It must be totally ordered and monotonically increasing.
 ///
 /// Common implementations are provided for standard integer types like `u64`, `u32`, etc.
+#[since(
+    version = "0.10.2",
+    change = "built-in integer implementations panic at exhaustion in all builds"
+)]
 #[since(version = "0.10.0")]
 pub trait RaftTerm
 where Self: OptionalFeatures + Ord + Debug + Display + Copy + Default + 'static
 {
-    /// Returns the next term.
+    /// Returns the next term, which must be strictly greater than `self`.
     ///
-    /// Must satisfy: `self < self.next()`
+    /// # Panics
+    ///
+    /// The built-in integer implementations panic at the type's maximum value in all
+    /// build profiles because no greater term can be represented.
     fn next(&self) -> Self;
 
     /// Convert to u64 for metrics recording.
