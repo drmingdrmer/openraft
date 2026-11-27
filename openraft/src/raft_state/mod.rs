@@ -292,10 +292,10 @@ where C: RaftTypeConfig
         );
 
         if cfg!(debug_assertions) {
-            let new_vote = accepted.to_app_vote();
-            let current_vote = curr_accepted.clone().map(|io_id| io_id.to_app_vote());
+            let new_vote = accepted.as_ref_vote();
+            let current_vote = curr_accepted.as_ref().map(IOId::as_ref_vote);
             assert!(
-                Some(new_vote.as_ref_vote()) >= current_vote.as_ref().map(|x| x.as_ref_vote()),
+                Some(&new_vote) >= current_vote.as_ref(),
                 "new accepted.committed_vote {} must be >= current accepted.committed_vote: {}",
                 new_vote,
                 current_vote.display(),
@@ -340,7 +340,7 @@ where C: RaftTypeConfig
             self.local_committed().display()
         );
 
-        self.io_state_mut().cluster_committed.try_update(cluster_committed.clone()).ok();
+        self.io_state_mut().cluster_committed.try_update(cluster_committed).ok();
 
         let local_committed = self.io_state.calculate_local_committed();
 
