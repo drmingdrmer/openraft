@@ -82,11 +82,11 @@ use crate::type_config::async_runtime::mpsc::MpscSender;
 /// the backoff, because each `Ok` answer in a session resets the rank to 0.
 const NO_PROGRESS_BACKOFF_RANK: u64 = 100;
 
-/// A task responsible for sending replication events to a target follower in the Raft cluster.
+/// A task that streams AppendEntries requests to a target follower.
 ///
-/// NOTE: we do not stack replication requests to targets because this could result in
-/// out-of-order delivery. We always buffer until we receive a success response, then send the
-/// next payload from the buffer.
+/// The request stream generates requests as the transport polls it, independently of the worker's
+/// processing of responses. The transport controls how many requests are in flight and yields
+/// responses in the order of the requests it sent.
 pub(crate) struct ReplicationCore<C, N, LS>
 where
     C: RaftTypeConfig,
@@ -99,7 +99,10 @@ where
     /// State shared with the request stream generator, protected by a mutex.
     stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
-    /// A channel for receiving events from the RaftCore and snapshot transmitting task.
+    /// Watches the replication plan, accepted and submitted IO, and commit updates from RaftCore.
+    ///
+    /// The snapshot transmitter reports progress directly to RaftCore through the notification
+    /// channel in [`ReplicationContext`], not through these watches.
     event_watcher: EventWatcher<C>,
 
     /// The next replication payload to send, set when partially completed.
