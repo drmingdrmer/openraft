@@ -12,7 +12,8 @@ use crate::type_config::alias::WatchSenderOf;
 pub(crate) struct ReplicationHandle<C>
 where C: RaftTypeConfig
 {
-    /// Identifies this replication session (leader vote + target node).
+    /// Identifies the target's current progress entry and the replication stream that serves it.
+    /// See [`StreamId`] for the ID's lifetime.
     pub(crate) stream_id: StreamId,
 
     /// The node metadata that the stream's network client was created from.
