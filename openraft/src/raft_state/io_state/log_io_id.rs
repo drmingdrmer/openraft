@@ -9,13 +9,22 @@ use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::RaftVote;
 
-/// Monotonic increasing identifier for log append I/O operations.
+/// A committed-vote boundary with optional log coverage: `(CommittedVote, Option<LogId>)`.
 ///
-/// `LogIOId = (CommittedVote, LogId)` ensures monotonicity even when the same [`LogId`] is
-/// truncated and appended multiple times by different leaders.
+/// Comparison uses the full [`CommittedVote`] order, not just the term. Only when the votes
+/// compare equal does it compare the optional [`LogId`], with `None` before `Some`. This lets an
+/// append under a greater vote advance a cursor even if the same log ID was truncated and appended
+/// again. Callers keep their cursors nondecreasing; individual values can repeat or arrive stale.
+///
+/// The [`IOProgress`] cursor that holds the boundary determines whether it is accepted, submitted,
+/// or flushed. The value alone does not establish local durability: it can describe a snapshot
+/// awaiting installation, a committed vote without a log endpoint, or a reported cluster commit
+/// beyond the locally accepted log.
 ///
 /// For a comprehensive explanation, see: [`LogIOId` documentation](crate::docs::data::log_io_id).
 ///
+/// [`CommittedVote`]: crate::vote::committed::CommittedVote
+/// [`IOProgress`]: crate::raft_state::io_state::io_progress::IOProgress
 /// [`LogId`]: crate::log_id::LogId
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
@@ -23,10 +32,12 @@ use crate::vote::RaftVote;
 pub(crate) struct LogIOId<C>
 where C: RaftTypeConfig
 {
-    /// The id of the leader that performs the log io operation.
+    /// The vote of the leader authorizing the I/O or reporting the cluster commit, which need
+    /// not be the leader that originally proposed the entry.
     pub(crate) committed_vote: CommittedVoteOf<C>,
 
-    /// The last log id that has been flushed to storage.
+    /// The log endpoint carried by this boundary. `None` means the boundary carries no log
+    /// coverage, not that the local store is empty.
     pub(crate) log_id: Option<LogIdOf<C>>,
 }
 
@@ -58,7 +69,7 @@ where C: RaftTypeConfig
         self.committed_vote.leader_id()
     }
 
-    /// Return the last log id included in this io operation.
+    /// Return the log endpoint carried by this boundary, if any.
     pub(crate) fn last_log_id(&self) -> Option<&LogIdOf<C>> {
         self.log_id.as_ref()
     }
