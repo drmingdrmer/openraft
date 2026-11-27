@@ -205,7 +205,8 @@ where
         let res = {
             let lock = stream_context.stream_state.as_ref().lock();
             let mut state = C::cancellable_by(lock, stream_context.session_rx.changed()).await?;
-            state.next_request(&mut stream_context.session_rx).await
+            let apply_backoff = !stream_context.first_request;
+            state.next_request(&mut stream_context.session_rx, apply_backoff).await
         };
 
         let req = match res {
@@ -224,6 +225,7 @@ where
             inflight_queue.push(range.prev, range.last);
         }
 
+        stream_context.first_request = false;
         Some((req, stream_context))
     }
 
@@ -266,9 +268,8 @@ where
             let config = self.replication_context.config.clone();
             self.reconcile_backoff(|| network.backoff().unwrap_or_else(|| config.build_backoff())).await;
 
-            let payload = self.select_next_payload().await?;
-
-            self.next_action = self.run_stream_session(&mut network, &payload).await?;
+            self.select_next_payload().await?;
+            self.next_action = self.run_stream_session(&mut network).await?;
         }
     }
 
@@ -300,7 +301,7 @@ where
         Ok(())
     }
 
-    /// Decide what the next stream should carry.
+    /// Set `next_action` to the payload the next stream should carry.
     ///
     /// A payload still unfinished is resumed unless [`RaftCore`] has published a plan since this
     /// task last adopted one. Then adopt that plan, as when a reverted log makes a `LogsSince`
@@ -308,7 +309,7 @@ where
     /// nothing to run, block until [`RaftCore`] hands over work.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
-    async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
+    async fn select_next_payload(&mut self) -> Result<(), ReplicationClosed> {
         if self.next_action.is_some() {
             let unfinished = self.inflight_id;
             if self.adopt_published().await {
@@ -324,7 +325,7 @@ where
             self.drain_events().await?;
         }
 
-        Ok(self.next_action.take().unwrap())
+        Ok(())
     }
 
     /// Adopt the plan in `replicate_rx` if this task has not adopted it yet, and return whether it
@@ -390,20 +391,30 @@ where
         self.replication_context.notify_cleared(inflight_id).await;
     }
 
-    /// Stream `payload` to the target and consume the responses.
+    /// Stream the selected payload to the target and consume the responses.
     ///
-    /// Returns the payload left to send: `None` when `payload` completed, or when the session
+    /// Returns the payload left to send: `None` when it completed, or when the session
     /// was interrupted and RaftCore will reschedule. An `Err` is fatal and ends the task.
-    async fn run_stream_session(
-        &mut self,
-        network: &mut N::Network,
-        payload: &Payload<C>,
-    ) -> Result<Option<Payload<C>>, ReplicationClosed> {
-        {
+    async fn run_stream_session(&mut self, network: &mut N::Network) -> Result<Option<Payload<C>>, ReplicationClosed> {
+        let payload = {
             let mut stream_state = self.stream_state.lock().await;
+
+            // Charge the first request's delay before opening: setup can fail without polling
+            // the request stream. Keep using the same iterator and reset receiver for later requests.
+            let cancel = self.replication_context.cancel_rx.changed();
+            if stream_state.backoff_consumer.backoff_if_enabled(cancel).await? {
+                drop(stream_state);
+                self.ensure_still_leading()?;
+                // RaftCore may have replaced or cleared the selected plan during the wait.
+                self.select_next_payload().await?;
+                stream_state = self.stream_state.lock().await;
+            }
+
+            let payload = self.next_action.take().unwrap();
             stream_state.payload = Some(payload.clone());
             stream_state.inflight_id = self.inflight_id;
-        }
+            payload
+        };
 
         let inflight_queue = InflightAppendQueue::new();
         let inflight_queue = StdMutex::new(inflight_queue);
@@ -414,6 +425,7 @@ where
         let (_session_tx, session_rx) = C::watch_channel(());
         let stream_context = StreamContext {
             session_rx,
+            first_request: true,
             stream_state: self.stream_state.clone(),
             inflight_append_queue: inflight_queue.clone(),
             fatal_error: fatal_error.clone(),
@@ -470,7 +482,7 @@ where
 
         // The target accepted none of the entries this session sent. Without a backoff, the next
         // session would resend them at once.
-        let no_progress = remaining.as_ref() == Some(payload);
+        let no_progress = remaining.as_ref() == Some(&payload);
         let has_unacked = {
             let inflight_queue = inflight_queue.lock().unwrap();
             !inflight_queue.is_empty()

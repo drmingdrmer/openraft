@@ -107,7 +107,7 @@ impl StreamState<UTConfig, PrefixStore> {
     /// Exercise the plan and task lifetime with an open transport session.
     async fn next_request_in_session(&mut self) -> Result<Option<AppendEntriesRequest<UTConfig>>, ReplicationClosed> {
         let (_session_tx, mut session_rx) = UTConfig::<()>::watch_channel(());
-        self.next_request(&mut session_rx).await
+        self.next_request(&mut session_rx, true).await
     }
 }
 
@@ -529,7 +529,7 @@ fn session_end_interrupts_backoff() {
 
         tracing::info!("--- end the session while the generated request waits for retry backoff");
         {
-            let mut next = Box::pin(state.next_request(&mut session_rx));
+            let mut next = Box::pin(state.next_request(&mut session_rx, true));
             let pending = next.as_mut().now_or_never();
             assert!(pending.is_none(), "the request should wait in backoff");
 

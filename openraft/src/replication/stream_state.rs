@@ -72,6 +72,7 @@ where
     pub(crate) async fn next_request(
         &mut self,
         session_rx: &mut WatchReceiverOf<C, ()>,
+        apply_backoff: bool,
     ) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
         // An empty range still sends one RPC and is then cleared by `update_sent()`.
         let Some(Some(log_id_range)) = C::cancellable_by(self.get_log_id_range(), session_rx.changed()).await else {
@@ -135,7 +136,9 @@ where
         tracing::debug!("next_request: AppendEntries: {}", payload);
 
         let wait = async {
-            self.backoff_if_enabled().await;
+            if apply_backoff {
+                self.backoff_if_enabled().await?;
+            }
             self.replication_context.wait_for_send_period().await
         };
         let Some(ready) = C::cancellable_by(wait, session_rx.changed()).await else {
@@ -214,8 +217,9 @@ where
     }
 
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
-    async fn backoff_if_enabled(&mut self) {
-        self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await;
+    async fn backoff_if_enabled(&mut self) -> Result<(), ReplicationClosed> {
+        self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await?;
+        Ok(())
     }
 
     /// Return `true` if this stream still runs RaftCore's current log plan for the target.

@@ -22,6 +22,9 @@ where
     /// Closed when this stream_append session ends, even if the transport keeps polling.
     pub(crate) session_rx: WatchReceiverOf<C, ()>,
 
+    /// The first request skips the backoff wait already done before opening this stream.
+    pub(crate) first_request: bool,
+
     /// Shared state for generating the next request.
     pub(crate) stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
