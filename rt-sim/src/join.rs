@@ -141,6 +141,29 @@ mod tests {
     }
 
     #[test]
+    fn runtime_drop_cancels_suspended_task() {
+        let mut rt = SimRuntime::with_seed(0);
+        // Keep executor state alive so its final drop cannot mask missed task cleanup.
+        let (mut handle, _shared) = rt.block_on(async {
+            let (started, wait_for_start) = oneshot::channel();
+            let handle = SimRuntime::spawn(async move {
+                started.send(()).unwrap();
+                std::future::pending::<u64>().await
+            });
+            wait_for_start.await.unwrap();
+            (handle, crate::executor::current())
+        });
+
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(Pin::new(&mut handle).poll(&mut cx), Poll::Pending);
+        drop(rt);
+        assert_eq!(
+            Pin::new(&mut handle).poll(&mut cx),
+            Poll::Ready(Err(SimJoinError::Cancelled))
+        );
+    }
+
+    #[test]
     fn runtime_drop_keeps_completed_output() {
         let mut rt = SimRuntime::with_seed(0);
         let mut captured = None;
