@@ -13,16 +13,33 @@ use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
-/// Trigger is an interface to trigger an action to RaftCore by external caller.
+/// Submit administrative requests to RaftCore.
 ///
 /// It is created with [`Raft::trigger()`].
 ///
-/// For example, to trigger an election at once, you can use the following code
+/// # Submission and completion
+///
+/// Except for [`Self::allow_next_revert`], these methods return `Ok(())` once the request is
+/// accepted into the node's bounded API channel. If the channel is full, submission waits for
+/// capacity. A failed send returns a [`Fatal`] error.
+///
+/// Successful submission does not mean the action has started or finished. RaftCore may skip
+/// the action, and these calls do not report failures that occur after submission. To observe
+/// the state you need, use [`Raft::wait()`] or [`Raft::metrics()`]. Metrics show the node's state,
+/// not whether a particular request caused it.
+///
+/// [`Self::allow_next_revert`] also waits for RaftCore's permission-update result, not for any
+/// subsequent replication reset.
+///
+/// # Examples
+///
+/// Submit a manual election request:
+///
 /// ```ignore
 /// raft.trigger().elect(false).await?;
 /// ```
 ///
-/// Or to fire a heartbeat, building a snapshot, or purging logs:
+/// Or request a heartbeat, a snapshot build, or a log purge:
 ///
 /// ```ignore
 /// raft.trigger().heartbeat().await?;
@@ -31,6 +48,8 @@ use crate::type_config::alias::VoteOf;
 /// ```
 ///
 /// [`Raft::trigger()`]: crate::Raft::trigger
+/// [`Raft::wait()`]: crate::Raft::wait
+/// [`Raft::metrics()`]: crate::Raft::metrics
 pub struct Trigger<'r, C>
 where C: RaftTypeConfig
 {
@@ -44,14 +63,13 @@ where C: RaftTypeConfig
         Self { raft_inner }
     }
 
-    /// Trigger election at once and return at once.
+    /// Queue a request for a manual election.
     ///
-    /// If this node is already a leader, this is a no-op.
+    /// If this node is already a leader when RaftCore handles the request, this is a no-op.
     ///
-    /// Otherwise, with `pre_vote = false`, a real election starts immediately: the term is
-    /// incremented and the node votes for itself. This bypasses both `enable_elect` and
-    /// Pre-Vote, so the term climbs even when the node cannot win — which may step down a
-    /// healthy leader of a lower term.
+    /// With `pre_vote = false`, a node that campaigns skips Pre-Vote, increments its term, and
+    /// votes for itself. This bypasses `enable_elect`, so the term climbs even when the node
+    /// cannot win — which may step down a healthy leader of a lower term.
     ///
     /// With `pre_vote = true`, a Pre-Vote round runs first and the real election proceeds only if a
     /// quorum would grant a vote. While this node's own leader lease is still valid, the round is
@@ -60,18 +78,29 @@ where C: RaftTypeConfig
     /// leader with a manual trigger. It does not require [`Config::enable_pre_vote`]; the caller
     /// opts in per call.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
+    ///
+    /// To wait for a particular node to become leader, use
+    /// [`Wait::current_leader`](crate::metrics::Wait::current_leader).
     ///
     /// [`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
     pub async fn elect(&self, pre_vote: bool) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Elect { pre_vote }).await
     }
 
-    /// Trigger a heartbeat at once and return at once.
+    /// Queue a request for a heartbeat.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
+    /// RaftCore skips the heartbeat if the node is not the leader, is transferring leadership,
+    /// or is in a [quorum-loss quiet period](field@crate::Config::quorum_loss_probe_interval).
+    /// The [minimum heartbeat interval] still applies to each target.
+    ///
     /// It is not affected by `Raft::enable_heartbeat(false)`.
+    ///
+    /// To observe quorum contact, watch [`RaftMetrics::last_quorum_acked`], which can also advance
+    /// through ordinary replication.
+    ///
+    /// [minimum heartbeat interval]: field@crate::Config::heartbeat_min_interval
+    /// [`RaftMetrics::last_quorum_acked`]: crate::RaftMetrics::last_quorum_acked
     pub async fn heartbeat(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Heartbeat).await
     }
@@ -104,22 +133,29 @@ where C: RaftTypeConfig
         self.raft_inner.send_external_command(ExternalCommand::Tick).await
     }
 
-    /// Trigger to build a snapshot at once and return at once.
+    /// Queue a request to build a snapshot.
     ///
-    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
+    /// If a build is already outstanding when RaftCore handles the request, no second build is
+    /// started. Otherwise the state machine can decline the request by returning `None` from
+    /// [`try_create_snapshot_builder`], which is called with `force = false`.
+    ///
+    /// To observe a snapshot that includes the log entry you need, watch
+    /// [`RaftMetrics::snapshot`](crate::RaftMetrics::snapshot) for that log ID or a later one.
+    ///
+    /// [`try_create_snapshot_builder`]: crate::storage::RaftStateMachine::try_create_snapshot_builder
     pub async fn snapshot(&self) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Snapshot).await
     }
 
-    /// Initiate the log purge up to and including the given `upto` log index.
+    /// Queue a request to purge logs up to and including the given `upto` log index.
     ///
     /// Logs that are not included in a snapshot will **NOT** be purged.
     /// In such a scenario it will delete as many logs as possible.
     /// The [`max_in_snapshot_log_to_keep`] config is not taken into account
     /// when purging logs.
     ///
-    /// It returns an error only when RaftCore has [`Fatal`] error, e.g., shut down or having
-    /// storage error.
+    /// To observe how far the purge has progressed, watch
+    /// [`RaftMetrics::purged`](crate::RaftMetrics::purged).
     ///
     /// Openraft won't purge logs at once, e.g., it may be delayed by several seconds, because if it
     /// is a leader and a replication task has been replicating the logs to a follower, the logs
@@ -230,8 +266,8 @@ where C: RaftTypeConfig
         Ok(res)
     }
 
-    /// Recalculate the internal server state(Leader/Follower/Learner) based on the vote and the
-    /// membership config.
+    /// Queue a request to recalculate the internal server state (Leader/Follower/Learner) based on
+    /// the vote and membership config.
     ///
     /// Usually this method is not used at all: the internal server state is always recalculated
     /// automatically. The only exception is the step down of a Leader that is removed from the
