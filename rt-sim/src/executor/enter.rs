@@ -19,18 +19,53 @@ impl Enter {
             .try_with(|c| {
                 let mut c = c.borrow_mut();
                 if c.is_some() {
-                    return false;
+                    return None;
                 }
                 *c = Some(shared);
-                true
+                Some(Enter)
             })
-            .unwrap_or(false)
-            .then_some(Enter)
+            .ok()
+            .flatten()
     }
 }
 
 impl Drop for Enter {
     fn drop(&mut self) {
         let _ = CURRENT.try_with(|c| c.borrow_mut().take());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic::AssertUnwindSafe;
+    use std::panic::catch_unwind;
+
+    use openraft_rt::AsyncRuntime;
+
+    use crate::SimInstant;
+    use crate::SimRuntime;
+
+    #[test]
+    fn dropping_another_runtime_preserves_the_outer_clock() {
+        SimRuntime::with_seed(1).block_on(async {
+            let now = SimInstant::try_now().unwrap();
+
+            drop(SimRuntime::with_seed(2));
+
+            assert_eq!(SimInstant::try_now(), Some(now));
+        });
+    }
+
+    #[test]
+    fn rejected_nested_block_on_preserves_the_outer_clock() {
+        SimRuntime::with_seed(1).block_on(async {
+            let now = SimInstant::try_now().unwrap();
+            let mut inner = SimRuntime::with_seed(2);
+
+            let result = catch_unwind(AssertUnwindSafe(|| inner.block_on(async {})));
+
+            assert!(result.is_err(), "nested block_on must panic");
+            assert_eq!(SimInstant::try_now(), Some(now));
+        });
     }
 }
