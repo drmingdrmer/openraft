@@ -19,56 +19,22 @@ pub(crate) mod io_progress;
 pub(crate) mod log_io_id;
 pub(crate) mod monotonic;
 
-/// Tracks the state of completed I/O operations: log flushing, applying to state machine, and
-/// snapshot building.
+/// Tracks vote and log I/O, state-machine application, snapshot persistence, and log purges.
+/// Also records whether a snapshot is being built.
 ///
-/// These states update only when I/O completes and may lag behind
-/// [`RaftState`](`crate::RaftState`).
+/// Each kind of I/O has three cumulative progress boundaries:
+/// - **accepted**: How far Raft has accepted work for execution, including work still queued.
+/// - **submitted**: How far work has been sent to storage or the state-machine worker.
+/// - **flushed**: How far work has completed. Votes and log appends are durable at this stage, but
+///   a transient state machine need not persist the effects of applying entries.
 ///
-/// ## Progress Tracking
+/// Within each [`IOProgress`], `flushed <= submitted <= accepted` in the order of its I/O IDs.
+/// The snapshot submission boundary cannot exceed the apply submission boundary, and completed
+/// purging cannot pass the completed snapshot.
 ///
-/// The log ids that are tracked include:
-///
-/// ```text
-/// | log ids
-/// | *------+-------+------+----+---+---+---+-------+------------------>
-/// |        |       |      |    |   |   |   |       `---> log.accepted
-/// |        |       |      |    |   |   |   `-----------> log.submitted
-/// |        |       |      |    |   `-------------------> log.flushed
-/// |        |       |      |    |       |
-/// |        |       |      |    |       `---------------> apply.accepted
-/// |        |       |      |    `-----------------------> apply.submitted
-/// |        |       |      `----------------------------> apply.flushed
-/// |        |       |
-/// |        |       `-----------------------------------> snapshot
-/// |        `-------------------------------------------> purged
-/// ```
-///
-/// Each progress tracks three stages:
-/// - **accepted**: Operation accepted but not yet submitted to I/O
-/// - **submitted**: Submitted to I/O subsystem but not yet completed
-/// - **flushed**: Successfully completed and persisted
-///
-/// **Note**: `apply.accepted` does not require `log.flushed`. A log only needs to be submitted
-/// (not flushed) to be applied, since `RaftLogStorage` can read submitted entries.
-///
-/// For comprehensive details, see: [Log I/O Progress](crate::docs::data::log_io_progress).
-///
-/// Invariants:
-///
-/// ```text
-///                                RaftLogStorage
-/// .----------------------------------------------------------------------------.
-/// | purged ≤ -.                             flushed ≤ -+- submitted ≤ accepted |
-/// '-----------|----------------------------------------|-----------------------'
-///             |                                        |
-///             |                        .- committed ≤ -'
-///             |                        |
-///           .-|------------------------|-.
-///           | '- snapshot ≤ applied ≤ -' |
-///           '----------------------------'
-///                  RaftStateMachine
-/// ```
+/// Local commitment (`apply_progress.accepted`) can advance while log I/O is still queued.
+/// Moreover, a vote-only log I/O can have no log endpoint even when the node has log entries,
+/// so the order of log I/O IDs does not imply the same order for their optional log endpoints.
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct IOState<C>
@@ -101,36 +67,16 @@ where C: RaftTypeConfig
     /// Tracks both locally built snapshots and snapshots installed from the leader.
     pub(crate) snapshot: Valid<IOProgress<LogIdOf<C>>>,
 
-    /// The highest log id committed by the cluster (replicated to a quorum).
+    /// The reported cluster commit bound, which can differ from the local apply bound.
     ///
-    /// This tracks the cluster-level commit, which may differ from the local committed log id
-    /// (safe to apply to state machine) when a commit notification arrives before the append RPC
-    /// that writes the committed entry.
+    /// [`LogIOId`] pairs the reporting leader's `CommittedVote` with an optional `LogId`.
+    /// Reports are ordered by vote first, so a higher vote can replace the stored report with a
+    /// lower or absent log endpoint. The report is not restored from storage on restart.
     ///
-    /// **Type**: `LogIOId = (CommittedLeaderId, LogId)`
-    ///
-    /// Storing the leader's vote with the committed log ID provides:
-    /// - **Self-documentation**: Explicitly records which leader sent this commit notification
-    /// - **Update safety**: Forces callers to provide the leader's vote, preventing accidental
-    ///   updates
-    /// - **Implementation flexibility**: While OpenRaft enforces vote-first synchronization (making
-    ///   the vote in `cluster_committed` equal to `log_progress.accepted()` vote), storing it
-    ///   separately allows for alternative synchronization approaches in theory
-    ///
-    /// **For detailed explanation** with timeline examples, see:
-    /// [Cluster-Committed vs Local Committed](crate::docs::protocol::commit)
-    ///
-    /// ## Update Conditions
-    ///
-    /// This value is updated in two scenarios:
-    ///
-    /// 1. **Leader**: When a log entry is replicated to and confirmed by a quorum, the leader
-    ///    updates this value immediately, even if the entry hasn't been submitted to local storage.
-    ///
-    /// 2. **Follower**: The follower must first accept the leader's vote before accepting the
-    ///    committed log id (vote-first protocol). Upon receiving the leader's committed log id, the
-    ///    follower updates this value, then computes its local committed using
-    ///    [`calculate_local_committed()`](Self::calculate_local_committed).
+    /// The leader derives this bound from quorum replication. A node receiving an append request
+    /// considers the reported bound even if it rejects the append, so the reporting vote need not
+    /// match the locally accepted I/O vote. See [`Self::calculate_local_committed`] for how the
+    /// report can advance local commitment.
     pub(crate) cluster_committed: MonotonicIncrease<LogIOId<C>>,
 
     /// Tracks progress of purging log entries from storage.
@@ -223,18 +169,24 @@ where C: RaftTypeConfig
         self.building_snapshot
     }
 
-    /// Calculates the local committed log id that is safe to apply to the state machine.
+    /// Calculates a candidate local commit bound for state-machine application.
     ///
-    /// Returns `min(cluster_committed.log_id, log_progress.accepted().log_id)` when the safety
-    /// condition `accepted_vote >= cluster_committed_vote` holds.
+    /// Returns the lesser of the reported committed log ID and the accepted log endpoint if the
+    /// accepted I/O carries a committed vote whose committed leader ID is at least both the
+    /// reporting vote's committed leader ID and the reported entry's committed leader ID.
     ///
-    /// With the vote-first synchronization protocol, `accepted_vote` is always equal to
-    /// `cluster_committed_vote` because the vote is synchronized before any commit notification.
-    /// The safety check still exists in the code but always passes, serving as a defensive
-    /// assertion.
+    /// Returns `None` if the report or accepted I/O is missing, either log endpoint is absent,
+    /// the accepted vote is uncommitted, or either leader ID comparison fails. The caller leaves
+    /// local commitment unchanged unless the calculation yields a higher bound, which can happen
+    /// once the accepted I/O catches up to the report.
     ///
-    /// **For detailed explanation** with timeline examples, see:
-    /// [Cluster-Committed vs Local Committed](crate::docs::protocol::commit)
+    /// This bound determines eligibility, not when application can be submitted. The engine
+    /// submits application only up to the submitted log endpoint, with matching submitted and
+    /// accepted log I/O votes, and after any accepted snapshot has been submitted to the state
+    /// machine. It does not wait for local log flush: [`RaftLogStorage::append`] makes entries
+    /// readable on return, independently of when they become durable.
+    ///
+    /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
     pub(crate) fn calculate_local_committed(&mut self) -> Option<LogIdOf<C>> {
         let local_committed = self.do_calculate_local_committed();
 
