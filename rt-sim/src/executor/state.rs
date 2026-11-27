@@ -21,7 +21,7 @@ pub(crate) struct State {
     pub(super) next_task_id: TaskId,
     next_timer_seq: u64,
 
-    pub(super) run_queue: VecDeque<TaskId>,
+    run_queue: VecDeque<TaskId>,
 
     /// `None` while the task is out of the map being polled.
     pub(super) tasks: BTreeMap<TaskId, Option<Pin<Box<dyn TaskFuture>>>>,
@@ -96,6 +96,10 @@ impl State {
 
     pub(super) fn pop_runnable(&mut self) -> Option<TaskId> {
         self.run_queue.pop_front()
+    }
+
+    pub(super) fn clear_runnable(&mut self) {
+        self.run_queue.clear();
     }
 
     pub(super) fn begin_poll(&mut self, id: TaskId) {
