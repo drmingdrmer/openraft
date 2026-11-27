@@ -29,16 +29,22 @@ failures the deployment plans for.
 reads. A runtime change lives in memory only, and a restart applies
 [`Config::enable_elect`] again.
 
-The manual triggers work whatever `enable_elect` says:
+[`Trigger::elect()`] bypasses `enable_elect`, but Raft ignores the request if
+this node already leads or neither its effective nor its committed membership
+allows it to campaign. For an eligible node that is not already a leader:
 
-- [`Trigger::elect(true)`][`Trigger::elect()`] runs a Pre-Vote round first and
-  starts the real election only if a quorum would grant the vote. While this
-  node's own leader lease is valid, it sends nothing. Either way a refused
-  round leaves the term unchanged.
-- `Trigger::elect(false)` starts a real election at once. The term increases
-  even if this node cannot win, which can make a healthy leader step down.
-- [`Trigger::transfer_leader()`] makes the target campaign, also when the
-  target has `enable_elect` off; see below.
+- [`Trigger::elect(true)`][`Trigger::elect()`] selects Pre-Vote for this call.
+  If the node's local leader lease is valid, it sends no Pre-Vote requests and
+  leaves its vote unchanged. Otherwise it probes without incrementing its own
+  term and starts a real election only if a quorum would grant the vote.
+  A peer's rejection can still carry a higher vote that the node adopts and
+  persists to catch up to a higher term without starting a real election.
+- `Trigger::elect(false)` starts a real election without Pre-Vote. The term
+  increases even if this node cannot win, which can make a healthy leader
+  step down.
+
+[`Trigger::transfer_leader()`] makes the target campaign even when the target
+has `enable_elect` off; see below.
 
 ## Handing over leadership
 

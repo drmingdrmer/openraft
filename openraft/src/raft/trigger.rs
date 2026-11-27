@@ -65,18 +65,20 @@ where C: RaftTypeConfig
 
     /// Queue a request for a manual election.
     ///
-    /// If this node is already a leader when RaftCore handles the request, this is a no-op.
+    /// When RaftCore handles the request, it does nothing if this node is already a leader or
+    /// neither its effective nor its committed membership allows it to campaign.
     ///
-    /// With `pre_vote = false`, a node that campaigns skips Pre-Vote, increments its term, and
-    /// votes for itself. This bypasses `enable_elect`, so the term climbs even when the node
-    /// cannot win — which may step down a healthy leader of a lower term.
+    /// With `pre_vote = false`, an eligible node skips Pre-Vote, increments its term, and votes
+    /// for itself. The term increases even if the node cannot win, which may make a healthy
+    /// leader in a lower term step down.
     ///
-    /// With `pre_vote = true`, a Pre-Vote round runs first and the real election proceeds only if a
-    /// quorum would grant a vote. While this node's own leader lease is still valid, the round is
-    /// refused locally and nothing is sent; a leader that a quorum keeps acking also rejects the
-    /// Pre-Vote — either way the term is left untouched. Use this to avoid disrupting a healthy
-    /// leader with a manual trigger. It does not require [`Config::enable_pre_vote`]; the caller
-    /// opts in per call.
+    /// With `pre_vote = true`, a node whose local leader lease is still valid sends no Pre-Vote
+    /// requests and leaves its vote unchanged. Otherwise, it probes without incrementing its
+    /// own term and starts a real election only if a quorum would grant the vote. A peer's
+    /// rejection can still report a higher vote, which the node can adopt and persist to catch
+    /// up to a higher term without starting a real election.
+    ///
+    /// Pre-Vote is selected per call and does not require [`Config::enable_pre_vote`].
     ///
     /// It is not affected by `Raft::enable_elect(false)`.
     ///
