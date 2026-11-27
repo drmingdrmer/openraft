@@ -5,7 +5,10 @@ use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
 use crate::vote::RaftCommittedLeaderId;
 
-/// APIs to get significant log ids reflecting the raft state.
+/// Log boundaries and I/O progress in the Raft state.
+///
+/// Logical boundaries can advance while storage or state machine commands are still pending.
+/// Use the `io_*` accessors to check completed I/O rather than inferring it from those boundaries.
 ///
 /// See: [`log_pointers`](`crate::docs::data::log_pointers`).
 pub(crate) trait LogStateReader<CLID>
@@ -37,17 +40,16 @@ where CLID: RaftCommittedLeaderId
         self.ref_log_id(index).map(RefLogId::into_log_id)
     }
 
-    /// Get the log id at the specified index.
+    /// Get the log ID at the specified index in the engine's log history.
     ///
-    /// It will return `last_purged_log_id` if index is at the last purged index.
-    /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
-    /// `last_log_id`, it returns None.
+    /// Returns the retained purge anchor at [`Self::last_purged_log_id`], and `None` for indexes
+    /// below that boundary or above [`Self::last_log_id`].
     fn ref_log_id(&self, index: u64) -> Option<RefLogId<'_, CLID>>;
 
-    /// The last known log id in the store.
+    /// The logical log tail tracked by the engine.
     ///
-    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right
-    /// close.
+    /// An accepted append can advance this boundary before its entries are persisted. If no live
+    /// entries remain, this may return the retained purge anchor ([`Self::last_purged_log_id`]).
     fn last_log_id(&self) -> Option<&LogId<CLID>>;
 
     /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of
@@ -59,17 +61,20 @@ where CLID: RaftCommittedLeaderId
     /// This is actually happened io-state which might fall behind committed log id.
     fn io_applied(&self) -> Option<&LogId<CLID>>;
 
-    /// The last log id in the last persisted snapshot.
+    /// The last log ID in the latest completed snapshot.
     ///
-    /// This is actually happened io-state which might fall behind `Self::snapshot_last_log_id()`.
+    /// This can lag behind the engine's snapshot metadata ([`Self::snapshot_last_log_id`]).
     fn io_snapshot_last_log_id(&self) -> Option<&LogId<CLID>>;
 
-    /// The last known purged log id, inclusive.
+    /// The highest log ID through which purging has completed in storage, inclusive.
     ///
-    /// This is actually purged log id from storage.
+    /// This can lag behind the engine's accepted purge boundary ([`Self::last_purged_log_id`]).
     fn io_purged(&self) -> Option<&LogId<CLID>>;
 
-    /// Return the last log id the snapshot includes.
+    /// The last log ID in the engine's snapshot metadata.
+    ///
+    /// The metadata can reflect an accepted installation before it completes. Use
+    /// [`Self::io_snapshot_last_log_id`] to check completed snapshot progress.
     fn snapshot_last_log_id(&self) -> Option<&LogId<CLID>>;
 
     /// Return the log id it wants to purge up to.
@@ -77,12 +82,12 @@ where CLID: RaftCommittedLeaderId
     /// Logs may not be able to be purged at once because they are in use by replication tasks.
     fn purge_upto(&self) -> Option<&LogId<CLID>>;
 
-    /// The greatest log id that has been purged after being applied to state machine, i.e., the
-    /// oldest known log id.
+    /// The highest log ID the engine has accepted for purging, inclusive.
     ///
-    /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
-    /// left open and right close.
+    /// The engine's live log range is `(last_purged_log_id(), last_log_id()]`. Equal boundaries
+    /// mean there are no logical live entries, not necessarily that storage is empty.
     ///
-    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
+    /// A purge command may still be pending. Use [`Self::io_purged`] to check how far purging has
+    /// completed in storage.
     fn last_purged_log_id(&self) -> Option<&LogId<CLID>>;
 }
