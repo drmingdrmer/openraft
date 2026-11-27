@@ -35,6 +35,10 @@ where
     /// A `LeaderId` always votes for a node, thus this field is not an `Option`. It is still
     /// serialized as `Option<NID>`, to keep the encoding identical to openraft-0.9 and earlier, in
     /// which this field was an `Option`. A `None` is rejected when decoding.
+    ///
+    /// In formats such as JSON, a custom node ID that serializes as `null` (for example, a unit
+    /// struct) is indistinguishable from `None`. Serialization can succeed, but deserializing the
+    /// leader ID then fails. Use a non-null encoding, such as a string, with these formats.
     #[cfg_attr(feature = "serde", serde(with = "serde_voted_for"))]
     pub voted_for: NID,
 }
