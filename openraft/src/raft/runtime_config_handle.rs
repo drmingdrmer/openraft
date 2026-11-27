@@ -44,9 +44,13 @@ where C: RaftTypeConfig
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.
     ///
-    /// Note that the follower's leader-lease will not be renewed if it does receive messages from
-    /// the leader, and it will start election (if `Self::elect()` is enabled) when the lease timed
-    /// out.
+    /// Accepted leader traffic, including log replication, renews a follower's leader lease even
+    /// when idle heartbeats are disabled.
+    ///
+    /// If that traffic stops, an eligible follower with automatic elections enabled (see
+    /// [`Self::elect`]) can campaign when its election deadline is reached. This deadline normally
+    /// includes a delay after lease expiry. The campaign may start with a Pre-Vote round (see
+    /// [`Self::pre_vote`]).
     pub fn heartbeat(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
         self.raft_inner.wake_core();
