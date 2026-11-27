@@ -19,9 +19,19 @@ where CLID: RaftCommittedLeaderId
         if index == 0 { None } else { self.get_log_id(index - 1) }
     }
 
-    /// Return if a log id exists.
+    /// Check whether a candidate log ID matches the local log history.
     ///
-    /// It assumes a committed log will always get positive return value, according to raft spec.
+    /// The caller must establish that the history supplying `log_id` agrees with the local
+    /// committed prefix. `AppendEntries` checks the request's vote before matching the previous
+    /// log ID or the incoming entries. Raft's leader completeness provides the prefix guarantee
+    /// for a protocol-following leader; accepting the vote does not itself validate those IDs.
+    ///
+    /// - At or below the local committed index, return `true` without comparing the candidate's
+    ///   leader ID with the local one or requiring a resident entry. This includes purged entries.
+    /// - Above the local committed index, or if nothing is committed, require an exact match with
+    ///   the local log ID at that index.
+    ///
+    /// This is not an arbitrary-ID membership or storage-residency query.
     fn has_log_id(&self, log_id: impl RaftLogId<CommittedLeaderId = CLID>) -> bool {
         if log_id.index() < self.committed().next_index() {
             debug_assert!(Some(log_id.to_ref()) <= self.committed().to_ref());
