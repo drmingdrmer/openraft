@@ -292,10 +292,6 @@ where
             return;
         }
 
-        if membership_snapshot.log_id().index() >= self.effective.log_id().index() {
-            self.effective = membership_snapshot.clone()
-        }
-
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
             if membership_snapshot.log_id() == self.committed.log_id() {
