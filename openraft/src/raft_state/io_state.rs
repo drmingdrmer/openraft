@@ -187,7 +187,7 @@ where C: RaftTypeConfig
     /// readable on return, independently of when they become durable.
     ///
     /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
-    pub(crate) fn calculate_local_committed(&mut self) -> Option<LogIdOf<C>> {
+    pub(crate) fn calculate_local_committed(&self) -> Option<LogIdOf<C>> {
         let local_committed = self.do_calculate_local_committed();
 
         tracing::debug!(
@@ -201,36 +201,26 @@ where C: RaftTypeConfig
         local_committed
     }
 
-    pub(crate) fn do_calculate_local_committed(&mut self) -> Option<LogIdOf<C>> {
-        let cluster_committed = self.cluster_committed.value()?.clone();
-        let accepted = self.log_progress.accepted()?.clone();
+    fn do_calculate_local_committed(&self) -> Option<LogIdOf<C>> {
+        let cluster_committed = self.cluster_committed.value()?;
+        let accepted = self.log_progress.accepted()?;
 
-        let cluster_committed_vote = cluster_committed.to_committed_vote();
-        let cluster_committed_vote = cluster_committed_vote.committed_leader_id();
+        let reporting_leader_id = cluster_committed.committed_vote().committed_leader_id();
         let committed_log_id = cluster_committed.last_log_id()?;
-        let committed_log_vote = committed_log_id.committed_leader_id().clone();
+        let committed_log_leader_id = committed_log_id.committed_leader_id();
 
         // Normally, the committed log ID's vote never exceeds the vote carried by LogIOId.
         // Take their maximum to guard against mistakes such as a stale stream pairing an old vote
         // with a newer commit, which could otherwise apply an overwritten entry.
-        let cluster_committed_vote = std::cmp::max(cluster_committed_vote, committed_log_vote);
-        let accepted_vote = accepted.to_committed_vote()?;
-        let accepted_vote = accepted_vote.committed_leader_id();
+        let required_leader_id = std::cmp::max(&reporting_leader_id, committed_log_leader_id);
+        let accepted_leader_id = accepted.committed_leader_id()?;
 
-        // If accepted_vote is smaller than the cluster_committed_vote,
-        // There may be inflight RPC that might truncate a committed log entry(and then re-append it).
-        // Thus, the state machine may not be able to read a log entry even it is smaller than the committed
-        // log id.
-        //
-        // A committed log id will always be seen by future leader.
-        // Thus, once accepted_vote is greater than the cluster_committed_vote, all enqueued IO won't
-        // truncate any log entries smaller than the committed, thus it is safe to apply them to the
-        // state machine.
-        if accepted_vote >= cluster_committed_vote {
-            std::cmp::min(
-                accepted.last_log_id().cloned(),
-                cluster_committed.last_log_id().cloned(),
-            )
+        // Below the required leader ID, an in-flight RPC may truncate and re-append entries
+        // before the state machine can read them. Once the accepted leader ID reaches both
+        // bounds, enqueued I/O cannot truncate the committed prefix.
+        if &accepted_leader_id >= required_leader_id {
+            let accepted_log_id = accepted.last_log_id()?;
+            Some(std::cmp::min(accepted_log_id, committed_log_id).clone())
         } else {
             None
         }

@@ -137,17 +137,8 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Return the CommittedVote that represent a leader, if it contains.
-    pub(crate) fn to_committed_vote(&self) -> Option<CommittedVoteOf<C>> {
-        match self {
-            Self::Vote(_) => None,
-            Self::Log(log_io_id) => Some(log_io_id.to_committed_vote()),
-        }
-    }
-
     /// Return the `CommittedLeaderId` if the io progress is submitted by a committed(established)
     /// leader.
-    #[allow(dead_code)]
     pub(crate) fn committed_leader_id(&self) -> Option<CommittedLeaderIdOf<C>> {
         match self {
             Self::Vote(_) => None,

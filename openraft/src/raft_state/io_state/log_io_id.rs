@@ -56,13 +56,8 @@ where C: RaftTypeConfig
         Self { committed_vote, log_id }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn committed_vote(&self) -> &CommittedVoteOf<C> {
         &self.committed_vote
-    }
-
-    pub(crate) fn to_committed_vote(&self) -> CommittedVoteOf<C> {
-        self.committed_vote.clone()
     }
 
     pub(crate) fn leader_id(&self) -> &LeaderIdOf<C> {
