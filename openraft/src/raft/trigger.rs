@@ -137,9 +137,15 @@ where C: RaftTypeConfig
     /// By default, this also resets the target's active replication backoff. Set
     /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
     ///
-    /// While the transfer is in progress, this node forwards client requests to `to`. If `to` has
-    /// not taken over within an election timeout, this node steps down and starts an election,
-    /// which it may win again.
+    /// While the transfer is in progress, this node forwards client requests to `to`. If the
+    /// transfer times out, this node attempts to regain leadership only if
+    /// [automatic elections](field@crate::Config::enable_elect) are enabled, it can campaign under
+    /// its effective or committed membership, and its own election deadline is due. The attempt
+    /// may start with Pre-Vote when enabled.
+    ///
+    /// The transfer timeout alone does not make this node step down or restore service. With
+    /// automatic elections disabled on this node, it can keep forwarding to `to` after the
+    /// timeout, even if `to` is unavailable.
     ///
     /// It returns once the request is queued, not when `to` has taken over. To learn the outcome,
     /// wait on the metrics; see

@@ -42,11 +42,18 @@ The manual triggers work whatever `enable_elect` says:
 
 ## Handing over leadership
 
-[`Trigger::transfer_leader()`] returns once the leader has queued the request.
-It does not report whether the target took over. The target campaigns only
-when its log holds everything the leader had when it sent the request. If the
-target has not taken over within an election timeout, the old leader steps
-down and campaigns, and may win again.
+[`Trigger::transfer_leader()`] returns once the request is queued, not when
+leadership changes. The target campaigns only when its log holds everything
+the leader had when it sent the request.
+
+If the transfer times out, the old leader can try to regain leadership only
+when its automatic elections are enabled, its effective or committed
+membership allows it to campaign, and its own election deadline is due. With
+Pre-Vote enabled, it may start with a Pre-Vote round instead of a real
+election. The transfer timeout alone does not make the old leader step down
+or restore service. For example, if automatic elections are disabled on the
+old leader, it can keep forwarding client requests to an unavailable target
+after the timeout.
 
 To learn the outcome, wait on the metrics and look at who leads. For example,
 on the old leader `my_id`:
@@ -54,7 +61,7 @@ on the old leader `my_id`:
 ```ignore
 raft.trigger().transfer_leader(to).await?;
 
-// Allow the target an election timeout, and the old leader's own election after it.
+// Bound how long to watch the metrics; this is not a deadline for the handover.
 let timeout = Duration::from_millis(raft.config().election_timeout_max * 2);
 let moved = raft
     .wait(Some(timeout))
@@ -67,7 +74,7 @@ let moved = raft
 match moved {
     Ok(m) if m.current_leader == Some(to) => { /* the target leads */ }
     Ok(m) => { /* another node, m.current_leader, leads */ }
-    Err(WaitError::Timeout(..)) => { /* this node still leads, or no leader is known */ }
+    Err(WaitError::Timeout(..)) => { /* no different leader was observed */ }
     Err(e) => return Err(e.into()),
 }
 ```
