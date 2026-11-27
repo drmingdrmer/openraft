@@ -925,7 +925,11 @@ log entries, `Membership`, `StoredMembership`, `Vote`, `LeaderId`,
 reading, so snapshots stored by 0.9 load in 0.10 and the other way around,
 under named and positional formats such as `bincode` and `postcard` alike.
 The standard `LeaderId` still encodes `voted_for` as an `Option`, and rejects
-a stored `None`.
+a stored `None`. With JSON, a custom node ID that encodes as `null` cannot be
+distinguished from that historical no-candidate vote. Use a non-null encoding
+such as `"node-1"` or an externally tagged `{"only":null}`. Since 0.10.2,
+[`leader_id_std::LeaderId`] rejects top-level unit, `None` and non-finite
+float encodings on write, even in formats that tag `Option`.
 
 Between 0.9 and 0.10 peers, `AppendEntriesRequest`, `AppendEntriesResponse`,
 `VoteResponse`, snapshot metadata and the v1 `InstallSnapshotRequest` keep

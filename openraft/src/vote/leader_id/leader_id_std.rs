@@ -13,12 +13,19 @@ use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 
+#[cfg(feature = "serde")]
+mod non_null;
+
 /// ID of a `leader`, enforcing a single leader per term.
 ///
 /// It includes the `term` and the `node_id`.
 ///
 /// Raft specifies that in a term there is at most one leader, thus Leader ID is partially order as
 /// defined below.
+#[since(
+    version = "0.10.2",
+    change = "reject null-like node IDs when serializing `voted_for`"
+)]
 #[since(version = "0.10.0", change = "`voted_for` from `Option<NID>` to `NID`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -35,6 +42,14 @@ where
     /// A `LeaderId` always votes for a node, thus this field is not an `Option`. It is still
     /// serialized as `Option<NID>`, to keep the encoding identical to openraft-0.9 and earlier, in
     /// which this field was an `Option`. A `None` is rejected when decoding.
+    ///
+    /// Use a non-null encoding for the node ID, such as a string (`"node-1"`) or an externally
+    /// tagged variant (`{"only":null}`). Formats such as JSON encode `Some(null)` and `None`
+    /// identically. Because Serde does not say whether a format distinguishes them, serialization
+    /// rejects IDs that serialize as unit or `None` (including through newtypes or `Some`), even
+    /// in formats such as bincode that tag the outer `Option`. Non-finite floats are also rejected
+    /// because JSON encodes them as `null`. Custom encodings must likewise keep the ID distinct
+    /// from an absent vote.
     #[cfg_attr(feature = "serde", serde(with = "serde_voted_for"))]
     pub voted_for: NID,
 }
@@ -44,8 +59,8 @@ where
 ///
 /// Self-describing formats such as JSON encode `Some(x)` the same as `x`, but tagged formats such
 /// as bincode prefix `Option` with a discriminant byte. Keeping the `Option` in the encoding makes
-/// the on-disk data identical in either kind of format, so no data migration is required, and a
-/// binary of an earlier version still decodes data written by this version.
+/// the on-disk data identical for supported node IDs, so binaries of earlier versions still
+/// decode votes written by this version.
 #[cfg(feature = "serde")]
 mod serde_voted_for {
     use serde::Deserialize;
@@ -53,12 +68,14 @@ mod serde_voted_for {
     use serde::Serialize;
     use serde::Serializer;
 
+    use super::non_null::NonNull;
+
     pub(super) fn serialize<S, NID>(voted_for: &NID, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
         NID: Serialize,
     {
-        Some(voted_for).serialize(serializer)
+        serializer.serialize_some(&NonNull(voted_for))
     }
 
     pub(super) fn deserialize<'de, D, NID>(deserializer: D) -> Result<NID, D::Error>
