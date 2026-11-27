@@ -10,19 +10,25 @@ use crate::type_config::alias::LogIdOf;
 
 /// Tracks metadata for a single in-flight AppendEntries request.
 ///
-/// Used by [`InflightAppendQueue`](`super::inflight_append_queue::InflightAppendQueue`)
-/// to correlate log progress with sending times and measure round-trip time.
+/// [`InflightAppendQueue`] uses the log boundaries to attribute acknowledgements and conflicts
+/// to conservative sending times. These times feed the leader clock, which the leader uses to
+/// check its lease and determine whether pending reads are fresh enough to complete.
+/// See [`InflightAppendQueue::drain_acked`] for the shared-boundary policy.
+///
+/// [`InflightAppendQueue`]: super::inflight_append_queue::InflightAppendQueue
+/// [`InflightAppendQueue::drain_acked`]: super::inflight_append_queue::InflightAppendQueue::drain_acked
 #[derive(Debug, Clone)]
 pub(crate) struct InflightAppend<C>
 where C: RaftTypeConfig
 {
-    /// The time when the AppendEntries request was created.
+    /// The time captured when the request is enqueued, before it is yielded to the transport.
     pub(crate) sending_time: InstantOf<C>,
 
     /// The log id immediately before the entries in this request.
     pub(crate) prev_log_id: Option<LogIdOf<C>>,
 
-    /// The last log id included in this request.
+    /// The log id of the last entry, or `prev_log_id` if the request is empty.
+    /// Both endpoints are `None` if the request is empty and has no preceding log id.
     pub(crate) last_log_id: Option<LogIdOf<C>>,
 }
 

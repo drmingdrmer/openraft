@@ -25,7 +25,7 @@ where
     /// Shared state for generating the next request.
     pub(crate) stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
-    /// Tracks in-flight requests for RTT measurement.
+    /// Tracks in-flight requests to infer conservative sending times for the leader clock.
     pub(crate) inflight_append_queue: Arc<Mutex<InflightAppendQueue<C>>>,
 
     /// Fatal error found while generating the request stream.

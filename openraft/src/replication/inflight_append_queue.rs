@@ -7,7 +7,7 @@ use crate::replication::inflight_append::InflightAppend;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 
-/// A queue tracking in-flight AppendEntries requests for measuring replication latency.
+/// Attributes AppendEntries responses to conservative sending times for leader clock progress.
 ///
 /// Fully acknowledged requests are removed from the pending queue. The last
 /// popped log boundary retains its earliest sending time, so delayed responses
