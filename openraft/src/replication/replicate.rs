@@ -8,22 +8,23 @@ use crate::progress::inflight_id::InflightId;
 use crate::replication::payload::Payload;
 use crate::type_config::alias::LogIdOf;
 
-/// A replication data request containing log entries to send.
+/// A leader-local instruction to probe for a matching point, stream logs, or clear a plan.
 ///
-/// Each request has a corresponding `Inflight` record on the leader, identified by an
-/// `InflightId`. The follower's response carries the same `InflightId` so the leader can
-/// match the response to the correct inflight state.
+/// A log-stream plan can span multiple network requests. The replication task attaches the
+/// instruction's `InflightId` to local progress notifications to RaftCore or, for a clear, to a
+/// separate confirmation. The ID is not sent to the follower.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub(crate) struct Replicate<C>
 where C: RaftTypeConfig
 {
-    /// Identifies this inflight request for matching with responses.
+    /// Identifies this instruction in notifications to RaftCore.
     pub(crate) inflight_id: InflightId,
 
-    /// Specifies which logs to replicate.
+    /// Specifies which logs to probe or stream.
     ///
-    /// `None` clears the plan the replication task ran before: the task stops reading the log for
-    /// it and confirms that to RaftCore with `inflight_id`, see
+    /// `None` clears the previous plan. The replication task confirms the clear only once it no
+    /// longer reads logs for that plan. RaftCore waits for the confirmation before purging logs
+    /// the plan could read; see
     /// [`Command::ClearReplicate`](crate::engine::Command::ClearReplicate).
     pub(crate) payload: Option<Payload<C>>,
 }
