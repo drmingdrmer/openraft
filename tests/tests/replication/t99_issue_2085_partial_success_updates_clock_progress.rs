@@ -24,6 +24,10 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn partial_success_updates_clock_progress() -> Result<()> {
+    check_partial_success_clock_progress().await
+}
+
+async fn check_partial_success_clock_progress() -> Result<()> {
     let config = Config {
         enable_tick: false,
         enable_elect: false,
