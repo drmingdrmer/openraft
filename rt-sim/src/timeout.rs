@@ -56,3 +56,30 @@ where T: Future
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use openraft_rt::AsyncRuntime;
+    use openraft_rt::Instant;
+
+    use crate::SimInstant;
+    use crate::SimRuntime;
+
+    #[test]
+    fn inner_future_wins_at_deadline() {
+        let mut rt = SimRuntime::with_seed(0);
+        rt.block_on(async {
+            let deadline = SimInstant::now() + Duration::from_millis(10);
+            let result = SimRuntime::timeout_at(deadline, async {
+                SimRuntime::sleep_until(deadline).await;
+                42
+            })
+            .await;
+
+            assert_eq!(result, Ok(42));
+            assert_eq!(SimInstant::now(), deadline);
+        });
+    }
+}
