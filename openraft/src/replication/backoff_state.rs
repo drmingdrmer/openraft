@@ -120,15 +120,35 @@ mod tests {
     #[test]
     fn on_error_accumulates_rank_and_reconcile_enables_backoff() {
         let mut state = BackoffState::new();
-        assert!(!state.is_enabled());
-        assert_eq!(state.rank(), 0);
 
-        // An `Unreachable` error contributes weight 100, which exceeds the threshold.
-        state.on_error(100);
-        state.reconcile(make_test_backoff);
+        tracing::info!("Keep backoff disabled from rank 0 through rank 20");
+        {
+            let rank = state.rank();
+            let enabled = state.is_enabled();
+            assert_eq!(rank, 0);
+            assert!(!enabled);
 
-        assert!(state.is_enabled(), "backoff should be enabled after error > threshold");
-        assert_eq!(state.rank(), 100);
+            for expected_rank in (2..=20).step_by(2) {
+                state.on_error(2);
+                state.reconcile(make_test_backoff);
+
+                let rank = state.rank();
+                let enabled = state.is_enabled();
+                assert_eq!(rank, expected_rank);
+                assert!(!enabled, "backoff must stay disabled at rank {rank}");
+            }
+        }
+
+        tracing::info!("Enable backoff when the eleventh error raises the rank to 22");
+        {
+            state.on_error(2);
+            state.reconcile(make_test_backoff);
+
+            let rank = state.rank();
+            let enabled = state.is_enabled();
+            assert_eq!(rank, 22);
+            assert!(enabled, "backoff must be enabled at rank {rank}");
+        }
     }
 
     /// Reproduces issue #1723.
