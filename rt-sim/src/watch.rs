@@ -294,3 +294,53 @@ impl<T> Drop for Changed<'_, T> {
         self.deregister();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::future::Future;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::task::Context;
+    use std::task::Wake;
+    use std::task::Waker;
+
+    use openraft_rt::watch::Watch;
+    use openraft_rt::watch::WatchReceiver;
+    use openraft_rt::watch::WatchSender;
+
+    use super::SimWatch;
+
+    struct RecordWake {
+        id: usize,
+        order: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl Wake for RecordWake {
+        fn wake(self: Arc<Self>) {
+            self.order.lock().unwrap().push(self.id);
+        }
+    }
+
+    #[test]
+    fn wakes_in_registration_order_after_cancellation() {
+        let (tx, rx) = SimWatch::channel(0);
+        let mut receivers = [rx.clone(), rx.clone(), rx];
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let mut pending = Vec::new();
+        for (id, receiver) in receivers.iter_mut().enumerate() {
+            let waker = Waker::from(Arc::new(RecordWake {
+                id,
+                order: order.clone(),
+            }));
+            let mut changed = Box::pin(receiver.changed());
+            assert!(changed.as_mut().poll(&mut Context::from_waker(&waker)).is_pending());
+            pending.push(changed);
+        }
+
+        drop(pending.remove(1));
+        assert!(order.lock().unwrap().is_empty());
+
+        tx.send(1).unwrap();
+        assert_eq!(*order.lock().unwrap(), [0, 2]);
+    }
+}
