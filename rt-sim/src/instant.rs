@@ -37,7 +37,8 @@ impl SimInstant {
 
 impl fmt::Debug for SimInstant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SimInstant({}ns)", self.0 - executor::EPOCH_NANOS.min(self.0))
+        let offset = i128::from(self.0) - i128::from(executor::EPOCH_NANOS);
+        write!(f, "SimInstant({offset}ns)")
     }
 }
 
@@ -106,6 +107,23 @@ mod tests {
     use openraft_rt::Instant;
 
     use super::SimInstant;
+    use crate::executor::EPOCH_NANOS;
+
+    #[test]
+    fn debug_shows_signed_offset_from_epoch() {
+        let epoch = SimInstant(EPOCH_NANOS);
+        let one_ns = Duration::from_nanos(1);
+        let before = epoch - one_ns;
+        let earlier = before - one_ns;
+
+        assert_eq!(format!("{earlier:?}"), "SimInstant(-2ns)");
+        assert_eq!(format!("{before:?}"), "SimInstant(-1ns)");
+        assert_eq!(format!("{epoch:?}"), "SimInstant(0ns)");
+        assert_eq!(format!("{:?}", epoch + one_ns), "SimInstant(1ns)");
+
+        assert_eq!(earlier.elapsed_since_start(), Duration::ZERO);
+        assert_eq!(before.elapsed_since_start(), Duration::ZERO);
+    }
 
     /// The checked shifts reach both ends of the `u64` nanosecond range and return `None` one
     /// nanosecond beyond them, including for a duration that has more nanoseconds than a `u64`.
