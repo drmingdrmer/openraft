@@ -31,6 +31,7 @@ pub(crate) struct State {
     pub(super) seed: u64,
     rng_draws: u64,
 
+    /// Polls since the clock last advanced or the current `block_on` started, whichever is later.
     pub(super) polls_at_instant: u64,
     /// Whether events are recorded; formatting every poll is too costly to leave on by default.
     pub(super) record: bool,
@@ -147,4 +148,54 @@ fn splitmix64(seed: u64) -> u64 {
     let z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
     let z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
     z ^ (z >> 31)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::poll_fn;
+    use std::future::ready;
+    use std::task::Poll;
+
+    use super::MAX_POLLS_PER_INSTANT;
+    use crate::executor::Shared;
+    use crate::executor::block_on;
+
+    #[test]
+    fn completed_root_runs_do_not_share_a_poll_allowance() {
+        let shared = Shared::new(0);
+        #[cfg(feature = "sim-log")]
+        tracing::info!(
+            runs = MAX_POLLS_PER_INSTANT + 1,
+            "Complete root runs without advancing time"
+        );
+        {
+            for _ in 0..=MAX_POLLS_PER_INSTANT {
+                block_on(&shared, ready(()));
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "a task is busy-looping")]
+    fn one_root_run_still_panics_on_a_busy_loop() {
+        let shared = Shared::new(0);
+        #[cfg(feature = "sim-log")]
+        tracing::info!(
+            MAX_POLLS_PER_INSTANT,
+            "Wake a pending root on every poll until the guard trips"
+        );
+        {
+            let mut polls = 0;
+            let busy_loop = poll_fn(|cx| {
+                polls += 1;
+                assert!(
+                    polls <= MAX_POLLS_PER_INSTANT,
+                    "the poll allowance did not stop the run"
+                );
+                cx.waker().wake_by_ref();
+                Poll::<()>::Pending
+            });
+            block_on(&shared, busy_loop);
+        }
+    }
 }

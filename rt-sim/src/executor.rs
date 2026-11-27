@@ -60,6 +60,7 @@ where F: Future {
     {
         let mut st = shared.lock();
         st.current = None;
+        st.polls_at_instant = 0;
         st.trace(|_| "block_on".to_string());
         st.enqueue(MAIN_TASK);
     }
