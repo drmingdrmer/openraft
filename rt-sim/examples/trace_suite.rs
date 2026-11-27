@@ -1,13 +1,20 @@
 //! Prints the scheduling trace of the conformance suite on one `SimRuntime`, then runs
 //! `DetsimSuite`.
 //!
-//! Run it twice in separate processes and compare, including the `DetsimSuite` runtimes:
+//! From the repository root, run the example in two separate processes and compare both
+//! traces. Use a fresh directory for each comparison because runtime-drop traces are appended.
 //!
-//! ```text
-//! OPENRAFT_RT_SIM_TRACE=/tmp/a-detsim.log cargo run --example trace_suite > /tmp/a-suite.log
-//! OPENRAFT_RT_SIM_TRACE=/tmp/b-detsim.log cargo run --example trace_suite > /tmp/b-suite.log
-//! diff /tmp/a-suite.log /tmp/b-suite.log && diff /tmp/a-detsim.log /tmp/b-detsim.log
+//! ```sh
+//! trace_dir=$(mktemp -d) &&
+//!     OPENRAFT_RT_SIM_TRACE="$trace_dir/a-detsim.log" \
+//!         cargo run --manifest-path rt-sim/Cargo.toml --example trace_suite > "$trace_dir/a-suite.log" &&
+//!     OPENRAFT_RT_SIM_TRACE="$trace_dir/b-detsim.log" \
+//!         cargo run --manifest-path rt-sim/Cargo.toml --example trace_suite > "$trace_dir/b-suite.log" &&
+//!     diff "$trace_dir/a-suite.log" "$trace_dir/b-suite.log" &&
+//!     diff "$trace_dir/a-detsim.log" "$trace_dir/b-detsim.log"
 //! ```
+//!
+//! The logs remain in `$trace_dir` for inspection.
 
 use openraft_rt::testing::DetsimSuite;
 use openraft_rt::testing::Suite;
