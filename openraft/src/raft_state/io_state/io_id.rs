@@ -16,15 +16,19 @@ use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 use crate::vote::ref_vote::RefVote;
 
-/// Uniquely identifies a monotonic increasing I/O operation to [`RaftLogStorage`].
+/// A cumulative progress boundary for vote and log I/O.
 ///
-/// Includes only IOs that make progress: [`save_vote()`] and [`append()`].
-/// Operations like [`purge()`] and [`truncate_after()`] are excluded as they remove logs.
+/// The progress stage that records the boundary determines whether it has been accepted,
+/// submitted, or completed. Constructing an `IOId` does not imply persistence.
+///
+/// In addition to tracking [`save_vote()`] and [`append()`], these boundaries initialize
+/// progress from a recovered vote, track matching log entries under a new vote without
+/// another storage write, and track snapshot installation.
+/// [`purge()`] and [`truncate_after()`] are not part of this progress sequence.
 ///
 /// For details on when to use `IOId` vs [`LogIOId`], see: [`IOId`
 /// documentation](crate::docs::data::io_id).
 ///
-/// [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
 /// [`save_vote()`]: `crate::storage::RaftLogStorage::save_vote()`
 /// [`append()`]: `crate::storage::RaftLogStorage::append()`
 /// [`truncate_after()`]: `crate::storage::RaftLogStorage::truncate_after()`
@@ -35,10 +39,13 @@ use crate::vote::ref_vote::RefVote;
 pub(crate) enum IOId<C>
 where C: RaftTypeConfig
 {
-    /// Saving a non-committed vote, this kind of IO is not related to any log entries.
+    /// A pending (uncommitted) vote with no log coverage.
     Vote(UncommittedVoteOf<C>),
 
-    /// Saving log entries by a Leader, which is identified by a committed vote.
+    /// A committed vote with optional log coverage through the given last log ID.
+    ///
+    /// A `None` endpoint, as when saving only the committed vote, covers no log entries
+    /// in this boundary. It does not mean the log is empty.
     Log(LogIOId<C>),
 }
 
