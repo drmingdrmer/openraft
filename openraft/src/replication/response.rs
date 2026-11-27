@@ -7,25 +7,22 @@ use crate::RaftTypeConfig;
 use crate::raft::ConflictHint;
 use crate::type_config::alias::LogIdOf;
 
-/// The response of replication command.
+/// A log or snapshot replication outcome, or a conflict reported by the heartbeat worker.
 ///
-/// Update the `matched` log id of a replication target.
-/// Sent by a replication task `ReplicationCore`.
+/// [`Notification::ReplicationProgress`] carries the stream ID and optional inflight ID.
+/// Leader-clock updates use the request's send time carried separately by
+/// [`Notification::HeartbeatProgress`].
+///
+/// [`Notification::ReplicationProgress`]: crate::core::notification::Notification::ReplicationProgress
+/// [`Notification::HeartbeatProgress`]: crate::core::notification::Notification::HeartbeatProgress
 #[derive(Debug, Clone)]
 pub(crate) struct Progress<C>
 where C: RaftTypeConfig
 {
-    /// The ID of the target node for which the match index is to be updated.
+    /// The ID of the replication target.
     pub(crate) target: C::NodeId,
 
-    /// The request by this leader has been successfully handled by the target node
-    /// or an error in string.
-    ///
-    /// A successful result can still be log matching or log conflicting.
-    /// In either case, the request is considered accepted, i.e., this leader is still valid to
-    /// the target node.
-    ///
-    /// The result also tracks the time when this request is sent.
+    /// `Ok` carries a matching or conflict result; `Err` carries a worker-reported error string.
     pub(crate) result: Result<ReplicationResult<C>, String>,
 
     /// Optional search guidance accompanying a conflict, never a durable acknowledgement.
@@ -45,9 +42,10 @@ where C: RaftTypeConfig
     }
 }
 
-/// Result of an append-entries replication
+/// The target's matching log boundary or conflict.
 ///
-/// Ok for matching, Err for conflict.
+/// `Ok(Some(log_id))` acknowledges the prefix through that log ID, and `Ok(None)` acknowledges
+/// an empty prefix. `Err(log_id)` identifies the leader's log ID that the target rejected.
 #[derive(Clone, Debug)]
 pub(crate) struct ReplicationResult<C: RaftTypeConfig>(pub(crate) Result<Option<LogIdOf<C>>, LogIdOf<C>>);
 
