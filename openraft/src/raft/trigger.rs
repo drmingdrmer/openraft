@@ -211,31 +211,29 @@ where C: RaftTypeConfig
         self.raft_inner.send_external_command(ExternalCommand::ResetBackoff { to }).await
     }
 
-    /// Request the RaftCore to allow to reset replication for a specific node when log revert is
-    /// detected.
+    /// Set or clear the current leader's one-shot permission to reset replication progress for
+    /// `to` when it detects log reversion.
     ///
-    /// - `allow=true`: This method instructs the RaftCore to allow the target node's log to revert
-    ///   to a previous state for one time.
-    /// - `allow=false`: This method instructs the RaftCore to panic if the target node's log revert
+    /// Passing `allow = true` sets the permission; `allow = false` clears it. Neither value
+    /// resets progress immediately. The permission belongs to the current leader's progress
+    /// entry for `to` and does not carry across leadership changes.
     ///
-    /// This method returns a [`Fatal`] error if it failed to send the request to RaftCore, e.g.,
-    /// when RaftCore is shut down.
-    /// Otherwise, it returns an `Ok(Result<_,_>)`, the inner result is:
-    /// - `Ok(())` if the request is successfully processed,
-    /// - or `Err(AllowNextRevertError)` explaining why the request is rejected.
+    /// If a later conflict shows that `to` no longer holds a previously matched log entry, the
+    /// leader can reset progress and search again for a matching entry. The reset clears the
+    /// one-shot permission; a conflict that does not cause a reset leaves it in place.
+    /// [`Config::allow_log_reversion`] permits resets even when `allow = false`. Without either
+    /// permission, the leader does not reset progress, and the reversion fails a debug assertion
+    /// in builds with debug assertions enabled.
     ///
-    /// ### Behavior
+    /// ### Result
     ///
-    /// - If this node is the Leader, it will attempt to replicate logs to the target node from the
-    ///   beginning.
-    /// - If this node is not the Leader, the request is ignored.
-    /// - If the target node is not found, the request is ignored.
+    /// The outer [`Fatal`] error means that sending the request or receiving the response
+    /// failed. Otherwise, the inner result reports what happened when RaftCore handled the
+    /// request:
     ///
-    /// ### Automatic Replication Reset
-    ///
-    /// When the [`Config::allow_log_reversion`] is enabled, the Leader automatically
-    /// resets replication if it detects that the target node's log has reverted. This
-    /// feature is primarily useful in testing environments.
+    /// - `Ok(())`: Only the permission was updated. This does not acknowledge a reset or recovery.
+    /// - [`AllowNextRevertError::ForwardToLeader`]: This node was not the leader.
+    /// - [`AllowNextRevertError::NodeNotFound`]: `to` had no replication progress entry.
     ///
     /// ### Production Considerations
     ///
