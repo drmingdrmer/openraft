@@ -1,14 +1,16 @@
-//! A reproducible tracing log, written when `OPENRAFT_SIM_LOG` names a file.
+//! A tracing log for comparing simulation runs, written when `OPENRAFT_SIM_LOG` names a file.
 //!
 //! A regular log is stamped with the wall clock and the thread id, so no two runs match. While
 //! [`block_on`](crate::SimRuntime) runs, this module routes the events of its thread to a file
 //! instead, through a thread-local default subscriber: each event is stamped with virtual time,
 //! thread and span ids are left out, and the wall-clock rendering of instants is masked
-//! (`DisplayInstant` converts through `SystemTime::now()`). Two runs with the same seed write the
-//! same file.
+//! (`DisplayInstant` converts through `SystemTime::now()`).
 //!
 //! The level comes from `RUST_LOG`, and defaults to `DEBUG`. Every runtime in the process appends
-//! to the same file, which is truncated when the first one starts.
+//! to the same file, which is truncated when the first one starts. Concurrent tests can interleave
+//! events in different orders even with the same seed. For byte-for-byte comparisons, keep the
+//! seed and log settings fixed and run tests serially (`--test-threads=1`), or run each test in its
+//! own process with a distinct `OPENRAFT_SIM_LOG` path.
 
 use std::fmt::Write as _;
 use std::fs::File;
