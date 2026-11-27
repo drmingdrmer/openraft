@@ -7,25 +7,25 @@ use crate::RaftTypeConfig;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
 
-/// Uniquely identifies a replication session.
+/// Identifies the leader and effective membership when a heartbeat command is queued.
 ///
-/// A replication session represents a set of replication streams from a leader to its followers.
-/// For example, in a cluster of 3 nodes where node-1 is the leader, it maintains replication
-/// streams to nodes {2,3}.
+/// Before dispatching heartbeat events, the core checks that it is still the leader and that
+/// both fields match its current state. Appending a new membership changes the effective log ID
+/// before the membership is committed, invalidating commands queued with the previous ID.
 ///
-/// A replication session is uniquely identified by the leader's vote and the membership
-/// configuration. When either changes, a new replication session is created.
+/// A [`StreamId`] instead identifies a target's progress entry for its lifetime, which can span
+/// effective membership changes.
 ///
-/// See: [ReplicationSession](crate::docs::data::replication_session)
+/// [`StreamId`]: crate::progress::stream_id::StreamId
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct ReplicationSessionId<C>
 where C: RaftTypeConfig
 {
-    /// The Leader or Candidate this replication belongs to.
+    /// The established leader's committed vote.
     pub(crate) leader_vote: CommittedVoteOf<C>,
 
-    /// The log id of the membership log this replication works for.
+    /// The log ID of the effective membership, which need not be committed.
     pub(crate) membership_log_id: Option<LogIdOf<C>>,
 }
 
