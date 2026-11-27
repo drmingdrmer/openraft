@@ -6,7 +6,7 @@ macro_rules! impl_raft_term_infallible {
         $(
             impl RaftTerm for $t {
                 fn next(&self) -> Self {
-                    self + 1
+                    self.checked_add(1).expect("Raft term exhausted")
                 }
 
                 fn as_u64(&self) -> Option<u64> {
@@ -23,7 +23,7 @@ macro_rules! impl_raft_term_fallible {
         $(
             impl RaftTerm for $t {
                 fn next(&self) -> Self {
-                    self + 1
+                    self.checked_add(1).expect("Raft term exhausted")
                 }
 
                 fn as_u64(&self) -> Option<u64> {
@@ -63,7 +63,20 @@ mod tests {
         assert_eq!(i64::default().next(), 1_i64);
 
         // Test boundary cases
-        assert_eq!(254_u8.next(), 255_u8);
+        assert_eq!((u8::MAX - 1).next(), u8::MAX);
+        assert_eq!((i8::MAX - 1).next(), i8::MAX);
+    }
+
+    #[test]
+    #[should_panic(expected = "Raft term exhausted")]
+    fn test_raft_term_u8_panics_at_max() {
+        u8::MAX.next();
+    }
+
+    #[test]
+    #[should_panic(expected = "Raft term exhausted")]
+    fn test_raft_term_i8_panics_at_max() {
+        i8::MAX.next();
     }
 
     #[test]
