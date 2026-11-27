@@ -1,7 +1,11 @@
+use std::collections::BTreeSet;
+use std::pin::pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
+use openraft::Raft;
 use openraft::ServerState;
 use openraft::StepDownPolicy;
 use openraft::Vote;
@@ -15,8 +19,128 @@ use openraft_memstore::TypeConfig;
 use crate::fixtures::MemRaft;
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::WAIT_TIMEOUT;
 use crate::fixtures::events::Events;
 use crate::fixtures::ut_harness;
+
+/// A retried close waits for the callback that was active when the first close was dropped.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn watch_close_retry_waits_for_active_callback() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- bring up a single-node cluster");
+    let log_index = router.new_cluster([0], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+    let events = Events::default();
+    let (release_tx, release_rx) = TypeConfig::watch_channel(false);
+
+    tracing::info!(log_index, "--- register a callback that waits for the release gate");
+    let mut handle = {
+        let callbacks = events.clone();
+        let handle = n0.on_cluster_leader_change(move |_old, (leader_id, _committed)| {
+            let term = leader_id.term();
+            let callbacks = callbacks.clone();
+            let mut release = release_rx.clone();
+            async move {
+                callbacks.push(("started", term));
+                if release.wait_until_ge(&true).await.is_ok() {
+                    callbacks.push(("finished", term));
+                }
+            }
+        });
+        assert_eq!(vec![("started", 1)], events.wait(1).await?);
+        handle
+    };
+
+    tracing::info!("--- poll a close once and drop it while the callback is pending");
+    {
+        let mut close = pin!(handle.close());
+        assert!(futures::poll!(close.as_mut()).is_pending());
+    }
+
+    tracing::info!("--- retry close: it must still wait until the callback finishes");
+    {
+        let mut retry = pin!(handle.close());
+        assert!(
+            futures::poll!(retry.as_mut()).is_pending(),
+            "retry must wait for the callback"
+        );
+        release_tx.send(true)?;
+        TypeConfig::timeout(WAIT_TIMEOUT, retry).await?;
+        assert_eq!(vec![("started", 1), ("finished", 1)], events.get());
+    }
+
+    tracing::info!("--- close again after the watcher has finished");
+    {
+        let mut close = pin!(handle.close());
+        assert!(futures::poll!(close.as_mut()).is_ready());
+    }
+
+    Ok(())
+}
+
+/// Closing a watch before its first vote or between votes stops all later callbacks.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn watch_close_stops_callbacks_before_and_between_votes() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config.clone())?;
+
+    tracing::info!("--- build node-0 without running it so no vote has been published");
+    let (log_store, sm) = router.new_store();
+    let n0 = Raft::build(0, Arc::new(config), router, log_store, sm).await?;
+
+    let before_run = Events::default();
+    tracing::info!("--- close the first watcher before node-0 publishes its initial vote");
+    let _closed_before_run = {
+        let events = before_run.clone();
+        let mut handle = n0.on_cluster_leader_change(move |_old, (leader_id, _committed)| {
+            events.push(leader_id.term());
+            async {}
+        });
+        TypeConfig::timeout(WAIT_TIMEOUT, handle.close()).await?;
+        handle
+    };
+
+    let before_init = Events::default();
+    tracing::info!("--- run node-0, watch the default vote, then close with no new vote pending");
+    let _closed_before_init = {
+        n0.run();
+        let events = before_init.clone();
+        let mut handle = n0.on_cluster_leader_change(move |_old, (leader_id, _committed)| {
+            events.push(leader_id.term());
+            async {}
+        });
+        assert_eq!(vec![0], before_init.wait(1).await?);
+        TypeConfig::timeout(WAIT_TIMEOUT, handle.close()).await?;
+        handle
+    };
+
+    tracing::info!("--- initialize node-0 and verify neither closed watch reports the vote for term 1");
+    {
+        TypeConfig::timeout(WAIT_TIMEOUT, n0.initialize(BTreeSet::from([0]))).await??;
+        let mut progress = n0.watch_vote_progress();
+        let committed = Some(Vote::new_committed(1, 0));
+        let flushed = TypeConfig::timeout(WAIT_TIMEOUT, progress.wait_until_ge(&committed)).await??;
+        assert_eq!(committed, flushed);
+        assert!(before_run.get().is_empty());
+        assert_eq!(vec![0], before_init.get());
+    }
+
+    Ok(())
+}
 
 /// Test on_cluster_leader_change API with leader switch
 ///
