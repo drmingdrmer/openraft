@@ -81,7 +81,9 @@ where C: RaftTypeConfig
     ///
     /// Keeps the earliest sending time at the last popped boundary. Requests
     /// sharing that boundary are drained without replacing its timestamp.
-    /// Partial acknowledgements use the front pending request's sending time.
+    /// Partial acknowledgements use the front pending request's sending time, including at its
+    /// starting boundary if no retained timestamp applies. The partially acknowledged request
+    /// stays queued.
     /// Returns `None` for progress behind the retained boundary or without a known fully or
     /// partially acknowledged request. Progress beyond all recorded requests defensively returns
     /// the retained time, although such a response violates the transport contract.
@@ -116,7 +118,7 @@ where C: RaftTypeConfig
         }
 
         if let Some(first) = self.queue.front() {
-            let partially_acked = matching > &first.prev_log_id;
+            let partially_acked = matching >= &first.prev_log_id;
             if partially_acked {
                 return Some(first.sending_time);
             }
