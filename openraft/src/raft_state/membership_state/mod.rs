@@ -269,10 +269,15 @@ where
 
     /// Install the membership config carried by a snapshot.
     ///
-    /// A snapshot stores the last membership applied to its state machine, so this membership is
-    /// committed. It updates `self.committed`(the membership state machine), and may also update
-    /// `self.effective`(the last membership log), each only when the snapshot is newer than the
-    /// corresponding local membership.
+    /// Both arguments must describe the same valid snapshot. Its last applied membership is
+    /// committed, and that membership's log index, if present, is at or before
+    /// `snapshot_last_log_index`.
+    ///
+    /// If the local effective membership has no log ID or its index is at or before
+    /// `snapshot_last_log_index`, replace both the committed and effective memberships with the
+    /// snapshot's membership, even if its entry is older than the local effective entry.
+    /// Otherwise, keep the local effective membership and update the committed membership only
+    /// if the snapshot's membership has a greater log ID than the local committed membership.
     pub(crate) fn install_membership_snapshot(
         &mut self,
         membership_snapshot: Arc<StoredMembership<CLID, Mem>>,
