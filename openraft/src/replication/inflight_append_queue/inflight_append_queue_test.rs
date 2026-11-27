@@ -53,20 +53,35 @@ fn test_drain_conflicted() {
 
 #[test]
 fn test_push_preserves_requests() {
-    let mut q = InflightAppendQueue::<UTConfig>::new();
-    let first = Some(log_id(1, 1, 5));
-    let second = Some(log_id(1, 1, 10));
-    q.push(None, first);
-    q.push(first, first);
-    q.push(first, second);
-    let acknowledged = q.drain_acked(&None);
-    assert_eq!(acknowledged, None);
-    let queue = &q.queue;
-    let requests = queue.iter();
-    let log_ids = requests.map(|request| request.last_log_id);
-    let actual = log_ids.collect::<Vec<_>>();
-    let expected = vec![first, first, second];
-    assert_eq!(actual, expected);
+    for prev in [None, Some(log_id(1, 1, 3))] {
+        let mut q = InflightAppendQueue::<UTConfig>::new();
+        let first = Some(log_id(1, 1, 5));
+        let second = Some(log_id(1, 1, 10));
+        q.push(prev, first);
+        q.push(first, first);
+        q.push(first, second);
+        let times = spread_sending_times(&mut q);
+
+        if prev.is_some() {
+            assert_eq!(q.drain_acked(&Some(log_id(1, 1, 2))), None);
+        }
+        let expected = vec![
+            (prev, first, times[0]),
+            (first, first, times[1]),
+            (first, second, times[2]),
+        ];
+        for _ in 0..2 {
+            assert_eq!(q.drain_acked(&prev), Some(times[0]), "prev={prev:?}");
+            assert!(q.last_popped.is_none());
+            let records = q.queue.iter().map(|r| (r.prev_log_id, r.last_log_id, r.sending_time));
+            let actual = records.collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+
+        assert_eq!(q.drain_acked(&first), Some(times[0]));
+        assert_eq!(q.drain_acked(&second), Some(times[2]));
+        assert!(q.is_empty());
+    }
 }
 
 #[test]
