@@ -395,15 +395,15 @@ where C: RaftTypeConfig
         &mut self.io_state
     }
 
-    /// Returns the state of the already happened IO.
+    /// Returns local I/O progress and related bookkeeping.
     ///
-    /// [`RaftState`] stores the expected state when all queued IO are completed,
-    /// which may advance the actual IO state.
+    /// [`IOState`] tracks accepted, submitted, and completed operations for vote and log writes,
+    /// state machine application, snapshots, and log purges. It also tracks reported cluster
+    /// commitment and whether a snapshot build is in progress.
     ///
-    /// [`IOState`] stores the actual state of the storage.
-    ///
-    /// Usually, when a client request is handled, [`RaftState`] is updated and several IO command
-    /// is enqueued. And when the IO commands are completed, [`IOState`] is updated.
+    /// To check completion, consult the corresponding [`flushed()`](IOProgress::flushed) cursor.
+    /// For state machine application, this confirms that the entries were applied, not that they
+    /// were durably persisted.
     pub(crate) fn io_state(&self) -> &IOState<C> {
         &self.io_state
     }
@@ -507,12 +507,17 @@ where C: RaftTypeConfig
         self.is_leading(id) && self.vote.is_committed()
     }
 
-    /// Create a Leader using the state of the local `Acceptor`: `Engine.state`.
+    /// Builds a [`Leader`] from the local acceptor state.
     ///
-    /// This is used when building a Leader without an election,
-    /// for example, node-1 elects node-2 as a Leader, node-2 will become a Leader when receives the
-    /// vote.
-    /// A Leader established with election using the state in `Engine.candidate`.
+    /// This is used by tests and as a fallback in [`VoteHandler::become_leader()`] when the local
+    /// state has a committed vote for this node but no matching `Leader` exists. This builder
+    /// neither runs an election nor checks for a quorum.
+    ///
+    /// In a normal election, [`Candidate::into_leader()`] builds the leader after the candidate
+    /// receives a quorum of votes.
+    ///
+    /// [`VoteHandler::become_leader()`]: crate::engine::handler::vote_handler::VoteHandler::become_leader
+    /// [`Candidate::into_leader()`]: crate::proposer::Candidate::into_leader
     pub(crate) fn new_leader(&mut self) -> Leader<C, WriteQuorumSet<C>> {
         let em = self.membership_state.effective().membership();
 
