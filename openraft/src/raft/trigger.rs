@@ -33,18 +33,27 @@ use crate::type_config::alias::VoteOf;
 ///
 /// # Examples
 ///
-/// Submit a manual election request:
+/// Submit a manual election, heartbeat, snapshot build, or log purge request:
 ///
-/// ```ignore
+/// ```no_run
+/// # use openraft::Raft;
+/// # use openraft::RaftTypeConfig;
+/// # use openraft::errors::Fatal;
+/// # use openraft::storage::RaftStateMachine;
+/// #
+/// # async fn example<C, SM>(raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+/// # where
+/// #     C: RaftTypeConfig,
+/// #     SM: RaftStateMachine<C>,
+/// # {
 /// raft.trigger().elect(false).await?;
-/// ```
-///
-/// Or request a heartbeat, a snapshot build, or a log purge:
-///
-/// ```ignore
 /// raft.trigger().heartbeat().await?;
 /// raft.trigger().snapshot().await?;
-/// raft.trigger().purge_log().await?;
+///
+/// // Request a purge up to and including log index 100.
+/// raft.trigger().purge_log(100).await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// [`Raft::trigger()`]: crate::Raft::trigger
@@ -80,7 +89,9 @@ where C: RaftTypeConfig
     ///
     /// Pre-Vote is selected per call and does not require [`Config::enable_pre_vote`].
     ///
-    /// It is not affected by `Raft::enable_elect(false)`.
+    /// Disabling automatic elections with
+    /// [`raft.runtime_config().elect(false)`](crate::raft::RuntimeConfigHandle::elect) does not
+    /// affect this request.
     ///
     /// To wait for a particular node to become leader, use
     /// [`Wait::current_leader`](crate::metrics::Wait::current_leader).
@@ -96,7 +107,9 @@ where C: RaftTypeConfig
     /// or is in a [quorum-loss quiet period](field@crate::Config::quorum_loss_probe_interval).
     /// The [minimum heartbeat interval] still applies to each target.
     ///
-    /// It is not affected by `Raft::enable_heartbeat(false)`.
+    /// Disabling idle heartbeats with
+    /// [`raft.runtime_config().heartbeat(false)`](crate::raft::RuntimeConfigHandle::heartbeat)
+    /// does not affect this request.
     ///
     /// To observe quorum contact, watch [`RaftMetrics::last_quorum_acked`], which can also advance
     /// through ordinary replication.
