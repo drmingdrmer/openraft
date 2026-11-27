@@ -1,9 +1,9 @@
 //! Consumer handle for the shared [`Backoff`] owned by
 //! [`BackoffState`](crate::replication::backoff_state::BackoffState).
 //!
-//! The request stream samples a delay before each AppendEntries request and clears
-//! the active iterator on reset. `BackoffState` tracks the error rank and enables
-//! new iterators after RPC errors.
+//! The worker samples a delay before opening the stream, and the request stream samples
+//! delays for later requests. Either clears the active iterator on reset. `BackoffState`
+//! tracks the error rank and enables new iterators after RPC errors.
 
 use std::fmt;
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use rt::WatchReceiver;
 
 use crate::RaftTypeConfig;
 use crate::async_runtime::Select3;
+use crate::errors::ReplicationClosed;
 use crate::network::Backoff;
 use crate::replication::EXHAUSTED_BACKOFF_DELAY;
 use crate::type_config::TypeConfigExt;
@@ -39,25 +40,24 @@ where C: RaftTypeConfig
 impl<C> BackoffConsumer<C>
 where C: RaftTypeConfig
 {
-    /// Returns the next delay to wait before emitting the next request, or `None`
-    /// if backoff is not currently enabled. Advances the iterator when enabled.
+    /// Returns and consumes the next delay, or `None` if backoff is not enabled.
     pub(crate) fn next_delay(&self) -> Option<Duration> {
         let mut guard = self.inner.lock().unwrap();
         let backoff = guard.as_mut()?;
         Some(backoff.next().unwrap_or(EXHAUSTED_BACKOFF_DELAY))
     }
 
-    /// Waits for the next backoff delay if backoff is enabled, or returns immediately.
-    ///
-    /// The wait ends early when `cancel` resolves or a reset arrives. A reset also drops the
-    /// iterator, so later requests are not delayed until `BackoffState` enables a new one.
-    pub(crate) async fn backoff_if_enabled<Fu, T>(&mut self, cancel: Fu)
+    /// Returns `Ok(false)` if no backoff is active. Otherwise waits and returns `Ok(true)`
+    /// after the delay or an explicit reset, or `Err` if `cancel` resolves first.
+    /// A reset drops the iterator, so later requests are not delayed until `BackoffState`
+    /// enables a new one.
+    pub(crate) async fn backoff_if_enabled<Fu, T>(&mut self, cancel: Fu) -> Result<bool, ReplicationClosed>
     where
         Fu: Future<Output = T> + OptionalSend,
         T: fmt::Debug,
     {
         let Some(sleep_duration) = self.next_delay() else {
-            return;
+            return Ok(false);
         };
 
         let sleep = C::sleep(sleep_duration);
@@ -75,6 +75,7 @@ where C: RaftTypeConfig
                     "Replication Stream is canceled, res: {:?}, when:(backoff_if_enabled:wait-for-changed)",
                     cancel_res
                 );
+                return Err(ReplicationClosed::new("canceled during backoff"));
             }
             Select3::Second(reset_res) => {
                 tracing::info!(
@@ -85,6 +86,7 @@ where C: RaftTypeConfig
                 self.inner.lock().unwrap().take();
             }
         }
+        Ok(true)
     }
 }
 
@@ -146,7 +148,7 @@ mod tests {
 
             tx.send(()).unwrap();
             let result = UTConfig::<()>::timeout(Duration::from_millis(100), wait).await;
-            assert!(result.is_ok(), "reset should interrupt the 200ms wait");
+            assert!(result.expect("reset should interrupt the 200ms wait").unwrap());
 
             let next_delay = consumer.next_delay();
             assert_eq!(next_delay, None);

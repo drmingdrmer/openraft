@@ -4,6 +4,8 @@
 //! no log until it has returned. So a closed task does not wait for a transport that is still
 //! opening its stream.
 
+mod backoff_test;
+
 use std::fmt::Debug;
 use std::future::Future;
 use std::io;
@@ -35,8 +37,10 @@ use crate::errors::ReplicationClosed;
 use crate::errors::StreamingError;
 use crate::errors::Unreachable;
 use crate::log_id_range::LogIdRange;
+use crate::network::Backoff;
 use crate::network::RPCOption;
 use crate::network::RaftNetworkV2;
+use crate::network::stream_append_sequential;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::raft::AppendEntriesRequest;
@@ -138,6 +142,11 @@ enum Session {
     FailAfterRead,
     /// The transport never finishes opening the stream.
     Hang,
+    /// Fail setup without consuming input, then use the sequential adapter.
+    SetupThenSequential {
+        failures: u64,
+        backoff: Option<Vec<Duration>>,
+    },
     /// The test controls each upload and its response independently.
     Capture {
         sessions: MpscSenderOf<C, CapturedSession>,
@@ -179,7 +188,7 @@ impl RaftNetworkV2<C> for PullingNetwork {
     fn stream_append<'s, S>(
         &'s mut self,
         mut input: S,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
@@ -188,6 +197,13 @@ impl RaftNetworkV2<C> for PullingNetwork {
         self.opened.send(opened).ok();
         if let Session::Hang = self.session {
             return Box::pin(std::future::pending());
+        }
+        if let Session::SetupThenSequential { failures, .. } = self.session {
+            if opened <= failures {
+                let err = RPCError::Unreachable(Unreachable::from_string("stream open failed"));
+                return Box::pin(std::future::ready(Err(err)));
+            }
+            return stream_append_sequential(self, input, option);
         }
 
         if let Session::Capture {
@@ -250,12 +266,24 @@ impl RaftNetworkV2<C> for PullingNetwork {
         Box::pin(futures_util::future::ready(Ok(responses)))
     }
 
+    fn backoff(&self) -> Option<Backoff> {
+        match &self.session {
+            Session::SetupThenSequential { backoff, .. } => {
+                backoff.clone().map(|delays| Backoff::new(delays.into_iter()))
+            }
+            _ => None,
+        }
+    }
+
     async fn append_entries(
         &mut self,
-        _rpc: AppendEntriesRequest<C>,
+        rpc: AppendEntriesRequest<C>,
         _option: RPCOption,
     ) -> Result<AppendResult<C>, RPCError<C>> {
-        unreachable!("replication streams its requests")
+        assert!(matches!(self.session, Session::SetupThenSequential { .. }));
+        let pulled = *self.pulled.borrow_watched() + 1;
+        self.pulled.send(pulled).unwrap();
+        Ok(Ok(rpc.log_id_range().last))
     }
 
     async fn vote(&mut self, _rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
@@ -288,6 +316,7 @@ struct Harness {
     join: JoinHandleOf<C, Result<(), ReplicationClosed>>,
     /// Dropping it closes the stream, as RaftCore does.
     cancel_tx: WatchSenderOf<C, ()>,
+    backoff_reset_tx: WatchSenderOf<C, ()>,
 }
 
 /// Spawn a replication task to node 2, whose log is submitted through index 20 and matches it
@@ -296,6 +325,15 @@ struct Harness {
 /// [`PullingNetwork`]. Next to the harness, it returns a value that keeps the other channels of the
 /// task open.
 fn spawn_replication(open_reads: bool, poll: bool, session: Session) -> (Harness, impl Sized) {
+    spawn_replication_with_config(open_reads, poll, session, Config::default())
+}
+
+fn spawn_replication_with_config(
+    open_reads: bool,
+    poll: bool,
+    session: Session,
+    config: Config,
+) -> (Harness, impl Sized) {
     let vote = VoteOf::<C>::new_committed(1, 1).to_committed();
     let (replicate_tx, replicate_rx) = C::watch_channel(None);
     let (committed_tx, committed_rx) = C::watch_channel(None);
@@ -317,7 +355,7 @@ fn spawn_replication(open_reads: bool, poll: bool, session: Session) -> (Harness
         target: 2,
         leader_vote: vote,
         stream_id: StreamId::new(1),
-        config: Arc::new(Config::default()),
+        config: Arc::new(config),
         tx_notify,
         cancel_rx,
         replicate_batch: SharedReplicateBatch::new(),
@@ -368,8 +406,9 @@ fn spawn_replication(open_reads: bool, poll: bool, session: Session) -> (Harness
         ended,
         join,
         cancel_tx,
+        backoff_reset_tx,
     };
-    (harness, (io_tx, backoff_reset_tx, probe_tx))
+    (harness, (io_tx, probe_tx))
 }
 
 /// Wait for the next notification, which must be the confirmation of the clear `inflight_id`.
