@@ -19,8 +19,10 @@ where C: RaftTypeConfig
 
     /// Replicate logs after `prev` with no upper bound.
     ///
-    /// Used for streaming replication where the leader continuously sends new logs.
-    /// The `prev` is updated as logs are acknowledged.
+    /// Request generation advances `prev` in its copy to the last log included in a generated
+    /// request. When the session ends normally, continuation advances the original payload to
+    /// the greatest acknowledged log, if any. The generated position can be ahead of what the
+    /// follower acknowledged, so retries use the acknowledged position, not the generated one.
     LogsSince { prev: Option<LogIdOf<C>> },
 }
 
@@ -42,10 +44,11 @@ where C: RaftTypeConfig
 impl<C> Payload<C>
 where C: RaftTypeConfig
 {
-    /// Advance after generating a request and return the remaining payload.
+    /// Advance the request generator's copy and return the remaining payload for this session.
     ///
     /// A probe completes after generating its only request. An open-ended stream advances to the
-    /// last sent log id.
+    /// last log ID in the generated request (or retains `prev` for an empty request), without
+    /// waiting for an acknowledgement.
     #[must_use]
     pub(crate) fn update_sent(self, sent: Option<LogIdOf<C>>) -> Option<Self> {
         match self {
@@ -54,10 +57,11 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Apply an acknowledgement and return the remaining payload.
+    /// Apply the session's greatest acknowledgement to the original payload and return the
+    /// remaining payload for the next session.
     ///
     /// A probe keeps its candidate range unchanged for retries and completes once a response
-    /// confirms `prev`. An open-ended stream never completes here.
+    /// confirms `prev`. An open-ended stream never completes here; it resumes after `matching`.
     #[must_use]
     pub(crate) fn update_matching(self, matching: Option<LogIdOf<C>>) -> Option<Self> {
         match self {
