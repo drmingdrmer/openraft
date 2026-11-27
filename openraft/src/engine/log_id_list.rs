@@ -399,6 +399,7 @@ where CLID: RaftCommittedLeaderId
     ///
     /// The first log index is `purged.index + 1` (or 0 if nothing purged).
     /// The leader comes from the first entry in `key_log_ids`.
+    #[cfg(test)]
     pub(crate) fn first(&self) -> Option<RefLogId<'_, CLID>> {
         let first_key = self.key_log_ids.first()?;
         let first_index = self.first_index();
